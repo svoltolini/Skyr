@@ -10,7 +10,7 @@ Repository: [svoltolini/Skyr](https://github.com/svoltolini/Skyr) (private)
 
 ## Release assessment
 
-Skyr is not ready for an unrestricted public 1.0 release at this checkpoint. The source compiles in Release configuration, the signed iPhone simulator experience is visually coherent, and the app architecture is suitable for the intended product. The audit found failures in Watch downloads, offline download truthfulness, NAS/cache identity, interrupted indexing, two-factor reconnection, CloudKit convergence, profile authorization, and distribution validation.
+Skyr is not ready for an unrestricted public 1.0 release at this checkpoint. The source compiles in Release configuration, the signed iPhone and Apple TV simulator experiences are visually coherent, and the app architecture is suitable for the intended product. The audit found failures in Watch downloads, offline download truthfulness, NAS/cache identity, interrupted indexing, two-factor reconnection, CloudKit convergence, profile authorization, and distribution validation.
 
 The GitHub backlog contains 31 verified product, reliability, UX, accessibility, and release tasks. A separate sealed Codex Security scan contains six validated findings; their exact private GitHub issue payloads await owner review.
 
@@ -20,7 +20,7 @@ The GitHub backlog contains 31 verified product, reliability, UX, accessibility,
 - All 103 Swift files, about 20,000 lines, were mapped across the five application/extension targets and shared package.
 - Networking, indexing, metadata parsers, playback, downloads, profiles, family sharing, CloudKit, widgets, Watch transfer, platform navigation, entitlements, privacy manifests, assets, and release settings received targeted source review.
 - Critical download and state transitions were reproduced in isolated source harnesses under `/tmp`; they did not touch a NAS, CloudKit, the user's library, or repository source.
-- The signed iPhone Release simulator build was exercised with the built-in sample catalogue and synthetic profiles.
+- Signed iPhone and Apple TV Release simulator builds were exercised with the built-in sample catalogue; the iPhone pass also used synthetic profiles.
 - Current Apple TestFlight/App Review and Tailscale guidance was checked against official documentation.
 
 ## Verification completed
@@ -30,7 +30,7 @@ The GitHub backlog contains 31 verified product, reliability, UX, accessibility,
 | Shared Swift package, Release | Passed | One existing nested-folder test |
 | iOS/iPadOS Release build | Passed | Includes embedded Watch app and widgets |
 | macOS Release build | Passed | Compile only |
-| tvOS Release build | Passed | Compile only; asset warnings remain |
+| tvOS signed Release build and launch | Passed | Fresh isolated tvOS 26.5 simulator with sample library; asset warnings remain |
 | Signed iPhone simulator launch | Passed | Fresh isolated iOS 26.5 simulator |
 | iPhone UI smoke | Passed | Library, album, simulated playback, search, playlists, and settings rendered |
 | Profile PIN isolation | Failed | Owner PIN removal bypass reproduced end to end |
