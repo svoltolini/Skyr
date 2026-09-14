@@ -29,9 +29,23 @@ This continues [batch 2](REMEDIATION-2026-09-14-BATCH-2.md) in [PR #32](https://
 
 Final archive/export/upload evidence is under `/tmp/skyr-remediation-3/final`; core tests are in `/tmp/skyr-remediation-3/cloud-final-package.log`, independent cloud checks in `/tmp/skyr-remediation-3/cloud-review`, and icon checks in `/tmp/skyr-remediation-3/icon-diagnosis`.
 
-iOS and macOS uploads were accepted and processed as VALID, with internalBuildState IN_BETA_TESTING and membership in the existing internal Testers group verified through the API. Their testing notes were updated and read back. The first tvOS upload was rejected for a missing 1× wide Top Shelf image; both 1× sizes were then derived from the existing 2× artwork with the owner's explicit approval. The corrected exported TV asset catalog and signature were checked before retrying. These TV-only assets are absent from the iOS and Mac compiled catalogs and do not alter their accepted builds. The corrected TV upload was accepted (delivery `809d9258-05cd-4f9b-8cde-8d0667ccd2e3`) and Apple processing is pending.
+iOS and macOS uploads were accepted and processed as VALID, with internalBuildState IN_BETA_TESTING and membership in the existing internal Testers group verified through the API. Their testing notes were updated and read back. The first tvOS upload was rejected for a missing 1× wide Top Shelf image; both 1× sizes were then derived from the existing 2× artwork with the owner's explicit approval. The corrected exported TV asset catalog and signature were checked before retrying. These TV-only assets are absent from the iOS and Mac compiled catalogs and do not alter their accepted builds. The corrected TV upload was accepted (delivery `809d9258-05cd-4f9b-8cde-8d0667ccd2e3`). All three platforms now report VALID and IN_BETA_TESTING, and membership in the internal Testers group was verified. Testing notes were saved and read back for all three. External beta state is READY_FOR_BETA_SUBMISSION; no external beta review or public App Store release is claimed.
 
 App Store Connect was read through the existing team API key. No App Store Connect MCP tool is installed in this environment. The API confirmed the app identifier, existing iOS/macOS build `202609141324`, and the internal testing group. Routine build and testing-group operations use the API or Apple's command-line tools; browser access was needed to find the existing issuer identifier and enable the newly approved CarPlay capability.
+
+## Git and release record
+
+[PR #32](https://github.com/svoltolini/Skyr/pull/32) merged as `f18ea5915345a3e7f46cb16a6eeb09cbeb644a64`; batch 3 implementation is `328eb011835fb11b14858afb8bbf404de3ca7cae`.
+
+Closed with verification evidence: **#2, #4, #5, #11, #18, #22, #31**. **25 issues remain open**, including new performance follow-up #33. Twenty implemented/partial issues received explicit remaining-acceptance notes; open state does not mean no work was merged.
+
+| Platform | Build ID | Confirmed state |
+| --- | --- | --- |
+| iOS, companion Watch and widgets | `425639f9-7888-4770-a16c-cba48dfc2fd8` | 1.0 (202609142035), internal testing |
+| macOS | `9f1c513a-d2bb-434a-b74b-aad8d1e980fd` | 1.0 (202609142035), internal testing |
+| tvOS | `809d9258-05cd-4f9b-8cde-8d0667ccd2e3` | 1.0 (202609142035), internal testing |
+
+Next recommended batch: large-library responsiveness (#33) and privacy/artwork disclosure (#14), while the owner exercises this build's NAS, CloudKit, Watch and CarPlay journeys. Finish App Review readiness in #13 before public submission.
 
 ## Required device acceptance
 
