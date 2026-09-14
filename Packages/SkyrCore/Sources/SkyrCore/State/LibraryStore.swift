@@ -98,6 +98,8 @@ public final class LibraryStore {
     public var drive: (any RemoteDrive)?
 
     public private(set) var albums: [Album] = []
+    /// Changes once a complete set of derived catalogue content is published, never for scan progress.
+    public private(set) var contentRevision = 0
     public private(set) var artists: [Artist] = []
     public private(set) var genres: [Genre] = []
     /// Genres with enough albums to deserve a shelf on the Library home, most albums first.
@@ -116,6 +118,7 @@ public final class LibraryStore {
     private var palettes: [String: CoverPalette.Pair] = [:]
     /// Counts derivations started, so a slow one never overwrites a newer result.
     private var derivationGeneration = 0
+    @ObservationIgnored private(set) var derivationTask: Task<Void, Never>?
     /// The people using the app; the active one's favourites, playlists, history and settings are what this store shows.
     public var profiles: ProfileStore?
     /// Shows "#3" instead of "#3 (Deluxe Version)" and "Song" instead of "Song (Remix)"; grouping still uses full titles.
@@ -167,6 +170,10 @@ public final class LibraryStore {
         }
         if firstLoad || catalogue.isEmpty {
             // The first catalogue is derived right away so the library is there on the first frame.
+            // Clearing or changing the library must also supersede work still deriving its old contents.
+            derivationGeneration &+= 1
+            derivationTask?.cancel()
+            derivationTask = nil
             apply(DerivedLibrary.make(catalogue: catalogue, hidesBrackets: hidesBracketedTitleParts, genreAliases: genreAliases, knownPalettes: palettes, includeFolders: true))
         } else {
             // Later catalogues (refreshes, tags settling) are derived in the background so the screen
@@ -195,18 +202,20 @@ public final class LibraryStore {
     }
 
     private func rebuildDerivedInBackground(includeFolders: Bool) {
-        derivationGeneration += 1
+        derivationGeneration &+= 1
+        derivationTask?.cancel()
         let generation = derivationGeneration
         let catalogue = self.catalogue
         let hides = hidesBracketedTitleParts
         let aliases = genreAliases
         let known = palettes
-        Task { [weak self] in
+        derivationTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
             let started = ContinuousClock.now
             let derived = await Task.detached(priority: .userInitiated) {
                 DerivedLibrary.make(catalogue: catalogue, hidesBrackets: hides, genreAliases: aliases, knownPalettes: known, includeFolders: includeFolders)
             }.value
-            guard let self, generation == derivationGeneration else { return }
+            guard let self, !Task.isCancelled, generation == derivationGeneration else { return }
             apply(derived)
             let elapsed = started.duration(to: .now)
             if elapsed > .milliseconds(150) {
@@ -239,6 +248,7 @@ public final class LibraryStore {
         if albumsChanged {
             shuffleDay = ""
             rebuildPlaylists()
+            contentRevision &+= 1
         }
         let unread = coveredAlbumIDs.subtracting(palettes.keys)
         if !unread.isEmpty { readPalettes(for: unread) }
@@ -312,7 +322,7 @@ public final class LibraryStore {
         playedTrackIDs.removeAll { $0 == track.id }
         playedTrackIDs.insert(track.id, at: 0)
         playedTrackIDs = Array(playedTrackIDs.prefix(100))
-        profiles?.updateLibrary(catalogue.driveID) { $0.played = playedTrackIDs }
+        profiles?.updateLibrary(catalogue.driveID, recordingHistory: .played) { $0.played = playedTrackIDs }
         recentlyPlayedPlaylist = smartPlaylist(id: Playlist.recentlyPlayedID, name: "Recently played", tracks: recentlyPlayedTracks)
     }
 
@@ -341,7 +351,7 @@ public final class LibraryStore {
         recentlyPlayedIDs.removeAll { $0 == album.id }
         recentlyPlayedIDs.insert(album.id, at: 0)
         recentlyPlayedIDs = Array(recentlyPlayedIDs.prefix(30))
-        profiles?.updateLibrary(catalogue.driveID) { $0.recentAlbums = recentlyPlayedIDs }
+        profiles?.updateLibrary(catalogue.driveID, recordingHistory: .recentAlbums) { $0.recentAlbums = recentlyPlayedIDs }
     }
 
     // MARK: Media
@@ -429,7 +439,7 @@ public final class LibraryStore {
         recentSearches.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
         recentSearches.insert(trimmed, at: 0)
         recentSearches = Array(recentSearches.prefix(8))
-        profiles?.updateLibrary(catalogue.driveID) { $0.searches = recentSearches }
+        profiles?.updateLibrary(catalogue.driveID, recordingHistory: .searches) { $0.searches = recentSearches }
     }
 
     public var browseEntries: [BrowseEntry] {

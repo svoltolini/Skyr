@@ -49,6 +49,14 @@ public final class LibraryIndexer {
     public private(set) var coversDone = 0
     public private(set) var coversTotal = 0
     private var task: Task<Void, Never>?
+    private var currentRun: IndexingRun?
+    private let recordDiagnostics: @Sendable (String) -> Void
+
+    public init() { recordDiagnostics = { diagnostics($0) } }
+
+    init(recordDiagnostics: @escaping @Sendable (String) -> Void) {
+        self.recordDiagnostics = recordDiagnostics
+    }
 
     public var isRunning: Bool { phase == .scanning || phase == .enriching }
     public var isScanning: Bool { phase == .scanning }
@@ -74,6 +82,11 @@ public final class LibraryIndexer {
 
     private var lastProgressPublish = Date.distantPast
 
+    private func checkActive(_ run: IndexingRun) throws {
+        try Task.checkCancellation()
+        guard currentRun === run, run.isActive else { throw CancellationError() }
+    }
+
     /// Progress reaches the screen at most twice a second. Every published change re-evaluates the
     /// views that show it, and on a wide window with a large library that is the whole Library
     /// screen; publishing per song once froze the Mac app for minutes (2026-09-13).
@@ -95,78 +108,110 @@ public final class LibraryIndexer {
     /// Scans `rootPath` on the drive; `onCatalogue` receives the catalogue when the structure is known and again as tags arrive.
     public func start(drive: any RemoteDrive, rootPath: String, serverName: String, existing: Catalogue?, onCatalogue: @escaping @MainActor (Catalogue) -> Void) {
         cancel()
+        let run = IndexingRun()
+        currentRun = run
         phase = .scanning
         foldersScanned = 0
         tracksFound = 0
         enrichedCount = 0
         enrichTotal = 0
         listingFailures = 0
-        diagnostics("Scan started at \(rootPath) on \(drive.displayName)")
+        coversDone = 0
+        coversTotal = 0
+        lastProgressPublish = .distantPast
+        recordDiagnostics("Scan started at \(rootPath) on \(drive.displayName)")
         task = Task { [weak self] in
             guard let self else { return }
-            do {
-                let scan = try await Self.scan(drive: drive, root: rootPath) { [weak self] scanned, found in
-                    Task { @MainActor in self?.noteScanProgress(folders: scanned, tracks: found) }
+            defer {
+                run.cancel()
+                if currentRun === run {
+                    currentRun = nil
+                    task = nil
                 }
-                try Task.checkCancellation()
-                listingFailures = scan.failures
-                diagnostics("Scan finished: \(scan.foldersListed) folders listed, \(scan.filesSeen) files seen, \(scan.folders.reduce(0) { $0 + $1.audio.count }) audio files, \(scan.failures) listing failures\(scan.firstError.map { ", first error: \($0)" } ?? "").")
-                let folders = scan.folders
-                if folders.isEmpty {
-                    if scan.foldersListed == 0, scan.failures == 0 {
-                        // Not one folder was read, not even the root, and nothing failed: that is the
-                        // scanner going wrong, never a real answer. The library people have is kept.
-                        diagnostics("Scan listed no folders at all under \(rootPath); keeping the library as it was.")
-                        phase = .failed(.other("The server didn't answer for this folder. Your library was kept; try again."))
-                        return
+            }
+            await CoverStore.$indexingRun.withValue(run) {
+                do {
+                    let scan = try await Self.scan(drive: drive, root: rootPath, recordDiagnostics: recordDiagnostics) { [weak self] scanned, found in
+                        Task { @MainActor in
+                            guard let self, self.currentRun === run, run.isActive else { return }
+                            self.noteScanProgress(folders: scanned, tracks: found)
+                        }
                     }
-                    if existing != nil, scan.failures == 0 {
-                        // Every folder was read and none holds music: the library really is empty now.
-                        diagnostics("Scan found no music under \(rootPath); the library is now empty.")
-                        onCatalogue(Catalogue(serverName: serverName, albums: [], indexedAt: .now, rootPath: rootPath, driveID: drive.id))
-                        phase = .done
-                        return
-                    }
-                    if scan.failures > 0 {
-                        diagnostics("Couldn't read \(scan.failures) of the folders. \(scan.firstError ?? "")")
+                    try checkActive(run)
+                    listingFailures = scan.failures
+                    foldersScanned = scan.foldersListed
+                    recordDiagnostics("Scan finished: \(scan.foldersListed) folders listed, \(scan.filesSeen) files seen, \(scan.folders.reduce(0) { $0 + $1.audio.count }) audio files, \(scan.failures) listing failures\(scan.firstError.map { ", first error: \($0)" } ?? "").")
+                    // A partial answer cannot establish what was deleted. Keep the complete previous
+                    // catalogue until every subtree can be read, including on background refreshes.
+                    guard scan.failures == 0 else {
+                        recordDiagnostics("Refresh incomplete; the previous library was kept.")
                         phase = .failed(.unreadable(count: scan.failures, path: rootPath))
-                    } else {
-                        diagnostics("No music files were found under \(rootPath); \(scan.filesSeen.formatted()) other files were seen.")
+                        return
+                    }
+                    let folders = scan.folders
+                    if folders.isEmpty {
+                        if scan.foldersListed == 0 {
+                            // Not one folder was read, not even the root, and nothing failed: that is the
+                            // scanner going wrong, never a real answer. The library people have is kept.
+                            recordDiagnostics("Scan listed no folders at all under \(rootPath); keeping the library as it was.")
+                            phase = .failed(.other("The server didn't answer for this folder. Your library was kept; try again."))
+                            return
+                        }
+                        if existing != nil {
+                            // Every folder was read and none holds music: the library really is empty now.
+                            recordDiagnostics("Scan found no music under \(rootPath); the library is now empty.")
+                            onCatalogue(Catalogue(serverName: serverName, albums: [], indexedAt: .now, rootPath: rootPath, driveID: drive.id))
+                            try checkActive(run)
+                            phase = .done
+                            return
+                        }
+                        recordDiagnostics("No music files were found under \(rootPath); \(scan.filesSeen.formatted()) other files were seen.")
                         phase = .failed(.noMusic(path: rootPath))
+                        return
                     }
+                    let driveID = drive.id
+                    let coverDirectory = CoverStore.directory
+                    let catalogue = await Task.detached(priority: .userInitiated) {
+                        CoverStore.$directoryOverride.withValue(coverDirectory) {
+                            CoverStore.$indexingRun.withValue(run) {
+                                var built = Catalogue.build(folders: folders, rootPath: rootPath, serverName: serverName, driveID: driveID, existing: existing)
+                                if run.isActive, built.enrichedTrackCount > 0 { built.regroupByTags() }
+                                return built
+                            }
+                        }
+                    }.value
+                    try checkActive(run)
+                    tracksFound = catalogue.trackCount
+                    onCatalogue(catalogue)
+                    try checkActive(run)
+                    phase = .enriching
+                    try await runEnrichment(catalogue: catalogue, drive: drive, run: run, onCatalogue: onCatalogue)
+                    try checkActive(run)
+                    phase = .done
+                } catch is CancellationError {
                     return
-                }
-                let driveID = drive.id
-                let catalogue = await Task.detached(priority: .userInitiated) {
-                    var built = Catalogue.build(folders: folders, rootPath: rootPath, serverName: serverName, driveID: driveID, existing: existing)
-                    if built.enrichedTrackCount > 0 { built.regroupByTags() }
-                    return built
-                }.value
-                try Task.checkCancellation()
-                tracksFound = catalogue.trackCount
-                onCatalogue(catalogue)
-                phase = .enriching
-                try await runEnrichment(catalogue: catalogue, drive: drive, onCatalogue: onCatalogue)
-                phase = .done
-            } catch is CancellationError {
-                return
-            } catch {
-                if error.isMissingPath {
-                    // The chosen folder itself is gone; show an empty library rather than the old one.
-                    diagnostics("The folder \(rootPath) no longer exists; the library is now empty.")
-                    if existing != nil {
-                        onCatalogue(Catalogue(serverName: serverName, albums: [], indexedAt: .now, rootPath: rootPath, driveID: drive.id))
+                } catch {
+                    guard currentRun === run, run.isActive, !Task.isCancelled else { return }
+                    if error.isMissingPath {
+                        // The chosen folder itself is gone; show an empty library rather than the old one.
+                        recordDiagnostics("The folder \(rootPath) no longer exists; the library is now empty.")
+                        if existing != nil {
+                            onCatalogue(Catalogue(serverName: serverName, albums: [], indexedAt: .now, rootPath: rootPath, driveID: drive.id))
+                        }
+                        guard currentRun === run, run.isActive else { return }
+                        phase = .failed(.missing(path: rootPath))
+                    } else {
+                        recordDiagnostics("Scan failed: \(error.localizedDescription)")
+                        phase = .failed(.other(error.localizedDescription))
                     }
-                    phase = .failed(.missing(path: rootPath))
-                } else {
-                    diagnostics("Scan failed: \(error.localizedDescription)")
-                    phase = .failed(.other(error.localizedDescription))
                 }
             }
         }
     }
 
     public func cancel() {
+        currentRun?.cancel()
+        currentRun = nil
         task?.cancel()
         task = nil
         if isRunning { phase = .idle }
@@ -191,7 +236,7 @@ public final class LibraryIndexer {
     }
 
     /// Breadth-first walk with a few listings in flight; unreadable folders are counted and skipped.
-    nonisolated private static func scan(drive: any RemoteDrive, root: String, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> ScanResult {
+    nonisolated private static func scan(drive: any RemoteDrive, root: String, recordDiagnostics: @escaping @Sendable (String) -> Void, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> ScanResult {
         var result = ScanResult()
         var queue = [root]
         var found = 0
@@ -207,6 +252,7 @@ public final class LibraryIndexer {
                     return Listing(path: path, entries: [], error: error)
                 }
             }
+            try Task.checkCancellation()
             for listing in listings.sorted(by: { $0.path < $1.path }) {
                 let path = listing.path
                 if let error = listing.error {
@@ -222,7 +268,7 @@ public final class LibraryIndexer {
                 let audio = entries.filter(\.isAudio)
                 result.filesSeen += entries.filter { !$0.isDirectory }.count
                 if result.foldersListed < 3 {
-                    diagnostics("Listed \(path): \(entries.count) entries, \(directories.count) folders, \(audio.count) audio. Sample: \(entries.prefix(3).map { "\($0.name)\($0.isDirectory ? "/" : "")" }.joined(separator: ", "))")
+                    recordDiagnostics("Listed \(path): \(entries.count) entries, \(directories.count) folders, \(audio.count) audio. Sample: \(entries.prefix(3).map { "\($0.name)\($0.isDirectory ? "/" : "")" }.joined(separator: ", "))")
                 }
                 if !audio.isEmpty {
                     result.folders.append(ScannedFolder(path: path, audio: audio, cover: RemoteDriveSupport.coverImage(in: entries)))
@@ -249,7 +295,8 @@ public final class LibraryIndexer {
         let cover: Data?
     }
 
-    private func runEnrichment(catalogue: Catalogue, drive: any RemoteDrive, onCatalogue: @escaping @MainActor (Catalogue) -> Void) async throws {
+    private func runEnrichment(catalogue: Catalogue, drive: any RemoteDrive, run: IndexingRun, onCatalogue: @escaping @MainActor (Catalogue) -> Void) async throws {
+        try checkActive(run)
         var working = catalogue
         // Album ids that already asked one of their songs for embedded art; ids change as albums regroup,
         // which at worst costs one extra request per album.
@@ -269,16 +316,16 @@ public final class LibraryIndexer {
             return true
         }
         let rereads = pending.filter(\.isEnriched).count
-        if rereads > 0 { diagnostics("Reading tags again for \(rereads) tracks indexed by an older version") }
-        if restingCount > 0 { diagnostics("Leaving \(restingCount) songs that could not be read three times; they are tried again after a week") }
-        if !pending.isEmpty { diagnostics("Reading tags for \(pending.count) songs") }
+        if rereads > 0 { recordDiagnostics("Reading tags again for \(rereads) tracks indexed by an older version") }
+        if restingCount > 0 { recordDiagnostics("Leaving \(restingCount) songs that could not be read three times; they are tried again after a week") }
+        if !pending.isEmpty { recordDiagnostics("Reading tags for \(pending.count) songs") }
         enrichTotal = pending.count
         enrichedCount = 0
         var enrichedSoFar = 0
         var lastPublish = Date.now
 
         for start in stride(from: 0, to: pending.count, by: Self.parallelism) {
-            try Task.checkCancellation()
+            try checkActive(run)
             let chunk = pending[start..<min(start + Self.parallelism, pending.count)]
             // Decide who should bring back a picture using the albums as they are grouped right now.
             var requests: [(track: Track, coverPath: String?, wantsArt: Bool, albumID: String)] = []
@@ -292,6 +339,7 @@ public final class LibraryIndexer {
             let results = await parallelResults(requests) { request in
                 await Self.enrich(track: request.track, coverPath: request.coverPath, wantsEmbeddedArt: request.wantsArt, drive: drive)
             }
+            try checkActive(run)
             for result in results {
                 var track = result.track
                 if !track.isEnriched || track.tagVersion != Track.currentTagVersion {
@@ -318,21 +366,30 @@ public final class LibraryIndexer {
                 // Show albums as their tags settle instead of the folder grouping until the very end.
                 working.regroupByTags()
                 onCatalogue(working)
+                try checkActive(run)
                 lastPublish = .now
             }
         }
         noteEnrichProgress(enriched: enrichedSoFar, force: true)
         working.indexedAt = .now
         let finished = working
+        let coverDirectory = CoverStore.directory
         working = await Task.detached(priority: .userInitiated) {
-            var regrouped = finished
-            regrouped.regroupByTags()
-            return regrouped
+            CoverStore.$directoryOverride.withValue(coverDirectory) {
+                CoverStore.$indexingRun.withValue(run) {
+                    var regrouped = finished
+                    if run.isActive { regrouped.regroupByTags() }
+                    return regrouped
+                }
+            }
         }.value
+        try checkActive(run)
         let multiDisc = working.albums.filter(\.hasMultipleDiscs)
-        diagnostics("Regrouped by tags: \(working.albums.count) albums, \(multiDisc.count) with more than one disc" + (multiDisc.isEmpty ? "" : ": " + multiDisc.prefix(6).map { "“\($0.title)” (\($0.discs.count))" }.joined(separator: ", ")))
+        recordDiagnostics("Regrouped by tags: \(working.albums.count) albums, \(multiDisc.count) with more than one disc" + (multiDisc.isEmpty ? "" : ": " + multiDisc.prefix(6).map { "“\($0.title)” (\($0.discs.count))" }.joined(separator: ", ")))
         onCatalogue(working)
-        try await runCoverPass(catalogue: working, drive: drive)
+        try checkActive(run)
+        try await runCoverPass(catalogue: working, drive: drive, run: run)
+        try checkActive(run)
         noteEnrichProgress(covers: coversTotal, force: true)
         CoverStore.clearTrackCovers()
         onCatalogue(working)
@@ -340,7 +397,8 @@ public final class LibraryIndexer {
 
     /// Fetches a cover for every album that still lacks one, from its folder image or its own tracks.
     /// When an artist's albums all carry the same picture, or none, the store catalogue is asked instead.
-    private func runCoverPass(catalogue: Catalogue, drive: any RemoteDrive) async throws {
+    private func runCoverPass(catalogue: Catalogue, drive: any RemoteDrive, run: IndexingRun) async throws {
+        try checkActive(run)
         // Albums that had no cover anywhere last time are looked at again after a week, not on every refresh.
         let now = Date.now
         var resting = 0
@@ -355,17 +413,18 @@ public final class LibraryIndexer {
         coversTotal = missing.count
         coversDone = 0
         var coversSoFar = 0
-        if resting > 0 { diagnostics("Cover pass: \(resting) albums without any cover are left until next week") }
+        if resting > 0 { recordDiagnostics("Cover pass: \(resting) albums without any cover are left until next week") }
         guard !missing.isEmpty else { return }
-        diagnostics("Cover pass: \(missing.count) albums without covers")
+        recordDiagnostics("Cover pass: \(missing.count) albums without covers")
         var seenHashes = CoverStore.hashesByArtist(among: catalogue.albums)
         for start in stride(from: 0, to: missing.count, by: Self.parallelism) {
-            try Task.checkCancellation()
+            try checkActive(run)
             let chunk = missing[start..<min(start + Self.parallelism, missing.count)]
             let results: [CoverFetch] = await parallelResults(Array(chunk)) { album in
                 let found = await Self.fetchCover(for: album, drive: drive)
                 return CoverFetch(album: album, data: found?.0, source: found?.1)
             }
+            try checkActive(run)
             for fetch in results {
                 let album = fetch.album
                 let found: (Data, String)? = fetch.data.flatMap { data in fetch.source.map { (data, $0) } }
@@ -377,20 +436,21 @@ public final class LibraryIndexer {
                     if let online = await ArtworkLookup.itunesCover(artist: album.artist, album: album.title) {
                         chosen = (online, isDuplicate ? "iTunes Store, because the files share one picture" : "iTunes Store")
                     }
+                    try checkActive(run)
                 }
                 if let (data, source) = chosen {
                     CoverStore.save(data, for: album.id)
                     seenHashes[artistKey, default: []].insert(ArtworkLookup.hash(data))
-                    diagnostics("Cover for “\(album.title)” by \(album.artist): \(source)")
+                    recordDiagnostics("Cover for “\(album.title)” by \(album.artist): \(source)")
                 } else {
                     CoverStore.noteMissingCover(for: album.id)
-                    diagnostics("No cover found for “\(album.title)” by \(album.artist)")
+                    recordDiagnostics("No cover found for “\(album.title)” by \(album.artist)")
                 }
                 coversSoFar += 1
                 noteEnrichProgress(covers: coversSoFar)
             }
         }
-        diagnostics("Cover pass finished: \(missing.filter { CoverStore.hasCover(for: $0.id) }.count) covers found")
+        recordDiagnostics("Cover pass finished: \(missing.filter { CoverStore.hasCover(for: $0.id) }.count) covers found")
     }
 
     /// The cover image and a description of where it came from.
@@ -431,7 +491,9 @@ public final class LibraryIndexer {
                 updated.sampleRate = info.sampleRate ?? updated.sampleRate
                 updated.bitDepth = info.bitsPerSample
                 if let duration = info.duration { updated.duration = duration }
-                if let size = track.fileSize, updated.duration > 0 { updated.bitrate = Int(Double(size * 8) / updated.duration) }
+                if let size = track.fileSize, let bitrate = MediaBounds.bitrate(bytes: size, duration: updated.duration) {
+                    updated.bitrate = bitrate
+                }
                 if let title = info.tag("TITLE") { updated.title = title }
                 if let number = info.number("TRACKNUMBER") { updated.number = number }
                 if let disc = info.number("DISCNUMBER"), disc > 0 { updated.disc = disc }
@@ -465,8 +527,9 @@ public final class LibraryIndexer {
         if let bits = probe.bitsPerChannel, bits > 0 { updated.bitDepth = bits }
         if let bitrate = probe.bitrate {
             updated.bitrate = bitrate
-        } else if let size = track.fileSize, let duration = probe.duration, duration > 0 {
-            updated.bitrate = Int(Double(size * 8) / duration)
+        } else if let size = track.fileSize, let duration = probe.duration,
+                  let bitrate = MediaBounds.bitrate(bytes: size, duration: duration) {
+            updated.bitrate = bitrate
         }
         if let title = probe.title?.trimmingCharacters(in: .whitespaces), !title.isEmpty { updated.title = title }
         if let number = probe.trackNumber, number > 0 { updated.number = number }

@@ -250,8 +250,8 @@ extension PlaylistDetailView {
         let owner = downloads.owner(for: playlist)
         return DownloadButton(state: downloads.state(for: owner)) {
             switch downloads.state(for: owner) {
-            case .none:
-                downloads.download(owner, driveID: library.catalogue.driveID) { track in
+        case .none, .failed, .partial, .cancelled:
+                downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) { track in
                     library.streamURL(for: track, quality: .original)
                 }
             case .downloading:

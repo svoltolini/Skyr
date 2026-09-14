@@ -43,6 +43,7 @@ struct SkyrTVApp: App {
         let player = PlayerModel()
         // Nothing is kept on a television; the manager only exists so the shared screens have one.
         let downloads = DownloadManager()
+        downloads.driveIDProvider = { [library] in library.catalogue.driveID }
         downloads.activeProfileID = profiles.lastActiveID ?? profiles.owner?.id ?? "default"
         player.streamURLProvider = { [library, model] track in library.streamURL(for: track, quality: model.quality) }
         player.albumProvider = { [library] track in library.album(for: track) }
@@ -62,7 +63,11 @@ struct SkyrTVApp: App {
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
         }
-        profiles.onDeactivate = { [player] in player.stop() }
+        profiles.onDeactivate = { [player, library, downloads] in
+            player.stop()
+            downloads.activeProfileID = "locked"
+            library.loadProfileState()
+        }
         profiles.onRemoteState = { [library, model, player, profiles] in
             library.loadProfileState()
             model.applyProfileSettings()
@@ -92,6 +97,7 @@ struct SkyrTVApp: App {
     var body: some Scene {
         WindowGroup {
             TVRootView()
+                .reauthenticationSheet()
                 .environment(model)
                 .environment(library)
                 .environment(player)

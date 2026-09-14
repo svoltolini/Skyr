@@ -8,12 +8,12 @@ struct DownloadLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DownloadActivityAttributes.self) { context in
             HStack(spacing: 14) {
-                DownloadRing(fraction: context.state.fraction, size: 44, lineWidth: 4)
+                DownloadRing(state: context.state, size: 44, lineWidth: 4)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(context.attributes.title)
                         .font(.headline)
                         .lineLimit(1)
-                    Text(statusLine(context.state))
+                    Text(context.state.statusLine)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -26,11 +26,11 @@ struct DownloadLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    DownloadRing(fraction: context.state.fraction, size: 40, lineWidth: 4)
+                    DownloadRing(state: context.state, size: 40, lineWidth: 4)
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("\(min(context.state.done + 1, context.state.total)) of \(context.state.total)")
+                    Text("\(context.state.done) of \(context.state.total) saved")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.trailing, 4)
@@ -47,7 +47,7 @@ struct DownloadLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(statusLine(context.state))
+                    Text(context.state.statusLine)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -57,25 +57,19 @@ struct DownloadLiveActivity: Widget {
                 Image(systemName: "arrow.down.circle.fill")
                     .foregroundStyle(.white)
             } compactTrailing: {
-                DownloadRing(fraction: context.state.fraction, size: 18, lineWidth: 2.5)
+                DownloadRing(state: context.state, size: 18, lineWidth: 2.5)
             } minimal: {
-                DownloadRing(fraction: context.state.fraction, size: 18, lineWidth: 2.5)
+                DownloadRing(state: context.state, size: 18, lineWidth: 2.5)
             }
             .keylineTint(.white)
         }
     }
 
-    private func statusLine(_ state: DownloadActivityAttributes.ContentState) -> String {
-        if state.done >= state.total { return "Downloaded" }
-        return state.currentTitle.isEmpty
-            ? "Downloading \(state.done) of \(state.total) songs"
-            : "Downloading \(state.done + 1) of \(state.total) · \(state.currentTitle)"
-    }
 }
 
 /// Circular progress drawn with the same look as the button in the app.
 private struct DownloadRing: View {
-    let fraction: Double
+    let state: DownloadProgress
     let size: CGFloat
     let lineWidth: CGFloat
 
@@ -84,16 +78,25 @@ private struct DownloadRing: View {
             Circle()
                 .stroke(.white.opacity(0.25), lineWidth: lineWidth)
             Circle()
-                .trim(from: 0, to: max(0.02, min(1, fraction)))
+                .trim(from: 0, to: max(0.02, min(1, state.fraction)))
                 .stroke(.white, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            if fraction >= 1 {
-                Image(systemName: "checkmark")
+            if state.outcome != .downloading {
+                Image(systemName: terminalSymbol)
                     .font(.system(size: size * 0.42, weight: .bold))
                     .foregroundStyle(.white)
             }
         }
         .frame(width: size, height: size)
-        .accessibilityLabel("Download \(Int((fraction * 100).rounded())) percent")
+        .accessibilityLabel(state.outcome == .downloading ? "Download \(Int((state.fraction * 100).rounded())) percent" : state.statusLine)
+    }
+
+    private var terminalSymbol: String {
+        switch state.outcome {
+        case .downloaded: "checkmark"
+        case .cancelled: "stop.fill"
+        case .failed, .partial: "exclamationmark"
+        case .downloading: "arrow.down"
+        }
     }
 }

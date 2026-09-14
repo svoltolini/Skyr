@@ -189,24 +189,28 @@ struct SmartPlaylistCover: View {
 private struct DriftingLightTile: UIViewRepresentable {
     let colors: [PlatformColor]
     let cornerRadius: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeUIView(context: Context) -> DriftingLightView { DriftingLightView() }
 
     func updateUIView(_ view: DriftingLightView, context: Context) {
         view.colors = colors
         view.hostLayer.cornerRadius = cornerRadius
+        view.reduceMotion = reduceMotion
     }
 }
 #else
 private struct DriftingLightTile: NSViewRepresentable {
     let colors: [PlatformColor]
     let cornerRadius: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeNSView(context: Context) -> DriftingLightView { DriftingLightView() }
 
     func updateNSView(_ view: DriftingLightView, context: Context) {
         view.colors = colors
         view.hostLayer.cornerRadius = cornerRadius
+        view.reduceMotion = reduceMotion
     }
 }
 #endif
@@ -214,6 +218,11 @@ private struct DriftingLightTile: NSViewRepresentable {
 final class DriftingLightView: PlatformView {
     var colors: [PlatformColor] = [] {
         didSet { base.colors = colors.map(\.cgColor) }
+    }
+    var reduceMotion = false {
+        didSet {
+            if reduceMotion != oldValue { restartDrift() }
+        }
     }
 
     private let base = CAGradientLayer()
@@ -267,7 +276,7 @@ final class DriftingLightView: PlatformView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window != nil { restartDrift() }
+        restartDrift()
     }
     #else
     override func layout() {
@@ -277,7 +286,7 @@ final class DriftingLightView: PlatformView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window != nil { restartDrift() }
+        restartDrift()
     }
 
     /// Decoration only: clicks go to whatever is underneath.
@@ -295,10 +304,17 @@ final class DriftingLightView: PlatformView {
     }
 
     private func restartDrift() {
-        guard bounds.width > 0 else { return }
         light.removeAnimation(forKey: "drift")
+        guard bounds.width > 0 else { return }
         let width = bounds.width
         let height = bounds.height
+        // A stable light remains visible when motion is reduced, including preference changes
+        // while this view is already on screen. Disable implicit layer motion as well.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        light.position = CGPoint(x: width * 0.47, y: height * 0.42)
+        CATransaction.commit()
+        guard !reduceMotion, window != nil else { return }
         let steps = 240
         let points: [CGPoint] = (0...steps).map { step in
             let s = Double(step) / Double(steps)

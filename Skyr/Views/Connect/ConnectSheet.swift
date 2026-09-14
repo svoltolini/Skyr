@@ -26,7 +26,7 @@ struct ConnectSheet: View {
                 } header: {
                     Text("Server")
                 } footer: {
-                    Text("From anywhere, the DDNS name you gave your NAS in DSM, such as myds.synology.me. At home, its local address such as 192.168.1.40 works too. No port or https:// needed.")
+                    Text("Enter a NAS name, IP address, or full HTTPS address. Skyr tries HTTPS on DSM port 5001 and port 443. A Tailscale IP or full MagicDNS name also works when this device can reach it. If your NAS only supports HTTP, enter its full http:// address and port; you will review that choice before signing in.")
                 }
                 Section {
                     Button {
@@ -92,4 +92,37 @@ struct ConnectSheet: View {
             isResolving = false
         }
     }
+}
+
+private struct ReauthenticationSheet: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content.sheet(item: Binding(
+            get: { model.stage == .ready ? model.pendingServer : nil },
+            set: { if $0 == nil { model.cancelSignIn() } }
+        )) { server in
+            LoginSheet(server: server)
+        }
+    }
+}
+
+private struct DownloadErrorAlert: ViewModifier {
+    @Environment(DownloadManager.self) private var downloads
+
+    func body(content: Content) -> some View {
+        content.alert("Download couldn't finish", isPresented: Binding(
+            get: { downloads.lastError != nil },
+            set: { if !$0 { downloads.clearError() } }
+        )) {
+            Button("OK") { downloads.clearError() }
+        } message: {
+            Text(downloads.lastError ?? "Reconnect to your NAS and try again.")
+        }
+    }
+}
+
+extension View {
+    func reauthenticationSheet() -> some View { modifier(ReauthenticationSheet()) }
+    func downloadErrorAlert() -> some View { modifier(DownloadErrorAlert()) }
 }

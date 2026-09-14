@@ -316,6 +316,10 @@ private struct MacServerStep: View {
                         .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty || isResolving)
                     if isResolving { ProgressView().controlSize(.small) }
                 }
+                Text("HTTPS is the default. Tailscale addresses work when reachable from this Mac. For a NAS that only supports HTTP, enter its full http:// address and port, then review the connection before signing in.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout)
@@ -367,6 +371,7 @@ private struct MacSignInStep: View {
     @State private var password = ""
     @State private var otpCode = ""
     @State private var remember = true
+    @State private var httpAllowed = false
     @FocusState private var focus: Field?
 
     private enum Field { case account, password, otp }
@@ -379,6 +384,18 @@ private struct MacSignInStep: View {
                     label("Server")
                     Text(server.map { "\($0.name)  ·  \($0.address)" } ?? "")
                         .foregroundStyle(.secondary)
+                }
+                if let server {
+                    GridRow {
+                        Text("")
+                        NASTransportChoice(url: server.baseURL, httpAllowed: $httpAllowed) {
+                            guard let url = NASTransportSecurity.httpsAlternative(for: server.baseURL) else { return }
+                            password = ""
+                            otpCode = ""
+                            model.select(DiscoveredServer(name: server.name, baseURL: url, model: server.model))
+                        }
+                        .disabled(model.isSigningIn)
+                    }
                 }
                 GridRow {
                     label("Account")
@@ -431,14 +448,24 @@ private struct MacSignInStep: View {
             Button("Sign In", action: submit)
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(account.isEmpty || password.isEmpty || model.isSigningIn)
+                .disabled(account.isEmpty || password.isEmpty || model.isSigningIn || !transportAllowed)
         }
         .animation(.easeInOut(duration: 0.2), value: model.needsOTP)
         .onAppear {
-            if let connection = model.connection, connection.host == server?.host {
+            httpAllowed = server.map { NASTransportSecurity.isAllowed($0.baseURL) } ?? false
+            if let familyAccount = model.pendingFamilyAccount {
+                account = familyAccount
+                password = model.pendingFamilyPassword ?? ""
+            } else if let connection = model.connection, let server, NASOrigin(url: connection.baseURL) == NASOrigin(url: server.baseURL) {
                 account = connection.account
             }
             focus = account.isEmpty ? .account : .password
+        }
+        .onChange(of: server?.id) {
+            account = model.pendingFamilyAccount ?? ""
+            password = model.pendingFamilyPassword ?? ""
+            otpCode = ""
+            httpAllowed = model.pendingServer.map { NASTransportSecurity.isAllowed($0.baseURL) } ?? false
         }
     }
 
@@ -449,8 +476,12 @@ private struct MacSignInStep: View {
     }
 
     private func submit() {
-        guard !account.isEmpty, !password.isEmpty else { return }
+        guard !account.isEmpty, !password.isEmpty, transportAllowed else { return }
         Task { await model.signIn(account: account, password: password, otpCode: otpCode, remember: remember) }
+    }
+
+    private var transportAllowed: Bool {
+        model.pendingServer.map { NASOrigin(url: $0.baseURL)?.isHTTPS == true || httpAllowed } ?? false
     }
 }
 

@@ -41,12 +41,14 @@ final class WatchBridge: NSObject, WCSessionDelegate {
             }
         }
         if let credentials = state.credentials, credentials != lastCredentials {
-            _ = session.transferUserInfo([
+            var payload: [String: Any] = [
                 "kind": "credentials",
                 "baseURL": credentials.baseURL.absoluteString,
                 "account": credentials.account,
                 "password": credentials.password,
-            ])
+            ]
+            if let driveID = credentials.driveID { payload["driveID"] = driveID }
+            _ = session.transferUserInfo(payload)
             lastCredentials = credentials
         }
     }
@@ -110,6 +112,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
             reply["baseURL"] = credentials.baseURL.absoluteString
             reply["account"] = credentials.account
             reply["password"] = credentials.password
+            reply["driveID"] = credentials.driveID
         }
         return reply
     }

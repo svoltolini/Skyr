@@ -12,10 +12,10 @@ public nonisolated final class SynologyDrive: RemoteDrive {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 40
         configuration.httpMaximumConnectionsPerHost = 6
-        urlSession = URLSession(configuration: configuration)
+        urlSession = URLSession(configuration: configuration, delegate: NASRedirectDelegate.shared, delegateQueue: nil)
     }
 
-    public var id: String { session.baseURL.host() ?? session.baseURL.absoluteString }
+    public var id: String { NASSource.identifier(baseURL: session.baseURL, account: session.account ?? "") }
 
     public func roots() async throws -> [RemoteEntry] {
         guard let url = session.url(api: "SYNO.FileStation.List", version: 2, method: "list_share", params: [
@@ -72,35 +72,46 @@ public nonisolated final class SynologyDrive: RemoteDrive {
         return entries
     }
 
-    public func read(_ path: String, range: Range<Int64>) async throws -> Data {
+    @concurrent public func read(_ path: String, range: Range<Int64>) async throws -> Data {
+        guard range.lowerBound >= 0, !range.isEmpty,
+              let wanted = Int(exactly: range.upperBound - range.lowerBound) else { throw RemoteDriveError.tooLarge }
         guard let url = streamURL(for: path) else { throw RemoteDriveError.notSignedIn }
         var request = URLRequest(url: url)
         request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
         let (bytes, response) = try await urlSession.bytes(for: request)
+        defer { bytes.task.cancel() }
         guard let http = response as? HTTPURLResponse else { throw RemoteDriveError.http(0) }
         guard http.statusCode == 206 || http.statusCode == 200 else { throw RemoteDriveError.http(http.statusCode) }
         // Read only the window we asked for, even if the server ignored the Range header.
-        let skip = http.statusCode == 200 ? Int(range.lowerBound) : 0
-        let wanted = Int(range.upperBound - range.lowerBound)
-        var data = Data()
-        data.reserveCapacity(wanted)
-        var seen = 0
-        for try await byte in bytes {
-            if seen >= skip { data.append(byte) }
-            seen += 1
-            if data.count >= wanted { break }
+        return try await withTaskCancellationHandler {
+            var remainingSkip = http.statusCode == 200 ? range.lowerBound : 0
+            var data = Data()
+            data.reserveCapacity(min(wanted, 64 * 1024))
+            for try await byte in bytes {
+                try Task.checkCancellation()
+                if remainingSkip > 0 { remainingSkip -= 1 }
+                else { data.append(byte) }
+                if data.count == wanted { break }
+            }
+            try Task.checkCancellation()
+            return data
+        } onCancel: {
+            bytes.task.cancel()
         }
-        return data
     }
 
-    public func download(_ path: String, maxBytes: Int64) async throws -> Data {
+    @concurrent public func download(_ path: String, maxBytes: Int64) async throws -> Data {
+        guard maxBytes >= 0 else { throw RemoteDriveError.tooLarge }
         guard let url = streamURL(for: path) else { throw RemoteDriveError.notSignedIn }
-        let (data, response) = try await urlSession.data(from: url)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw RemoteDriveError.http(http.statusCode)
+        let (bytes, response) = try await urlSession.bytes(from: url)
+        defer { bytes.task.cancel() }
+        guard let http = response as? HTTPURLResponse else { throw RemoteDriveError.http(0) }
+        guard (200..<300).contains(http.statusCode) else { throw RemoteDriveError.http(http.statusCode) }
+        return try await withTaskCancellationHandler {
+            try await BoundedBytes.collect(bytes, maximum: maxBytes, expectedLength: response.expectedContentLength)
+        } onCancel: {
+            bytes.task.cancel()
         }
-        guard Int64(data.count) <= maxBytes else { throw RemoteDriveError.tooLarge }
-        return data
     }
 
     /// File Station's download endpoint with the file name appended, the form DSM's own UI uses,

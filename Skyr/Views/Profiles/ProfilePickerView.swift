@@ -1,118 +1,112 @@
 import SkyrCore
 import SwiftUI
 
-/// "Who's listening?": the family's profiles in a row, Netflix style. Covers the app until one opens.
+/// "Who's listening?": the family's profiles in a centred, wrapping grid until one opens.
 /// On the Mac it is a screen of its own with no window chrome; on the phone it lies over the tabs.
 struct ProfilePickerView: View {
     @Environment(ProfileStore.self) private var profiles
-    @Environment(CloudSync.self) private var cloud
     @State private var unlocking: Profile?
-    @State private var editing: ProfileEditorTarget?
-    @State private var isManaging = false
     @Environment(\.isWideLayout) private var isWide
-
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 20), count: 3)
+    @ScaledMetric(relativeTo: .headline) private var compactTileWidth: CGFloat = 104
+    @ScaledMetric(relativeTo: .headline) private var wideTileWidth: CGFloat = 168
+    @ScaledMetric(relativeTo: .largeTitle) private var wideTitleSize: CGFloat = 40
 
     var body: some View {
         ZStack {
             TintedBackground(tint: Palette.neutralTint)
-            VStack(spacing: 0) {
-                Spacer()
-                Text("Who's listening?")
-                    .font(titleFont)
-                    .kerning(-0.6)
-                Text(isManaging ? "Choose a profile to change its name, photo or PIN." : " ")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 10)
-                    .animation(.easeInOut(duration: 0.2), value: isManaging)
-                tiles
-                    .padding(.horizontal, 32)
-                    .padding(.top, 36)
-                // Only the family owner's devices manage profiles from here.
-                if cloud.isOwner {
-                    Button(isManaging ? "Done" : "Manage Profiles") {
-                        withAnimation(.snappy(duration: 0.25)) { isManaging.toggle() }
+            // The picker owns the full screen. Its viewport supplies both the wrapping width
+            // and minimum content height; taller names or smaller windows remain scrollable.
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        Text("Who's listening?")
+                            .font(titleFont)
+                            .kerning(-0.6)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityAddTraits(.isHeader)
+                        tiles(availableWidth: max(0, geometry.size.width - horizontalPadding * 2))
+                            .padding(.top, 36)
+                        Spacer(minLength: 0)
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(.glass)
-                    .controlSize(.large)
-                    .padding(.top, 56)
+                    .padding(.horizontal, horizontalPadding)
+                    .frame(minHeight: max(0, geometry.size.height - verticalPadding * 2))
+                    .padding(.vertical, verticalPadding)
                 }
-                Spacer()
-                Spacer()
+                .scrollBounceBehavior(.basedOnSize)
             }
         }
         .bareWindow()
         .sheet(item: $unlocking) { profile in
-            UnlockSheet(profile: profile) { profiles.activate(profile) }
-        }
-        .sheet(item: $editing) { target in
-            ProfileEditorSheet(profile: target.profile)
+            UnlockSheet(profile: profile)
         }
     }
 
     private var titleFont: Font {
         #if os(macOS)
-        .system(size: 40, weight: .bold)
+        .system(size: wideTitleSize, weight: .bold)
         #elseif os(tvOS)
-        .system(size: 64, weight: .bold)
+        .system(size: wideTitleSize * 1.6, weight: .bold)
         #else
-        isWide ? .system(size: 40, weight: .bold) : .largeTitle.weight(.bold)
+        isWide ? .system(size: wideTitleSize, weight: .bold) : .largeTitle.weight(.bold)
         #endif
     }
 
-    /// A single centred row wherever it fits; the phone wraps into a grid from four profiles on.
-    @ViewBuilder
-    private var tiles: some View {
-        #if os(macOS)
-        HStack(alignment: .top, spacing: 48) {
+    /// Keep one collection of buttons across resizes so changing columns preserves identity.
+    private func tiles(availableWidth: CGFloat) -> some View {
+        let metrics = tileMetrics
+        let count = max(1, profiles.profiles.count)
+        let fittingColumns = max(1, Int((availableWidth + metrics.spacing) / (metrics.minimumWidth + metrics.spacing)))
+        let maximumColumns = min(count, min(metrics.maximumColumns, fittingColumns))
+        let rows = (count + maximumColumns - 1) / maximumColumns
+        let columns = (count + rows - 1) / rows
+        let width = min(metrics.width, max(1, (availableWidth - CGFloat(columns - 1) * metrics.spacing) / CGFloat(columns)))
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.fixed(width), spacing: metrics.spacing, alignment: .top), count: columns),
+            spacing: metrics.spacing
+        ) {
             ForEach(profiles.profiles) { profile in
-                ProfileTile(profile: profile, isManaging: isManaging, avatarSize: 132, width: 168) { pick(profile) }
+                ProfileTile(profile: profile, avatarSize: min(metrics.avatarSize, width), width: width) { pick(profile) }
             }
         }
-        #elseif os(tvOS)
-        HStack(alignment: .top, spacing: 80) {
-            ForEach(profiles.profiles) { profile in
-                ProfileTile(profile: profile, isManaging: isManaging, avatarSize: 220, width: 280) { pick(profile) }
-            }
-        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var tileMetrics: (width: CGFloat, minimumWidth: CGFloat, avatarSize: CGFloat, spacing: CGFloat, maximumColumns: Int) {
+        #if os(tvOS)
+        (wideTileWidth * 5 / 3, wideTileWidth * 5 / 3, 220, 80, 6)
+        #elseif os(macOS)
+        (wideTileWidth, wideTileWidth, 132, 48, 6)
         #else
-        if isWide {
-            HStack(alignment: .top, spacing: 48) {
-                ForEach(profiles.profiles) { profile in
-                    ProfileTile(profile: profile, isManaging: isManaging, avatarSize: 132, width: 168) { pick(profile) }
-                }
-            }
-        } else if profiles.profiles.count <= 3 {
-            HStack(alignment: .top, spacing: 28) {
-                ForEach(profiles.profiles) { profile in
-                    ProfileTile(profile: profile, isManaging: isManaging, avatarSize: 92, width: 104) { pick(profile) }
-                }
-            }
-        } else {
-            LazyVGrid(columns: columns, spacing: 30) {
-                ForEach(profiles.profiles) { profile in
-                    ProfileTile(profile: profile, isManaging: isManaging, avatarSize: 92, width: nil) { pick(profile) }
-                }
-            }
-        }
+        isWide
+            ? (wideTileWidth, wideTileWidth, 132, 48, 6)
+            : (compactTileWidth, compactTileWidth * 92 / 104, 92, 20, 3)
+        #endif
+    }
+
+    private var horizontalPadding: CGFloat {
+        #if os(tvOS)
+        48
+        #else
+        32
+        #endif
+    }
+
+    private var verticalPadding: CGFloat {
+        #if os(tvOS)
+        60
+        #else
+        32
         #endif
     }
 
     private func pick(_ profile: Profile) {
-        if isManaging {
-            editing = .existing(profile)
-            return
-        }
-        guard profile.isLocked else {
-            profiles.activate(profile)
-            return
-        }
+        if profiles.activate(profile) { return }
         if profiles.biometricsEnabled(for: profile) {
             Task {
-                if await profiles.unlockWithBiometrics(profile) {
-                    profiles.activate(profile)
-                } else {
+                if !(await profiles.unlockWithBiometrics(profile)) {
                     unlocking = profile
                 }
             }
@@ -141,33 +135,23 @@ enum ProfileEditorTarget: Identifiable {
 
 private struct ProfileTile: View {
     let profile: Profile
-    let isManaging: Bool
     var avatarSize: CGFloat = 92
     /// A fixed width keeps a short row tight; nil lets a grid cell decide.
     var width: CGFloat?
     let action: () -> Void
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 14) {
-                ProfileAvatarView(profile: profile, size: avatarSize, isLocked: profile.isLocked && !isManaging)
+                ProfileAvatarView(profile: profile, size: avatarSize, isLocked: profile.isLocked)
                     .shadow(color: .black.opacity(isHovering ? 0.22 : 0.12), radius: isHovering ? 18 : 10, y: isHovering ? 10 : 6)
-                    .overlay(alignment: .bottomTrailing) {
-                        if isManaging {
-                            Image(systemName: "pencil")
-                                .font(.system(size: avatarSize * 0.14, weight: .bold))
-                                .foregroundStyle(Palette.onInk)
-                                .frame(width: avatarSize * 0.33, height: avatarSize * 0.33)
-                                .background(Palette.ink, in: Circle())
-                                .overlay(Circle().strokeBorder(Palette.paper, lineWidth: 2))
-                                .transition(.scale.combined(with: .opacity))
-                        }
-                    }
-                    .scaleEffect(isHovering ? 1.06 : 1)
+                    .scaleEffect(isHovering && !reduceMotion ? 1.06 : 1)
                 Text(profile.name)
                     .font(nameFont)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(width: width)
             .frame(maxWidth: width == nil ? .infinity : nil)
@@ -175,8 +159,12 @@ private struct ProfileTile: View {
         }
         .buttonStyle(TransportButtonStyle())
         .onHover { hovering in
-            withAnimation(.spring(duration: 0.28, bounce: 0.2)) { isHovering = hovering }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.28, bounce: 0.2)) {
+                isHovering = hovering
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(profile.isLocked ? "\(profile.name), locked" : profile.name)
     }
 

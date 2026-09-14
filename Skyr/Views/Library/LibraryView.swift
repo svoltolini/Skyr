@@ -28,6 +28,17 @@ struct LibraryView: View {
                     if isEmptyLibrary {
                         emptyState
                     } else {
+                        if model.indexingFailure != nil {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Library update incomplete", systemImage: "exclamationmark.triangle")
+                                    .font(.headline)
+                                Text("Your previous library has been kept. " + emptyDescription)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Button("Retry Update") { model.rescan() }
+                            }
+                            .padding(20)
+                        }
                         #if !os(macOS)
                         LibraryFacetHeader()
                             .padding(.bottom, 8)
@@ -50,7 +61,7 @@ struct LibraryView: View {
                 .padding(.bottom, 32)
                 .animation(.easeInOut(duration: 0.25), value: model.facet)
             }
-            .pullToRefresh {
+            .pullToRefresh { [model] in
                 // Pull down to scan the folder again; the shelf shows progress from here on.
                 await model.rescan()
                 try? await Task.sleep(for: .seconds(1))

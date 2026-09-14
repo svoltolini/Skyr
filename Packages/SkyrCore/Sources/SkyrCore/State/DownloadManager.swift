@@ -77,6 +77,9 @@ public nonisolated enum DownloadState: Equatable, Sendable {
     case none
     case downloading(fraction: Double, done: Int, total: Int)
     case downloaded
+    case failed(message: String)
+    case partial(done: Int, total: Int, message: String?)
+    case cancelled(done: Int, total: Int)
 
     public var isDownloading: Bool {
         if case .downloading = self { return true }
@@ -87,6 +90,7 @@ public nonisolated enum DownloadState: Equatable, Sendable {
 /// Everything the session needs to remember about a file, stored in the task description so it
 /// survives the app being relaunched for a background session.
 public nonisolated struct DownloadJob: Codable, Sendable {
+    public var cacheKey: String { DownloadManager.cacheKey(trackID: trackID, driveID: driveID) }
     /// The album or playlist that queued the song; others can wait for the same file.
     public let ownerID: String
     public let trackID: String
@@ -98,8 +102,15 @@ public nonisolated struct DownloadJob: Codable, Sendable {
     public let trackTitle: String
     /// Songs in the album or playlist, for "3 of 12" style progress.
     public let ownerTrackCount: Int
+    /// A retry is a different transfer, even when it asks for the same NAS file.
+    public let attemptID: String
 
-    public init(ownerID: String, trackID: String, driveID: String, fileName: String, expectedBytes: Int64?, ownerTitle: String, ownerSubtitle: String, trackTitle: String, ownerTrackCount: Int) {
+    public var incomingFileName: String {
+        let data = Data((cacheKey + "|" + attemptID).utf8)
+        return "incoming-" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    public init(ownerID: String, trackID: String, driveID: String, fileName: String, expectedBytes: Int64?, ownerTitle: String, ownerSubtitle: String, trackTitle: String, ownerTrackCount: Int, attemptID: String = UUID().uuidString) {
         self.ownerID = ownerID
         self.trackID = trackID
         self.driveID = driveID
@@ -109,6 +120,7 @@ public nonisolated struct DownloadJob: Codable, Sendable {
         self.ownerSubtitle = ownerSubtitle
         self.trackTitle = trackTitle
         self.ownerTrackCount = ownerTrackCount
+        self.attemptID = attemptID
     }
 
     private enum LegacyKeys: String, CodingKey { case albumID, albumTitle, artist, albumTrackCount }
@@ -119,6 +131,10 @@ public nonisolated struct DownloadJob: Codable, Sendable {
         trackID = try container.decode(String.self, forKey: .trackID)
         driveID = try container.decode(String.self, forKey: .driveID)
         fileName = try container.decode(String.self, forKey: .fileName)
+        // Old task descriptions must decode to the same identity on every callback.
+        let legacyIdentity = try JSONEncoder().encode([driveID, trackID, fileName])
+        attemptID = try container.decodeIfPresent(String.self, forKey: .attemptID)
+            ?? "legacy:" + SHA256.hash(data: legacyIdentity).map { String(format: "%02x", $0) }.joined()
         expectedBytes = try container.decodeIfPresent(Int64.self, forKey: .expectedBytes)
         trackTitle = try container.decode(String.self, forKey: .trackTitle)
         // Tasks queued by an earlier version of the app described their album under other names.
@@ -152,19 +168,79 @@ public final class DownloadManager {
     public static var backgroundCompletionHandler: (() -> Void)?
 
     public private(set) var records: [String: DownloadRecord] = [:]
+    /// Read from the current catalogue, including when its server is offline.
+    public var driveIDProvider: () -> String = { "" }
     /// The profile whose downloads the screens show and new downloads belong to.
     public var activeProfileID = "default"
     /// 0…1 for every file currently coming down, by track id.
-    public private(set) var progress: [String: Double] = [:]
+    public var progress: [String: Double] {
+        Dictionary(jobs.values.filter { $0.driveID == driveIDProvider() }.compactMap { job in
+            progressByKey[job.cacheKey].map { (job.trackID, $0) }
+        }, uniquingKeysWith: { first, _ in first })
+    }
+    private var progressByKey: [String: Double] = [:]
     /// Albums and playlists with a download in flight and the track ids each still waits for.
     public private(set) var pendingByOwner: [String: Set<String>] = [:]
     public private(set) var lastError: String?
+    public func clearError() { lastError = nil }
 
     private var session: URLSession?
-    private let delegate = DownloadDelegate()
+    private let delegate: DownloadDelegate
     private var jobs: [String: DownloadJob] = [:]
     private var tasks: [String: URLSessionDownloadTask] = [:]
     private var simulations: [String: Task<Void, Never>] = [:]
+    private var simulatedKeys: Set<String> = []
+    private let cacheDirectory: URL
+    private let log: (String) -> Void
+    private let resumeTask: (URLSessionDownloadTask) -> Void
+    private let isTransportAllowed: (URL) -> Bool
+    private var isStartingTask = false
+    private var expectedAttempts: [String: String] = [:]
+    private var retiredAttempts: Set<String> = []
+    private var requests: [String: OwnerRequest] = [:]
+    private var hasVersionedIntent = false
+    private var initialJobs: [String: DownloadJob] = [:]
+    private var hasSavedPendingOwners = false
+    private var isRestoringTasks = true
+    private var deferredSessionEvents: [SessionEvent] = []
+    /// Finished background tasks can be absent from getAllTasks. Retain their saved intent until
+    /// their callbacks arrive, rather than treating their absence as cancellation.
+    private var initialPendingOwners: [String: Set<String>] = [:]
+    private var migratesLegacySessionOwners = false
+    private var cancelledInitialOwners: [String: Set<String>] = [:]
+
+    private struct OwnerRequest: Codable {
+        let ownerID: String
+        let driveID: String
+        let title: String
+        let subtitle: String
+        var keys: Set<String>
+        var total: Int
+        var errors: [String: String] = [:]
+        var cancelled = false
+    }
+
+    /// Ownership and its exact transfers are one atomic document. The legacy pending file remains
+    /// readable for migration, but cannot attach an old callback to a newer attempt after relaunch.
+    private struct SavedIntent: Codable {
+        var pending: [String: Set<String>]
+        var jobs: [String: DownloadJob]
+        var requests: [String: OwnerRequest]
+        var allowsLegacyRestoration: Bool
+    }
+
+    private enum SessionEvent {
+        case finished(DownloadJob, bytes: Int64, status: Int, failure: String?)
+        case failed(DownloadJob, message: String?)
+        case eventsFinished
+
+        var job: DownloadJob? {
+            switch self {
+            case .finished(let job, _, _, _), .failed(let job, _): job
+            case .eventsFinished: nil
+            }
+        }
+    }
     /// Order in which songs were queued; the session runs them one at a time in this order.
     private var order: [String] = []
     #if os(iOS)
@@ -172,43 +248,82 @@ public final class DownloadManager {
     #endif
     private var activityOwnerID: String?
     private var lastActivityUpdate = Date.distantPast
+    #if os(iOS)
+    private var activityRequestKey: String?
+    private var activityDelivery: Task<Void, Never>?
+    #endif
 
-    public init() {
+    public convenience init() {
         let configuration = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         configuration.httpMaximumConnectionsPerHost = 1
         configuration.isDiscretionary = false
         configuration.sessionSendsLaunchEvents = true
         configuration.timeoutIntervalForResource = 12 * 60 * 60
+        self.init(directory: Self.directory, configuration: configuration, log: diagnostics)
+    }
+
+    /// An isolated directory and session also let tests exercise persistence without touching user downloads.
+    init(directory: URL, configuration: URLSessionConfiguration,
+         delegate: DownloadDelegate = DownloadDelegate(),
+         restoreTasks: ((URLSession, @escaping @Sendable ([URLSessionTask]) -> Void) -> Void)? = nil,
+         resumeTask: @escaping (URLSessionDownloadTask) -> Void = { $0.resume() },
+         isTransportAllowed: @escaping (URL) -> Bool = { NASTransportSecurity.isAllowed($0) },
+         log: @escaping (String) -> Void = { _ in }) {
+        cacheDirectory = directory
+        self.log = log
+        self.delegate = delegate
+        self.resumeTask = resumeTask
+        self.isTransportAllowed = isTransportAllowed
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        delegate.directory = directory
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         self.session = session
-        delegate.onProgress = { [weak self] trackID, fraction in
-            Task { @MainActor in self?.update(trackID: trackID, fraction: fraction) }
+        delegate.onProgress = { [weak self] job, fraction in
+            Task { @MainActor in self?.update(job: job, fraction: fraction) }
         }
         delegate.onFinish = { [weak self] job, bytes, status, failure in
-            Task { @MainActor in self?.finish(job: job, bytes: bytes, status: status, failure: failure) }
+            Task { @MainActor in self?.receive(.finished(job, bytes: bytes, status: status, failure: failure)) }
         }
         delegate.onError = { [weak self] job, message in
-            Task { @MainActor in self?.fail(job: job, message: message) }
+            Task { @MainActor in self?.receive(.failed(job, message: message)) }
         }
-        delegate.onEventsFinished = {
-            Task { @MainActor in
-                DownloadManager.backgroundCompletionHandler?()
-                DownloadManager.backgroundCompletionHandler = nil
-            }
+        delegate.onEventsFinished = { [weak self] in
+            Task { @MainActor in self?.receive(.eventsFinished) }
         }
-        records = Self.loadManifest()
+        records = Self.loadManifest(at: manifestURL)
         pruneMissingFiles()
+        saveManifest()
+        if let data = try? Data(contentsOf: intentURL), let saved = try? JSONDecoder().decode(SavedIntent.self, from: data) {
+            pendingByOwner = saved.pending
+            initialJobs = saved.jobs
+            expectedAttempts = saved.jobs.mapValues(\.attemptID)
+            requests = saved.requests
+            hasSavedPendingOwners = true
+            hasVersionedIntent = !saved.allowsLegacyRestoration
+        } else if FileManager.default.fileExists(atPath: intentURL.path) {
+            // A damaged authoritative document must not fall back to older ownership without its
+            // attempt identities. Existing completed files remain usable and new requests can retry.
+            hasSavedPendingOwners = true
+            hasVersionedIntent = true
+            lastError = "Saved download progress couldn’t be restored. Retry the missing songs; your saved files are still available."
+        } else if let data = try? Data(contentsOf: pendingURL), let pending = try? JSONDecoder().decode([String: Set<String>].self, from: data) {
+            pendingByOwner = pending
+            hasSavedPendingOwners = true
+        }
+        initialPendingOwners = pendingByOwner
+        migratesLegacySessionOwners = !hasSavedPendingOwners
         // Songs still queued from an earlier launch keep going; pick their bookkeeping back up.
         // Answered on the session's own queue, so the closure stays off the main actor and hands
         // the tasks across explicitly.
-        session.getAllTasks { @Sendable [weak self] tasks in
+        let restored: @Sendable ([URLSessionTask]) -> Void = { [weak self] tasks in
             let found = tasks.compactMap { task -> (DownloadJob, URLSessionDownloadTask)? in
                 guard let download = task as? URLSessionDownloadTask, let job = DownloadJob.decode(task.taskDescription) else { return nil }
                 return (job, download)
             }
-            nonisolated(unsafe) let restored = found
-            Task { @MainActor in self?.restore(restored) }
+            Task { @MainActor in self?.restore(found) }
         }
+        if let restoreTasks { restoreTasks(session, restored) }
+        else { session.getAllTasks(completionHandler: restored) }
     }
 
     // MARK: Where files live
@@ -220,22 +335,48 @@ public final class DownloadManager {
         return base
     }()
 
-    private static var manifestURL: URL { directory.appending(path: "downloads.json") }
+    private var manifestURL: URL { cacheDirectory.appending(path: "downloads.json") }
+    private var pendingURL: URL { cacheDirectory.appending(path: "pending.json") }
+    private var intentURL: URL { cacheDirectory.appending(path: "download-intent.json") }
 
-    public nonisolated static func fileName(for track: Track) -> String {
-        let digest = SHA256.hash(data: Data(track.id.utf8)).map { String(format: "%02x", $0) }.joined()
-        return track.fileExtension.isEmpty ? digest : "\(digest).\(track.fileExtension)"
+    private func requestKey(ownerID: String, driveID: String) -> String {
+        Self.cacheKey(trackID: ownerID, driveID: driveID)
+    }
+
+    public nonisolated static func cacheKey(trackID: String, driveID: String) -> String {
+        // Length-delimited JSON avoids ambiguity when ids contain ordinary separator characters.
+        let data = (try? JSONEncoder().encode([driveID, trackID])) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    public nonisolated static func fileName(for track: Track, driveID: String) -> String {
+        let digest = cacheKey(trackID: track.id, driveID: driveID)
+        let ext = safeExtension(track.fileExtension)
+        return ext.isEmpty ? digest : "\(digest).\(ext)"
+    }
+
+    public nonisolated static func safeExtension(_ value: String) -> String {
+        let ext = value.lowercased()
+        return !ext.isEmpty && ext.count <= 12 && ext.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) } ? ext : "audio"
+    }
+
+    private func key(for track: Track) -> String { Self.cacheKey(trackID: track.id, driveID: driveIDProvider()) }
+
+    private func record(for track: Track) -> DownloadRecord? {
+        guard let record = records[key(for: track)] else { return nil }
+        if record.fileName.isEmpty { return simulatedKeys.contains(key(for: track)) ? record : nil }
+        return FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path) ? record : nil
     }
 
     // MARK: Reading state
 
     /// The song is on the device, whichever album or playlist brought it.
-    public func isDownloaded(_ track: Track) -> Bool { records[track.id] != nil }
+    public func isDownloaded(_ track: Track) -> Bool { record(for: track) != nil }
 
     /// The file on this device for a track, when it is there.
     public func localURL(for track: Track) -> URL? {
-        guard let record = records[track.id], !record.fileName.isEmpty else { return nil }
-        let url = Self.directory.appending(path: record.fileName)
+        guard let record = record(for: track), !record.fileName.isEmpty else { return nil }
+        let url = cacheDirectory.appending(path: record.fileName)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
@@ -258,14 +399,18 @@ public final class DownloadManager {
 
     /// Ids of every album and playlist that asked for a download and still has songs here or on the way.
     public var listedOwnerIDs: Set<String> {
-        var ids = Set(pendingByOwner.keys)
-        for record in records.values { ids.formUnion(record.owners) }
+        let driveID = driveIDProvider()
+        var ids = Set(pendingByOwner.filter { entry in entry.value.contains { jobs[$0]?.driveID == driveID } }.keys)
+        for record in records.values where record.driveID == driveID { ids.formUnion(record.owners) }
+        for request in requests.values where request.driveID == driveID && (!request.errors.isEmpty || request.cancelled) {
+            ids.insert(request.ownerID)
+        }
         return ids
     }
 
     /// Songs of the album or playlist that it has on the device.
     public func downloadedCount(for owner: DownloadOwner) -> Int {
-        owner.tracks.filter { records[$0.id]?.owners.contains(owner.id) == true }.count
+        owner.tracks.filter { record(for: $0)?.owners.contains(owner.id) == true }.count
     }
 
     public func state(for owner: DownloadOwner) -> DownloadState {
@@ -273,104 +418,187 @@ public final class DownloadManager {
         guard !tracks.isEmpty else { return .none }
         let done = downloadedCount(for: owner)
         if done == tracks.count { return .downloaded }
-        guard let pending = pendingByOwner[owner.id] else { return .none }
-        let inFlight = tracks.filter { pending.contains($0.id) }.reduce(0.0) { $0 + (progress[$1.id] ?? 0) }
-        return .downloading(fraction: (Double(done) + inFlight) / Double(tracks.count), done: done, total: tracks.count)
+        let pending = pendingByOwner[owner.id] ?? []
+        if tracks.contains(where: { pending.contains(key(for: $0)) }) {
+            let inFlight = tracks.filter { pending.contains(key(for: $0)) }.reduce(0.0) { $0 + (progressByKey[key(for: $1)] ?? 0) }
+            return .downloading(fraction: (Double(done) + inFlight) / Double(tracks.count), done: done, total: tracks.count)
+        }
+        let request = requests[requestKey(ownerID: owner.id, driveID: driveIDProvider())]
+        if request?.cancelled == true { return .cancelled(done: done, total: tracks.count) }
+        let error = request?.errors.sorted(by: { $0.key < $1.key }).first?.value
+        if done > 0 { return .partial(done: done, total: tracks.count, message: error) }
+        if let error { return .failed(message: error) }
+        return .none
     }
 
     public var totalBytes: Int64 { records.values.reduce(0) { $0 + $1.bytes } }
 
     /// A song that is queued but whose file has not started coming down yet.
     public func isQueued(_ track: Track) -> Bool {
-        jobs[track.id] != nil && progress[track.id] == nil
+        jobs[key(for: track)] != nil && progressByKey[key(for: track)] == nil
     }
 
     // MARK: Downloading
 
     /// Keeps every song of the album or playlist on the device. Songs already here are shared at once,
     /// songs already on their way for another owner are waited for, and the rest are queued to come
-    /// down strictly one at a time. Without a URL for a song (the sample library) the download is only simulated.
-    public func download(_ owner: DownloadOwner, driveID: String, url: (Track) -> URL?) {
+    /// down strictly one at a time. Only an explicitly selected sample library may simulate files.
+    public func download(_ owner: DownloadOwner, driveID: String, isSample: Bool = false, url: (Track) -> URL?) {
         lastError = nil
         guard let session else { return }
+        let requestID = requestKey(ownerID: owner.id, driveID: driveID)
+        requests[requestID] = OwnerRequest(ownerID: owner.id, driveID: driveID, title: owner.title, subtitle: owner.subtitle,
+                                          keys: Set(owner.tracks.map { Self.cacheKey(trackID: $0.id, driveID: driveID) }), total: owner.tracks.count)
         var pending = pendingByOwner[owner.id] ?? []
         var shared = 0
         var queued = 0
         for track in owner.tracks {
-            if var record = records[track.id] {
+            let key = Self.cacheKey(trackID: track.id, driveID: driveID)
+            if let existing = records[key], existing.fileName.isEmpty || !FileManager.default.fileExists(atPath: cacheDirectory.appending(path: existing.fileName).path) {
+                if !existing.fileName.isEmpty || !isSample { records[key] = nil }
+            }
+            if var record = records[key] {
                 if record.owners.insert(owner.id).inserted {
-                    records[track.id] = record
+                    records[key] = record
                     shared += 1
                 }
                 continue
             }
-            if jobs[track.id] != nil {
-                pending.insert(track.id)
+            let existing = jobs[key] ?? initialJobs[key]
+            let hasLiveTask = tasks[key].map { $0.state == .running || $0.state == .suspended } == true
+            if let existing, (isRestoringTasks || hasLiveTask || simulations[key] != nil), accept(existing) {
+                pending.insert(key)
                 continue
             }
+            let offeredSource = url(track)
+            let source = offeredSource.flatMap { isTransportAllowed($0) ? $0 : nil }
+            guard source != nil || (isSample && driveID.isEmpty) else {
+                lastError = offeredSource == nil
+                    ? "Connect to your NAS, then try downloading “\(owner.title)” again. Your existing downloads are still available."
+                    : "Review the server address in Sign in before downloading. HTTPS is recommended; HTTP requires permission on this device. Your existing downloads are still available."
+                requests[requestID]?.errors[key] = lastError
+                pending.remove(key)
+                pendingByOwner[owner.id]?.remove(key)
+                initialPendingOwners[owner.id]?.remove(key)
+                if let existing, !pendingByOwner.values.contains(where: { $0.contains(key) }),
+                   !initialPendingOwners.values.contains(where: { $0.contains(key) }) { retire(existing) }
+                continue
+            }
+            // Enumeration can finish before an old completion callback arrives. Keep its saved
+            // ownership until then, but an explicit retry with no live task starts a fresh transfer.
+            if let existing { retire(existing) }
+            let attemptID = UUID().uuidString
+            let name = Self.fileName(for: track, driveID: driveID)
             let job = DownloadJob(
-                ownerID: owner.id, trackID: track.id, driveID: driveID, fileName: Self.fileName(for: track),
+                ownerID: owner.id, trackID: track.id, driveID: driveID, fileName: attemptID + "-" + name,
                 expectedBytes: track.fileSize, ownerTitle: owner.title, ownerSubtitle: owner.subtitle,
-                trackTitle: track.title, ownerTrackCount: owner.tracks.count
+                trackTitle: track.title, ownerTrackCount: owner.tracks.count, attemptID: attemptID
             )
-            jobs[track.id] = job
-            pending.insert(track.id)
-            order.append(track.id)
+            jobs[key] = job
+            expectedAttempts[key] = job.attemptID
+            initialJobs[key] = nil
+            for initialOwner in Array(initialPendingOwners.keys) where initialPendingOwners[initialOwner]?.contains(key) == true {
+                pendingByOwner[initialOwner, default: []].insert(key)
+                initialPendingOwners[initialOwner]?.remove(key)
+            }
+            pending.insert(key)
+            order.append(key)
             queued += 1
-            if let source = url(track) {
+            if let source {
                 let task = session.downloadTask(with: source)
                 task.taskDescription = job.encoded
-                tasks[track.id] = task
+                tasks[key] = task
             } else {
-                progress[track.id] = 0
-                simulate(track)
+                simulatedKeys.insert(key)
+                progressByKey[key] = 0
+                simulate(track, job: job)
             }
         }
-        if !pending.isEmpty { pendingByOwner[owner.id] = pending }
-        if shared > 0 { saveManifest() }
-        diagnostics("“\(owner.title)”: queued \(queued) songs, \(shared) already on this iPhone")
+        pendingByOwner[owner.id] = pending.isEmpty ? nil : pending
+        saveManifest()
+        savePendingOwners()
+        log("“\(owner.title)”: queued \(queued) songs, \(shared) already on this iPhone")
         startNextIfIdle()
         refreshActivity(force: true)
     }
 
     /// Starts the first waiting task when nothing is running, so files come down one after another.
     private func startNextIfIdle() {
-        guard !tasks.values.contains(where: { $0.state == .running }) else { return }
+        guard !isStartingTask, !tasks.values.contains(where: { $0.state == .running }) else { return }
+        isStartingTask = true
+        defer { isStartingTask = false }
         for trackID in order {
             guard let task = tasks[trackID], task.state == .suspended else { continue }
-            progress[trackID] = 0
-            task.resume()
+            // A task can wait behind many songs after its URL was created. A local permission
+            // change must take effect before the next task sends its session credentials.
+            guard allowsTransport(for: task) else {
+                task.cancel()
+                if let job = jobs[trackID] {
+                    fail(job: job, message: "This connection is no longer allowed on this device. Review the server address in Sign in, then retry.")
+                } else {
+                    tasks[trackID] = nil
+                    order.removeAll { $0 == trackID }
+                }
+                continue
+            }
+            progressByKey[trackID] = 0
+            resumeTask(task)
             return
         }
     }
 
+    private func allowsTransport(for task: URLSessionTask) -> Bool {
+        guard let original = task.originalRequest?.url, let current = task.currentRequest?.url,
+              let origin = NASOrigin(url: original), origin == NASOrigin(url: current) else { return false }
+        return isTransportAllowed(original) && isTransportAllowed(current)
+    }
+
     /// Stops what is still on its way for the album or playlist; songs another owner also waits for keep coming.
     public func cancel(_ owner: DownloadOwner) {
-        guard let pending = pendingByOwner[owner.id] else { return }
-        pendingByOwner[owner.id] = nil
-        for trackID in pending {
-            let wantedElsewhere = pendingByOwner.values.contains { $0.contains(trackID) }
-            guard !wantedElsewhere else { continue }
-            tasks[trackID]?.cancel()
-            if let simulation = simulations[trackID] {
-                simulation.cancel()
-                if let job = jobs[trackID] { fail(job: job, message: nil) }
-            }
+        let driveID = driveIDProvider()
+        let requestID = requestKey(ownerID: owner.id, driveID: driveID)
+        if requests[requestID] != nil { requests[requestID]?.cancelled = true }
+        if isRestoringTasks || migratesLegacySessionOwners || !initialPendingOwners.isEmpty {
+            cancelledInitialOwners[owner.id, default: []].insert(driveID)
         }
+        let ownerKeys = Set(owner.tracks.map { Self.cacheKey(trackID: $0.id, driveID: driveID) })
+        let pending = (pendingByOwner[owner.id] ?? []).union(initialPendingOwners[owner.id] ?? [])
+        let scoped = pending.filter { key in
+            let source = jobs[key]?.driveID ?? initialJobs[key]?.driveID
+            return source == driveID || (source == nil && ownerKeys.contains(key))
+        }
+        pendingByOwner[owner.id]?.subtract(scoped)
+        if pendingByOwner[owner.id]?.isEmpty == true { pendingByOwner[owner.id] = nil }
+        initialPendingOwners[owner.id]?.subtract(scoped)
+        if initialPendingOwners[owner.id]?.isEmpty == true { initialPendingOwners[owner.id] = nil }
+        for key in scoped {
+            let wantedElsewhere = pendingByOwner.values.contains { $0.contains(key) }
+                || initialPendingOwners.values.contains { $0.contains(key) }
+            guard !wantedElsewhere else { continue }
+            let task = tasks[key]
+            let simulation = simulations[key]
+            // Retire synchronously. A retry can queue immediately while the old OS task cancels.
+            if let job = jobs[key] ?? initialJobs[key] { retire(job) }
+            task?.cancel()
+            simulation?.cancel()
+        }
+        savePendingOwners()
+        startNextIfIdle()
         refreshActivity(force: true)
     }
 
     /// Lets the album or playlist go; files no other download still needs are deleted from the device.
     public func remove(_ owner: DownloadOwner) {
         cancel(owner)
+        requests[requestKey(ownerID: owner.id, driveID: driveIDProvider())] = nil
         var deleted = 0
         var kept = 0
-        for (trackID, var record) in records where record.owners.contains(owner.id) {
+        for (trackID, var record) in records where record.driveID == driveIDProvider() && record.owners.contains(owner.id) {
             record.owners.remove(owner.id)
             if record.owners.isEmpty {
                 records[trackID] = nil
                 if !record.fileName.isEmpty {
-                    try? FileManager.default.removeItem(at: Self.directory.appending(path: record.fileName))
+                    try? FileManager.default.removeItem(at: cacheDirectory.appending(path: record.fileName))
                 }
                 deleted += 1
             } else {
@@ -379,96 +607,239 @@ public final class DownloadManager {
             }
         }
         saveManifest()
-        diagnostics("Removed the download of “\(owner.title)”: \(deleted) files deleted, \(kept) still used by other downloads")
+        savePendingOwners()
+        log("Removed the download of “\(owner.title)”: \(deleted) files deleted, \(kept) still used by other downloads")
     }
 
-    private func simulate(_ track: Track) {
-        simulations[track.id] = Task { [weak self] in
+    private func simulate(_ track: Track, job: DownloadJob) {
+        let key = job.cacheKey
+        simulations[key] = Task { [weak self] in
             // Wait for earlier simulated songs so the demo also goes one at a time.
-            while let self, let first = order.first(where: { simulations[$0] != nil }), first != track.id, !Task.isCancelled {
+            while let self, let first = order.first(where: { simulations[$0] != nil }), first != key, !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(120))
             }
             let steps = 20
             for step in 1...steps {
                 try? await Task.sleep(for: .milliseconds(Int.random(in: 40...90)))
                 guard !Task.isCancelled, let self else { return }
-                update(trackID: track.id, fraction: Double(step) / Double(steps))
+                update(job: job, fraction: Double(step) / Double(steps))
             }
-            guard !Task.isCancelled, let self, let job = jobs[track.id] else { return }
-            simulations[track.id] = nil
+            guard !Task.isCancelled, let self, jobs[key]?.attemptID == job.attemptID else { return }
+            simulations[key] = nil
             finish(job: job, bytes: track.fileSize ?? 0, status: 200, failure: nil)
         }
     }
 
     private func restore(_ restored: [(DownloadJob, URLSessionDownloadTask)]) {
-        guard !restored.isEmpty else { return }
-        for (job, task) in restored where records[job.trackID] == nil && jobs[job.trackID] == nil {
-            jobs[job.trackID] = job
-            tasks[job.trackID] = task
-            if task.state == .running { progress[job.trackID] = 0 }
-            order.append(job.trackID)
-            pendingByOwner[job.ownerID, default: []].insert(job.trackID)
+        for (job, task) in restored {
+            guard accept(job) else { task.cancel(); continue }
+            guard allowsTransport(for: task) else {
+                task.cancel()
+                deferredSessionEvents.append(.failed(job, message: "Review the server address in Sign in, then retry this download. Its saved connection is no longer allowed on this device."))
+                continue
+            }
+            guard tasks[job.cacheKey] == nil else { continue }
+            tasks[job.cacheKey] = task
+            if task.state == .running { progressByKey[job.cacheKey] = 0 }
         }
-        diagnostics("Picked up \(restored.count) downloads still queued from the last launch")
+        for job in deferredSessionEvents.compactMap(\.job) { _ = accept(job) }
+        let completingKeys = Set(deferredSessionEvents.compactMap { event -> String? in
+            guard let job = event.job, jobs[job.cacheKey]?.attemptID == job.attemptID else { return nil }
+            return job.cacheKey
+        })
+        let activeKeys = Set(tasks.keys).union(simulations.keys).union(completingKeys)
+        // A retry requested during enumeration may have temporarily adopted a saved job. Without
+        // its OS task it is still only saved intent, not an active download.
+        for key in Array(jobs.keys) where !activeKeys.contains(key) {
+            jobs[key] = nil
+            progressByKey[key] = nil
+            order.removeAll { $0 == key }
+        }
+        for owner in Array(pendingByOwner.keys) {
+            pendingByOwner[owner]?.formIntersection(activeKeys)
+            if pendingByOwner[owner]?.isEmpty == true { pendingByOwner[owner] = nil }
+        }
+        savePendingOwners()
+        isRestoringTasks = false
+        let events = deferredSessionEvents
+        deferredSessionEvents.removeAll()
+        for event in events { receive(event) }
+        if !restored.isEmpty { log("Picked up \(restored.count) downloads still queued from the last launch") }
         startNextIfIdle()
         refreshActivity(force: true)
     }
 
     // MARK: Results from the session
 
-    private func update(trackID: String, fraction: Double) {
-        guard progress[trackID] != nil else { return }
-        progress[trackID] = min(1, max(0, fraction))
+    private func registerInitialOwners(for job: DownloadJob) {
+        for (owner, keys) in initialPendingOwners where keys.contains(job.cacheKey) {
+            if cancelledInitialOwners[owner]?.contains(job.driveID) == true {
+                initialPendingOwners[owner]?.remove(job.cacheKey)
+                pendingByOwner[owner]?.remove(job.cacheKey)
+            } else {
+                pendingByOwner[owner, default: []].insert(job.cacheKey)
+            }
+        }
+        guard migratesLegacySessionOwners, jobs[job.cacheKey] == nil, records[job.cacheKey] == nil else { return }
+        let owner = job.ownerID.hasPrefix("profile:") ? job.ownerID : DownloadOwner.scope(activeProfileID) + job.ownerID
+        guard cancelledInitialOwners[owner]?.contains(job.driveID) != true else { return }
+        pendingByOwner[owner, default: []].insert(job.cacheKey)
+        initialPendingOwners[owner, default: []].insert(job.cacheKey)
+    }
+
+    /// All callbacks, including progress, are subordinate to the current transfer's identity.
+    /// Only a saved pre-migration intent may introduce a legacy transfer not already registered.
+    private func accept(_ job: DownloadJob) -> Bool {
+        guard !retiredAttempts.contains(job.attemptID) else { return false }
+        if let current = jobs[job.cacheKey] { return current.attemptID == job.attemptID }
+        guard records[job.cacheKey] == nil else { return false }
+        if let expected = expectedAttempts[job.cacheKey] {
+            guard expected == job.attemptID else { return false }
+        } else {
+            guard !hasVersionedIntent else { return false }
+        }
+        registerInitialOwners(for: job)
+        let owners = pendingByOwner.filter { $0.value.contains(job.cacheKey) }.keys
+        guard !owners.isEmpty else { return false }
+        jobs[job.cacheKey] = job
+        expectedAttempts[job.cacheKey] = job.attemptID
+        if !order.contains(job.cacheKey) { order.append(job.cacheKey) }
+        for owner in owners {
+            let id = requestKey(ownerID: owner, driveID: job.driveID)
+            if requests[id] == nil {
+                let savedKeys = Set(records.filter { $0.value.driveID == job.driveID && $0.value.owners.contains(owner) }.keys)
+                let keys = savedKeys.union(pendingByOwner[owner] ?? [])
+                requests[id] = OwnerRequest(ownerID: owner, driveID: job.driveID, title: job.ownerTitle, subtitle: job.ownerSubtitle,
+                                            keys: keys, total: max(keys.count, job.ownerTrackCount))
+            }
+        }
+        return true
+    }
+
+    private func receive(_ event: SessionEvent) {
+        guard !isRestoringTasks else {
+            deferredSessionEvents.append(event)
+            return
+        }
+        if let job = event.job, !accept(job) {
+            if case .finished = event { try? FileManager.default.removeItem(at: cacheDirectory.appending(path: job.incomingFileName)) }
+            return
+        }
+        switch event {
+        case .finished(let job, let bytes, let status, let failure):
+            finish(job: job, bytes: bytes, status: status, failure: failure)
+        case .failed(let job, let message):
+            fail(job: job, message: message)
+        case .eventsFinished:
+            // A saved task that the system neither restored nor completed can be retried.
+            for job in initialJobs.values where tasks[job.cacheKey] == nil {
+                if accept(job) { fail(job: job, message: "The download was interrupted. Retry to keep the missing songs.") }
+            }
+            initialPendingOwners.removeAll()
+            initialJobs.removeAll()
+            migratesLegacySessionOwners = false
+            cancelledInitialOwners.removeAll()
+            savePendingOwners()
+            DownloadManager.backgroundCompletionHandler?()
+            DownloadManager.backgroundCompletionHandler = nil
+        }
+    }
+
+    private func update(job: DownloadJob, fraction: Double) {
+        let key = job.cacheKey
+        guard jobs[key]?.attemptID == job.attemptID else { return }
+        guard progressByKey[key] != nil else { return }
+        progressByKey[key] = min(1, max(0, fraction))
         refreshActivity(force: false)
     }
 
     private func finish(job: DownloadJob, bytes: Int64, status: Int, failure: String?) {
-        let destination = Self.directory.appending(path: job.fileName)
-        let simulated = simulations[job.trackID] != nil || tasks[job.trackID] == nil && !FileManager.default.fileExists(atPath: destination.path)
+        guard jobs[job.cacheKey]?.attemptID == job.attemptID else { return }
+        let destination = cacheDirectory.appending(path: job.fileName)
+        let incoming = cacheDirectory.appending(path: job.incomingFileName)
+        let simulated = simulatedKeys.contains(job.cacheKey)
         var problem = failure
-        if problem == nil, status >= 400 { problem = "The server answered with HTTP \(status)." }
+        if problem == nil, !(200..<300).contains(status) { problem = "The server answered with HTTP \(status)." }
         if !simulated {
-            if problem == nil, let expected = job.expectedBytes, expected > 0, bytes < Int64(Double(expected) * 0.98) {
-                problem = "“\(job.trackTitle)” came down incomplete."
+            if problem == nil, !FileManager.default.fileExists(atPath: incoming.path) || bytes <= 0 {
+                problem = "“\(job.trackTitle)” could not be saved. Try downloading it again."
             }
-            if problem == nil, bytes < 4096, Self.looksLikeServerMessage(destination) {
+            if problem == nil, let expected = job.expectedBytes, expected > 0, bytes != expected {
+                problem = bytes < expected ? "“\(job.trackTitle)” came down incomplete."
+                    : "“\(job.trackTitle)” changed on the NAS. Update the library, then retry."
+            }
+            if problem == nil, Self.looksLikeServerMessage(incoming) {
                 problem = "The server refused “\(job.trackTitle)”."
             }
-            if problem != nil { try? FileManager.default.removeItem(at: destination) }
+            if problem != nil { try? FileManager.default.removeItem(at: incoming) }
         }
         if let problem {
             fail(job: job, message: problem)
             return
         }
-        // Everyone who waited for this song gets to keep it; a job from before profiles goes to the profile in front.
-        var owners = Set(pendingByOwner.filter { $0.value.contains(job.trackID) }.keys)
-        owners.insert(job.ownerID.hasPrefix("profile:") ? job.ownerID : DownloadOwner.scope(activeProfileID) + job.ownerID)
-        records[job.trackID] = DownloadRecord(trackID: job.trackID, driveID: job.driveID, fileName: simulated ? "" : job.fileName, bytes: bytes, owners: owners)
-        settle(job)
+        // Cancellation removes ownership immediately, even if the session finishes the file later.
+        let owners = Set(pendingByOwner.filter { $0.value.contains(job.cacheKey) }.keys)
+        if owners.isEmpty {
+            if !simulated { try? FileManager.default.removeItem(at: incoming) }
+        } else {
+            if !simulated {
+                do {
+                    // Incoming data is isolated by attempt. Only the accepted attempt publishes.
+                    try? FileManager.default.removeItem(at: destination)
+                    try FileManager.default.moveItem(at: incoming, to: destination)
+                } catch {
+                    try? FileManager.default.removeItem(at: incoming)
+                    fail(job: job, message: "“\(job.trackTitle)” could not be saved: \(error.localizedDescription)")
+                    return
+                }
+            }
+            records[job.cacheKey] = DownloadRecord(trackID: job.trackID, driveID: job.driveID, fileName: simulated ? "" : job.fileName, bytes: bytes, owners: owners)
+        }
         saveManifest()
+        settle(job)
         refreshActivity(force: true)
     }
 
     private func fail(job: DownloadJob, message: String?) {
+        guard jobs[job.cacheKey]?.attemptID == job.attemptID else { return }
+        let owners = pendingByOwner.filter { $0.value.contains(job.cacheKey) }.keys
+        for owner in owners {
+            let id = requestKey(ownerID: owner, driveID: job.driveID)
+            if let message { requests[id]?.errors[job.cacheKey] = "“\(job.trackTitle)”: \(message)" }
+            else { requests[id]?.cancelled = true }
+        }
         if let message {
-            lastError = message
-            diagnostics("Download failed: \(message)")
+            lastError = "Couldn’t finish “\(job.ownerTitle)”. \(message) Your saved songs are still available; retry to download only the missing songs."
+            log("Download failed: \(message)")
         }
         settle(job)
         refreshActivity(force: true)
     }
 
     private func settle(_ job: DownloadJob) {
-        jobs[job.trackID] = nil
-        tasks[job.trackID] = nil
-        progress[job.trackID] = nil
-        simulations[job.trackID] = nil
-        order.removeAll { $0 == job.trackID }
+        guard jobs[job.cacheKey]?.attemptID == job.attemptID else { return }
+        retire(job)
         for ownerID in Array(pendingByOwner.keys) {
-            pendingByOwner[ownerID]?.remove(job.trackID)
+            pendingByOwner[ownerID]?.remove(job.cacheKey)
             if pendingByOwner[ownerID]?.isEmpty == true { pendingByOwner[ownerID] = nil }
         }
+        for ownerID in Array(initialPendingOwners.keys) {
+            initialPendingOwners[ownerID]?.remove(job.cacheKey)
+            if initialPendingOwners[ownerID]?.isEmpty == true { initialPendingOwners[ownerID] = nil }
+        }
+        savePendingOwners()
         startNextIfIdle()
+    }
+
+    private func retire(_ job: DownloadJob) {
+        retiredAttempts.insert(job.attemptID)
+        expectedAttempts[job.cacheKey] = nil
+        initialJobs[job.cacheKey] = nil
+        jobs[job.cacheKey] = nil
+        tasks[job.cacheKey] = nil
+        progressByKey[job.cacheKey] = nil
+        simulations[job.cacheKey] = nil
+        order.removeAll { $0 == job.cacheKey }
     }
 
     /// A tiny file that starts like JSON or HTML is the server explaining an error, not audio.
@@ -479,88 +850,131 @@ public final class DownloadManager {
         return text.hasPrefix("{") || text.hasPrefix("<")
     }
 
+    /// Shared by the Live Activity and isolated tests, including terminal outcomes.
+    func progressSnapshot(ownerID: String, driveID: String) -> DownloadProgress? {
+        let id = requestKey(ownerID: ownerID, driveID: driveID)
+        guard let request = requests[id] else { return nil }
+        let done = request.keys.filter { key in
+            guard let record = records[key], record.owners.contains(ownerID) else { return false }
+            return record.fileName.isEmpty ? simulatedKeys.contains(key) : FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path)
+        }.count
+        let pending = (pendingByOwner[ownerID] ?? []).intersection(request.keys)
+        let inFlight = pending.reduce(0.0) { $0 + (progressByKey[$1] ?? 0) }
+        let total = request.total
+        let outcome: DownloadOutcome
+        if done == total && total > 0 { outcome = .downloaded }
+        else if !pending.isEmpty { outcome = .downloading }
+        else if request.cancelled { outcome = .cancelled }
+        else if done > 0 { outcome = .partial }
+        else { outcome = .failed }
+        let current = order.first { pending.contains($0) }.flatMap { jobs[$0] }
+        return DownloadProgress(fraction: (Double(done) + inFlight) / Double(max(1, total)), done: done, total: total,
+                                currentTitle: current?.trackTitle ?? "", outcome: outcome)
+    }
+
     #if os(iOS)
     // MARK: Live Activity
 
-    /// The job whose song is coming down right now.
-    private var currentJob: DownloadJob? {
-        order.lazy.compactMap { self.jobs[$0] }.first
-    }
-
     private func refreshActivity(force: Bool) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        guard let job = currentJob else {
-            endActivity()
-            return
-        }
-        let pending = pendingByOwner[job.ownerID]?.count ?? 0
-        let done = max(0, job.ownerTrackCount - pending)
-        let inFlight = progress[job.trackID] ?? 0
-        let state = DownloadActivityAttributes.ContentState(
-            fraction: (Double(done) + inFlight) / Double(max(1, job.ownerTrackCount)),
-            done: done, total: job.ownerTrackCount, currentTitle: job.trackTitle
-        )
-        if activity == nil || activityOwnerID != job.ownerID {
-            endActivity()
-            let attributes = DownloadActivityAttributes(title: job.ownerTitle, subtitle: job.ownerSubtitle)
-            activity = try? Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: nil))
-            activityOwnerID = job.ownerID
+        // Keep an owner's activity until that request ends, even if another owner's task is running.
+        if let activity, let id = activityRequestKey, let request = requests[id],
+           let state = progressSnapshot(ownerID: request.ownerID, driveID: request.driveID), state.outcome == .downloading {
+            guard force || Date.now.timeIntervalSince(lastActivityUpdate) > 1 else { return }
             lastActivityUpdate = .now
+            push(state, to: activity.id)
             return
         }
-        guard force || Date.now.timeIntervalSince(lastActivityUpdate) > 1 else { return }
+        endActivity()
+        guard let job = order.lazy.compactMap({ self.jobs[$0] }).first,
+              let ownerID = pendingByOwner.keys.sorted().first(where: { pendingByOwner[$0]?.contains(job.cacheKey) == true }) else { return }
+        let id = requestKey(ownerID: ownerID, driveID: job.driveID)
+        guard let request = requests[id], let state = progressSnapshot(ownerID: ownerID, driveID: job.driveID) else { return }
+        let attributes = DownloadActivityAttributes(title: request.title, subtitle: request.subtitle)
+        guard let created = try? Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: nil)) else { return }
+        activity = created
+        activityOwnerID = ownerID
+        activityRequestKey = id
         lastActivityUpdate = .now
-        Self.push(state, to: activity?.id)
     }
 
     private func endActivity() {
         guard let activity else { return }
+        let request = activityRequestKey.flatMap { requests[$0] }
+        let state = request.flatMap { progressSnapshot(ownerID: $0.ownerID, driveID: $0.driveID) }
+            ?? DownloadProgress(fraction: 0, done: 0, total: 0, currentTitle: "", outcome: .cancelled)
         self.activity = nil
-        let ownerID = activityOwnerID
         activityOwnerID = nil
-        let total = jobs.values.first { $0.ownerID == ownerID }?.ownerTrackCount ?? 0
-        let final = DownloadActivityAttributes.ContentState(fraction: 1, done: total, total: total, currentTitle: "")
-        Self.push(final, to: activity.id, ending: true)
+        activityRequestKey = nil
+        push(state, to: activity.id, ending: true)
     }
 
-    /// Activities are not Sendable, so look the activity up again by id off the main actor before talking to it.
-    nonisolated private static func push(_ state: DownloadActivityAttributes.ContentState, to id: String?, ending: Bool = false) {
+    /// Serialize updates and the terminal message so an earlier progress task cannot arrive after end.
+    private func push(_ state: DownloadActivityAttributes.ContentState, to id: String?, ending: Bool = false) {
         guard let id else { return }
-        Task.detached {
-            guard let activity = Activity<DownloadActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
-            let content = ActivityContent(state: state, staleDate: nil)
-            if ending {
-                await activity.end(content, dismissalPolicy: .after(.now + 4))
-            } else {
-                await activity.update(content)
-            }
+        let previous = activityDelivery
+        activityDelivery = Task { @MainActor in
+            await previous?.value
+            await Self.deliver(state, to: id, ending: ending)
         }
     }
 
+    /// Look up ActivityKit's non-Sendable object on the same executor that awaits its update.
+    nonisolated private static func deliver(_ state: DownloadActivityAttributes.ContentState, to id: String, ending: Bool) async {
+        guard let activity = Activity<DownloadActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+        let content = ActivityContent(state: state, staleDate: nil)
+        if ending {
+            await activity.end(content, dismissalPolicy: .after(.now + (state.outcome == .downloaded ? 4 : 30)))
+        } else {
+            await activity.update(content)
+        }
+    }
     #else
     private func refreshActivity(force: Bool) {}
     #endif
 
     // MARK: Manifest
 
-    private static func loadManifest() -> [String: DownloadRecord] {
-        guard let data = try? Data(contentsOf: manifestURL), let list = try? JSONDecoder().decode([DownloadRecord].self, from: data) else { return [:] }
-        return Dictionary(list.map { ($0.trackID, $0) }, uniquingKeysWith: { first, _ in first })
+    private static func loadManifest(at url: URL) -> [String: DownloadRecord] {
+        guard let data = try? Data(contentsOf: url), let list = try? JSONDecoder().decode([DownloadRecord].self, from: data) else { return [:] }
+        // Existing manifests already contain their source drive. Retain valid files in place and
+        // reindex by that source; discard old simulated/false records so they can be retried.
+        return Dictionary(list.filter { !$0.fileName.isEmpty && !$0.driveID.isEmpty && ($0.fileName as NSString).lastPathComponent == $0.fileName }.map {
+            (cacheKey(trackID: $0.trackID, driveID: $0.driveID), $0)
+        }, uniquingKeysWith: { first, _ in first })
     }
 
     private func saveManifest() {
-        let list = Array(records.values)
-        let url = Self.manifestURL
-        Task.detached(priority: .utility) {
-            if let data = try? JSONEncoder().encode(list) { try? data.write(to: url, options: .atomic) }
+        let list = records.values.filter { !$0.fileName.isEmpty }
+        if let data = try? JSONEncoder().encode(list) { try? data.write(to: manifestURL, options: .atomic) }
+    }
+
+    private func savePendingOwners() {
+        var pending = initialPendingOwners
+        for (owner, keys) in pendingByOwner { pending[owner, default: []].formUnion(keys) }
+        pending = pending.filter { !$0.value.isEmpty }
+        var savedJobs = initialJobs
+        for (key, job) in jobs { savedJobs[key] = job }
+        savedJobs = savedJobs.filter { expectedAttempts[$0.key] == $0.value.attemptID }
+        let saved = SavedIntent(pending: pending, jobs: savedJobs, requests: requests,
+                                allowsLegacyRestoration: !hasVersionedIntent && (migratesLegacySessionOwners || !initialPendingOwners.isEmpty))
+        if let data = try? JSONEncoder().encode(saved) {
+            do {
+                try data.write(to: intentURL, options: .atomic)
+                // Compatibility copy only. The atomic document above is authoritative on relaunch.
+                try? JSONEncoder().encode(pending).write(to: pendingURL, options: .atomic)
+                hasSavedPendingOwners = true
+            } catch {
+                lastError = "Download progress could not be saved. Keep Skyr open until downloads finish."
+            }
         }
     }
 
     private func pruneMissingFiles() {
-        let directory = Self.directory
+        let directory = cacheDirectory
         let missing = records.values.filter { !$0.fileName.isEmpty && !FileManager.default.fileExists(atPath: directory.appending(path: $0.fileName).path) }
         guard !missing.isEmpty else { return }
-        for record in missing { records[record.trackID] = nil }
+        for record in missing { records[Self.cacheKey(trackID: record.trackID, driveID: record.driveID)] = nil }
         saveManifest()
     }
 }
@@ -568,7 +982,8 @@ public final class DownloadManager {
 /// Receives background session callbacks, throttles progress, and moves finished files into place
 /// before the temporary copy disappears.
 public nonisolated final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
-    public var onProgress: (@Sendable (String, Double) -> Void)?
+    var directory = DownloadManager.directory
+    public var onProgress: (@Sendable (DownloadJob, Double) -> Void)?
     public var onFinish: (@Sendable (DownloadJob, Int64, Int, String?) -> Void)?
     public var onError: (@Sendable (DownloadJob, String?) -> Void)?
     public var onEventsFinished: (@Sendable () -> Void)?
@@ -586,7 +1001,7 @@ public nonisolated final class DownloadDelegate: NSObject, URLSessionDownloadDel
         let due = last == nil || fraction - last!.fraction >= 0.01 || Date.now.timeIntervalSince(last!.at) > 0.5
         if due { lastReport[downloadTask.taskIdentifier] = (fraction, .now) }
         lock.unlock()
-        if due { onProgress?(job.trackID, fraction) }
+        if due { onProgress?(job, fraction) }
     }
 
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
@@ -594,7 +1009,11 @@ public nonisolated final class DownloadDelegate: NSObject, URLSessionDownloadDel
         lock.lock()
         lastReport[downloadTask.taskIdentifier] = nil
         lock.unlock()
-        let destination = DownloadManager.directory.appending(path: job.fileName)
+        guard (job.fileName as NSString).lastPathComponent == job.fileName, !job.fileName.isEmpty else {
+            onError?(job, "This download needs to be requested again.")
+            return
+        }
+        let destination = directory.appending(path: job.incomingFileName)
         let bytes = (try? FileManager.default.attributesOfItem(atPath: location.path)[.size] as? Int64) ?? 0
         var failure: String?
         do {

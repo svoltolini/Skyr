@@ -7,6 +7,7 @@ import SwiftUI
 struct MacRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(ProfileStore.self) private var profiles
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // The split view must be the window's root: nested in a stack, AppKit re-enters its
@@ -33,7 +34,7 @@ struct MacRootView: View {
         frame.origin.x -= (target.width - frame.width) / 2
         frame.origin.y -= (target.height - frame.height) / 2
         frame.size = target
-        window.setFrame(frame, display: true, animate: true)
+        window.setFrame(frame, display: true, animate: !reduceMotion)
     }
 }
 
@@ -78,6 +79,12 @@ struct MacMainView: View {
         }
         .onChange(of: navigation.selection, initial: true) { _, selection in
             if let facet = selection?.facet, model.facet != facet { model.facet = facet }
+        }
+        .onChange(of: model.albumNavigationRequest) { _, _ in
+            // The shared model announces the request before pushing the album, giving the
+            // sidebar time to mount the Library stack even when the same album is requested again.
+            navigation.isShowingNowPlaying = false
+            if navigation.selection?.facet == nil { navigation.selection = .recentlyAdded }
         }
     }
 

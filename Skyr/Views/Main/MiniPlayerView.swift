@@ -5,6 +5,7 @@ import SwiftUI
 struct MiniPlayerView: View {
     let open: () -> Void
     @Environment(PlayerModel.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
     @State private var playPauseTaps = 0
     @State private var nextTaps = 0
@@ -55,6 +56,7 @@ struct MiniPlayerView: View {
                         Image(systemName: "forward.fill")
                             .font(.system(size: 18, weight: .semibold))
                             .symbolEffect(.bounce, options: .speed(1.6), value: nextTaps)
+                            .symbolEffectsRemoved(reduceMotion)
                             .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
                     }

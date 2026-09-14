@@ -44,19 +44,28 @@ public final class CloudSync {
     public private(set) var family: FamilyInfo?
     /// True once the zone is shared with at least one other person, or this device joined one.
     public private(set) var isShared = false
+    /// Only a definitive missing/deleted shared zone exposes invitation recovery while sync is failed.
+    public private(set) var needsFamilyInvitation = false
 
-    private let container = CKContainer(identifier: CloudSync.containerID)
+    @ObservationIgnored private lazy var container = CKContainer(identifier: CloudSync.containerID)
+    private let services: CloudServices
+    private let persistence: CloudPersistence
+    private var accountState: CloudAccountState?
+    private var generation = UUID()
     private var zoneOwnerName: String
-    private var changeToken: CKServerChangeToken?
+    private var changeToken: Data?
     /// CloudKit's own metadata per record, so saves carry the right change tags.
     private var systemFields: [String: Data]
     /// `updatedAt` of every record as last seen in the cloud, so only newer local data is pushed.
     private var remoteStamps: [String: Date]
+    private var remoteStateDigests: [String: String] = [:]
     private var uploads: [String: Task<Void, Never>] = [:]
     private var isStarted = false
     private var isRefreshing = false
     private var wantsAnotherRefresh = false
     private var accountObserver: (any NSObjectProtocol)?
+    /// Retried on the next sync; remains visible while offline or when CloudKit refuses a deletion.
+    public var pendingDeletionCount: Int { accountState?.zones[zoneOwnerName]?.deletions.values.filter { !$0.isEmpty }.count ?? 0 }
 
     public weak var profiles: ProfileStore?
     /// The owner's server details, written into the family record for members to connect with.
@@ -76,15 +85,18 @@ public final class CloudSync {
         }
     }
 
-    public init() {
-        let defaults = UserDefaults.standard
-        membership = Membership(rawValue: defaults.string(forKey: "cloud.membership") ?? "") ?? .owner
-        zoneOwnerName = defaults.string(forKey: "cloud.zoneOwner") ?? CKCurrentUserDefaultName
-        if let data = defaults.data(forKey: "cloud.changeToken") {
-            changeToken = try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
-        }
-        systemFields = Self.loadDictionary("cloud-system-fields.json") ?? [:]
-        remoteStamps = Self.loadDictionary("cloud-remote-stamps.json") ?? [:]
+    public convenience init() {
+        self.init(services: .live(container: CKContainer(identifier: Self.containerID)), persistence: CloudPersistence(directory: Self.directory))
+    }
+
+    init(services: CloudServices, persistence: CloudPersistence) {
+        self.services = services
+        self.persistence = persistence
+        // Legacy global metadata has no verifiable account owner. Refetch instead of adopting it.
+        membership = .owner
+        zoneOwnerName = CKCurrentUserDefaultName
+        systemFields = [:]
+        remoteStamps = [:]
     }
 
     // MARK: Lifecycle
@@ -93,9 +105,94 @@ public final class CloudSync {
         guard !isStarted else { return }
         isStarted = true
         accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.refresh(reason: "iCloud account changed") }
+            Task { @MainActor in
+                self?.accountChanged()
+                await self?.refresh(reason: "iCloud account changed")
+            }
         }
         Task { await refresh(reason: "launch") }
+    }
+
+    /// Revocation happens before any new account request, including while an old request is suspended.
+    func accountChanged() {
+        generation = UUID()
+        for task in uploads.values { task.cancel() }
+        uploads = [:]
+        currentUserRecordName = nil
+        accountState = nil
+        membership = .owner
+        zoneOwnerName = CKCurrentUserDefaultName
+        changeToken = nil
+        systemFields = [:]
+        remoteStamps = [:]
+        family = nil
+        remoteStateDigests = [:]
+        participants = []
+        isShared = false
+        needsFamilyInvitation = false
+        status = .off
+        profiles?.lock()
+    }
+
+    private func check(_ expected: UUID) throws {
+        guard generation == expected, !Task.isCancelled else { throw CancellationError() }
+    }
+
+    private func scope(_ expected: UUID) throws -> CloudScope {
+        try check(expected)
+        guard let account = currentUserRecordName, accountState?.account == account else { throw CKError(.notAuthenticated) }
+        return CloudScope(account: account, owner: zoneOwnerName, isMember: membership == .member)
+    }
+
+    private func verifyIdentity(_ expected: UUID) async throws {
+        let identity = try await services.identity()
+        try check(expected)
+        guard let identity else {
+            accountChanged()
+            status = .noAccount
+            throw CancellationError()
+        }
+        guard currentUserRecordName != identity else { return }
+        if currentUserRecordName != nil {
+            // A missed notification must still invalidate every previously queued operation.
+            accountChanged()
+        }
+        let snapshot: CloudAccountState
+        do {
+            let isNew = !persistence.hasSnapshot(account: identity)
+            var loaded = try persistence.load(account: identity, defaultOwner: CKCurrentUserDefaultName)
+            if isNew, try persistence.claimsLegacyProfiles(account: identity) {
+                loaded.profileIDs = Set(profiles?.profiles.map(\.id) ?? [])
+            }
+            for profile in profiles?.profiles ?? [] {
+                if case .recovery(_)? = profile.localOrigin {
+                    if try recoveryProfileBelongs(profile, to: identity) { loaded.profileIDs.insert(profile.id) }
+                    else { loaded.profileIDs.remove(profile.id) }
+                }
+            }
+            try persistence.save(loaded)
+            snapshot = loaded
+        } catch {
+            status = .failed("The iCloud account's sync state could not be read or saved on this device.")
+            throw error
+        }
+        currentUserRecordName = identity
+        accountState = snapshot
+        membership = Membership(rawValue: snapshot.membership) ?? .owner
+        zoneOwnerName = snapshot.zoneOwner
+        loadZoneState()
+    }
+
+    private func loadZoneState() {
+        let zone = accountState?.zones[zoneOwnerName] ?? .init()
+        changeToken = zone.changeToken
+        systemFields = zone.systemFields
+        remoteStamps = zone.remoteStamps
+        remoteStateDigests = zone.remoteStateDigests ?? [:]
+        family = nil
+        participants = []
+        isShared = membership == .member
+        needsFamilyInvitation = false
     }
 
     /// Pulls what changed, then pushes anything newer on this device. Overlapping calls fold into one more pass.
@@ -112,131 +209,183 @@ public final class CloudSync {
                 Task { await refresh(reason: "queued") }
             }
         }
-        let account = (try? await container.accountStatus()) ?? .couldNotDetermine
-        guard account == .available else {
-            status = .noAccount
-            return
-        }
-        status = .syncing
+        var expected = generation
         do {
-            if currentUserRecordName == nil {
-                currentUserRecordName = try await container.userRecordID().recordName
-            }
-            try await adoptSharedZoneIfPresent()
+            try await verifyIdentity(expected)
+            // Identity discovery itself may have invalidated a missed account change.
+            expected = generation
+            status = .syncing
+            try await adoptSharedZoneIfPresent(expected)
+            expected = generation
             if membership == .owner {
-                _ = try await container.privateCloudDatabase.save(CKRecordZone(zoneID: zoneID))
+                try await services.createZone(scope(expected))
+                try check(expected)
             }
-            try await ensureSubscriptions()
+            try await ensureSubscriptions(expected)
+            try await retryDeletions(expected)
             try await fetchChanges()
+            try check(expected)
+            try registerRecoveryProfiles()
+            if let replacement = profiles?.ensureProfileAfterSync(isOwner: isOwner) {
+                accountState?.profileIDs.insert(replacement.id)
+                try persistState()
+            }
+            if profiles?.profiles.isEmpty == true { throw SyncFailure.message("A new local profile could not be saved after iCloud removed the last profile.") }
             discardStandIns()
+            try await retryDeletions(expected)
             try await pushLocal()
+            try check(expected)
             status = .synced(.now)
             if let profiles, profiles.isLocked {
-                profiles.openAutomaticallyIfPossible(boundTo: currentUserRecordName)
+                let eligible = profiles.profiles.filter { accountState?.profileIDs.contains($0.id) == true }
+                if eligible.contains(where: { $0.userRecordName == currentUserRecordName }) || (profiles.profiles.count == 1 && eligible.count == 1) {
+                    profiles.openAutomaticallyIfPossible(boundTo: currentUserRecordName)
+                }
             }
+        } catch is CancellationError {
+            return
         } catch {
+            guard generation == expected else { return }
             status = .failed(Self.describe(error))
-            diagnostics("iCloud sync (\(reason)) failed: \(Self.describe(error))")
+            services.log("iCloud sync (\(reason)) failed: \(Self.describe(error))")
         }
     }
 
     /// A share accepted on any of this person's devices shows up in their shared database; follow it.
-    private func adoptSharedZoneIfPresent() async throws {
+    private func adoptSharedZoneIfPresent(_ expected: UUID) async throws {
         guard membership != .member else { return }
-        let zones = try await container.sharedCloudDatabase.allRecordZones()
-        guard let zone = zones.first(where: { $0.zoneID.zoneName == Self.zoneName }) else { return }
-        join(zoneOwnerName: zone.zoneID.ownerName)
-        diagnostics("Following the family shared by \(zone.zoneID.ownerName)")
+        let owners = try await services.sharedZones()
+        try check(expected)
+        guard let owner = owners.first else { return }
+        try join(zoneOwnerName: owner)
+        services.log("Following the shared family")
     }
 
-    private func join(zoneOwnerName: String) {
+    private func join(zoneOwnerName: String) throws {
+        try persistState()
+        guard var snapshot = accountState else { throw CKError(.notAuthenticated) }
+        snapshot.membership = Membership.member.rawValue
+        snapshot.zoneOwner = zoneOwnerName
+        guard profiles?.markAllAsMembers(in: snapshot.profileIDs) != false else {
+            throw SyncFailure.message("The family membership could not be saved to the profiles on this device.")
+        }
+        try persistence.save(snapshot)
+        generation = UUID()
+        for task in uploads.values { task.cancel() }
+        uploads = [:]
         membership = .member
         self.zoneOwnerName = zoneOwnerName
-        changeToken = nil
-        remoteStamps = [:]
-        systemFields = [:]
-        isShared = true
-        persistState()
+        accountState = snapshot
+        loadZoneState()
         // In someone else's family this device's profiles are members, whatever they were before.
-        profiles?.markAllAsMembers()
     }
 
-    private func ensureSubscriptions() async throws {
-        guard !UserDefaults.standard.bool(forKey: "cloud.subscribed") else { return }
-        for (database, id) in [(container.privateCloudDatabase, "family-private"), (container.sharedCloudDatabase, "family-shared")] {
-            let subscription = CKDatabaseSubscription(subscriptionID: id)
-            let info = CKSubscription.NotificationInfo()
-            info.shouldSendContentAvailable = true
-            subscription.notificationInfo = info
-            _ = try await database.save(subscription)
-        }
-        UserDefaults.standard.set(true, forKey: "cloud.subscribed")
+    private func ensureSubscriptions(_ expected: UUID) async throws {
+        guard accountState?.subscribed != true else { return }
+        try await services.subscribe()
+        try check(expected)
+        accountState?.subscribed = true
+        try persistState()
     }
 
     // MARK: Pulling
 
     public func fetchChanges() async throws {
-        let result: (modificationResultsByID: [CKRecord.ID: Result<CKDatabase.RecordZoneChange.Modification, any Error>], deletions: [CKDatabase.RecordZoneChange.Deletion], changeToken: CKServerChangeToken, moreComing: Bool)
+        let expected = generation
+        let activeScope = try scope(expected)
+        let page: CloudChangePage
         do {
-            result = try await database.recordZoneChanges(inZoneWith: zoneID, since: changeToken)
-        } catch let error as CKError where error.code == .zoneNotFound || error.code == .userDeletedZone || error.code == .changeTokenExpired {
-            if error.code == .changeTokenExpired {
-                changeToken = nil
-                persistState()
-                try await fetchChanges()
-                return
-            }
-            if membership == .member {
-                // The family is gone or we were removed from it; back to a family of our own.
-                diagnostics("The shared family zone is no longer reachable; using this device's own iCloud again")
-                membership = .owner
-                zoneOwnerName = CKCurrentUserDefaultName
-                changeToken = nil
-                isShared = false
-                persistState()
-                _ = try await container.privateCloudDatabase.save(CKRecordZone(zoneID: zoneID))
-                try await fetchChanges()
-            }
+            page = try await services.changes(activeScope, changeToken)
+            try check(expected)
+            needsFamilyInvitation = false
+        } catch let error as CKError where error.code == .changeTokenExpired {
+            try check(expected)
+            // A reset is durable before another page is requested. Never acknowledge a bad page.
+            changeToken = nil
+            try persistState()
+            try await fetchChanges()
             return
+        } catch let error as CKError where error.code == .zoneNotFound || error.code == .userDeletedZone {
+            try check(expected)
+            // A missing shared zone must not silently move its profiles/deletion intents into a new family.
+            needsFamilyInvitation = membership == .member
+            throw SyncFailure.message(membership == .member
+                ? "The shared family is no longer available. Ask its owner for a new invitation and join again in Family settings."
+                : "The iCloud family is unavailable. Try syncing again.")
         }
-        var changed = 0
-        for (_, modification) in result.modificationResultsByID {
-            if case .success(let change) = modification {
-                apply(change.record)
-                changed += 1
+        var failures = 0
+        for result in page.records {
+            do {
+                let record = try result.get()
+                guard record.recordID.zoneID == activeScope.zoneID else { throw SyncFailure.message("An iCloud record arrived for a different family.") }
+                try apply(record)
+            } catch {
+                failures += 1
+                services.log("iCloud: a changed record could not be applied: \(Self.describe(error))")
             }
         }
-        for deletion in result.deletions {
-            removed(deletion.recordID, type: deletion.recordType)
+        for deletion in page.deletions {
+            do {
+                guard deletion.id.zoneID == activeScope.zoneID else { throw SyncFailure.message("An iCloud deletion arrived for a different family.") }
+                try removed(deletion.id, type: deletion.type)
+            } catch { failures += 1 }
         }
-        changeToken = result.changeToken
-        persistState()
-        if changed > 0 || !result.deletions.isEmpty {
-            diagnostics("iCloud: \(changed) records updated, \(result.deletions.count) removed")
+        // Persist successful entries for idempotent retry, keeping the previous cursor on any failure.
+        try persistState()
+        guard failures == 0 else {
+            let problem = SyncFailure.message("iCloud sync is incomplete: \(failures) change(s) will be retried.")
+            status = .failed(problem.localizedDescription)
+            throw problem
         }
-        if result.moreComing { try await fetchChanges() }
+        let previous = changeToken
+        changeToken = page.token
+        do { try persistState() }
+        catch {
+            changeToken = previous
+            throw error
+        }
+        if page.moreComing { try await fetchChanges() }
     }
 
-    private func apply(_ record: CKRecord) {
-        remember(record)
+    private enum SyncFailure: LocalizedError {
+        case message(String)
+        var errorDescription: String? { switch self { case .message(let message): message } }
+    }
+
+    private func isTombstoned(_ id: String) -> Bool {
+        accountState?.zones[zoneOwnerName]?.deletions[id] != nil
+    }
+
+    private func retainDeletionForReturnedRecord(_ id: String) throws {
+        // Another device (or an already submitted upload) may return a live record after an ack.
+        // Keep suppressing it locally and send both deletions again during this refresh.
+        accountState?.zones[zoneOwnerName]?.deletions[id] = [id, "state-\(id)"]
+        try persistState()
+    }
+
+    private func apply(_ record: CKRecord) throws {
         switch record.recordType {
         case "Profile":
-            guard let profile = Self.profile(from: record) else { return }
+            guard let profile = Self.profile(from: record) else { throw SyncFailure.message("A profile from iCloud is incomplete.") }
+            if isTombstoned(profile.id) { try retainDeletionForReturnedRecord(profile.id); return }
+            guard let profiles else { throw SyncFailure.message("Profiles are not ready to receive iCloud changes.") }
+            if profile.avatar.hasPhoto, (record["photo"] as? CKAsset)?.fileURL == nil {
+                throw SyncFailure.message("A profile photo from iCloud is incomplete.")
+            }
+            if profiles.profiles.first(where: { $0.id == profile.id }).map({ $0.updatedAt >= profile.updatedAt }) != true {
+                guard profiles.storeRemotePhoto(at: profile.avatar.hasPhoto ? (record["photo"] as? CKAsset)?.fileURL : nil, for: profile.id),
+                      profiles.applyRemote(profile) else { throw SyncFailure.message("A profile from iCloud could not be saved on this device.") }
+            }
             remoteStamps[record.recordID.recordName] = profile.updatedAt
-            if let current = profiles?.profiles.first(where: { $0.id == profile.id }), current.updatedAt >= profile.updatedAt {
-                return
-            }
-            if profile.avatar.hasPhoto {
-                profiles?.storeRemotePhoto(at: (record["photo"] as? CKAsset)?.fileURL, for: profile.id)
-            } else {
-                profiles?.storeRemotePhoto(at: nil, for: profile.id)
-            }
-            profiles?.applyRemote(profile)
+            accountState?.profileIDs.insert(profile.id)
         case "ProfileState":
-            guard let data = record["document"] as? Data, let state = try? Self.decoder.decode(ProfileState.self, from: data),
-                  let profileID = record["profileID"] as? String else { return }
+            guard let data = record["document"] as? Data, let state = try? ProfileCloudDocument.decode(data),
+                  let profileID = record["profileID"] as? String,
+                  record.recordID.recordName == "state-\(profileID)" else { throw SyncFailure.message("A profile's iCloud document is incomplete.") }
+            if isTombstoned(profileID) { try retainDeletionForReturnedRecord(profileID); return }
+            guard let profiles, profiles.applyRemote(state, id: profileID) else { throw SyncFailure.message("A profile's iCloud document could not be saved on this device.") }
             remoteStamps[record.recordID.recordName] = state.updatedAt
-            profiles?.applyRemote(state, id: profileID)
+            remoteStateDigests[record.recordID.recordName] = state.syncDigest
         case "Family":
             let info = FamilyInfo(
                 name: record["name"] as? String ?? "Family",
@@ -253,21 +402,29 @@ public final class CloudSync {
             onFamilyInfo?(info)
         case "cloudkit.share":
             if let share = record as? CKShare { update(share) }
-        default:
-            break
+        default: break
         }
+        remember(record)
     }
 
-    private func removed(_ recordID: CKRecord.ID, type: CKRecord.RecordType) {
-        systemFields[recordID.recordName] = nil
-        remoteStamps[recordID.recordName] = nil
+    private func removed(_ recordID: CKRecord.ID, type: CKRecord.RecordType) throws {
         switch type {
-        case "Profile": profiles?.removeRemote(id: recordID.recordName)
+        case "Profile":
+            guard let profiles, profiles.removeRemote(id: recordID.recordName, replacementAccount: currentUserRecordName, replacementIsOwner: isOwner) else {
+                throw SyncFailure.message("A deleted iCloud profile could not be removed from this device.")
+            }
+            if accountState?.zones[zoneOwnerName] == nil { accountState?.zones[zoneOwnerName] = .init() }
+            if accountState?.zones[zoneOwnerName]?.deletions[recordID.recordName] == nil {
+                accountState?.zones[zoneOwnerName]?.deletions[recordID.recordName] = []
+            }
         case "cloudkit.share":
             participants = []
             isShared = false
         default: break
         }
+        systemFields[recordID.recordName] = nil
+        remoteStamps[recordID.recordName] = nil
+        remoteStateDigests[recordID.recordName] = nil
     }
 
     private func update(_ share: CKShare) {
@@ -296,12 +453,13 @@ public final class CloudSync {
               profiles.profiles.contains(where: { $0.userRecordName == user }) else { return }
         let standIns = profiles.profiles.filter { profile in
             profile.userRecordName == nil && profile.pin == nil && profile.avatar.photoVersion == nil
+                && profile.localOrigin != .created
                 && abs(profile.updatedAt.timeIntervalSince(profile.createdAt)) < 2
-                && profiles.storedState(id: profile.id).isPristine
+                && profiles.storedStateIsPristine(id: profile.id)
         }
         for standIn in standIns where profiles.profiles.count > 1 {
-            diagnostics("Removing the stand-in profile “\(standIn.name)”: this iCloud account already has a profile")
-            profiles.delete(standIn)
+            services.log("Removing the stand-in profile “\(standIn.name)”: this iCloud account already has a profile")
+            profiles.discardStandIn(standIn)
         }
     }
 
@@ -311,10 +469,11 @@ public final class CloudSync {
         var newProfiles = 0
         let remoteProfileCount = remoteStamps.keys.filter { !$0.hasPrefix("state-") && $0 != "family" }.count
         for profile in profiles.profiles {
+            guard accountState?.profileIDs.contains(profile.id) == true, !isTombstoned(profile.id) else { continue }
             let stamp = remoteStamps[profile.id]
             if stamp == nil {
                 guard remoteProfileCount + newProfiles < Profile.limit else {
-                    diagnostics("Not uploading “\(profile.name)”: the family already has \(Profile.limit) profiles")
+                    services.log("Not uploading “\(profile.name)”: the family already has \(Profile.limit) profiles")
                     continue
                 }
                 newProfiles += 1
@@ -323,23 +482,22 @@ public final class CloudSync {
                 toSave.append(record(for: profile))
             }
             let state = profiles.storedState(id: profile.id)
-            let stateStamp = remoteStamps["state-\(profile.id)"]
-            if state.updatedAt > .distantPast, stateStamp == nil || state.updatedAt > stateStamp! {
-                if let record = record(for: state, profileID: profile.id) { toSave.append(record) }
+            if state.updatedAt > .distantPast, remoteStateDigests["state-\(profile.id)"] != state.syncDigest {
+                toSave.append(try record(for: state, profileID: profile.id))
             }
         }
-        if membership == .owner, let info = familyInfoProvider?(), remoteStamps["family"] == nil || family.map({ !$0.describesSameServer(as: info) }) ?? true {
+        if membership == .owner, let active = profiles.active, accountState?.profileIDs.contains(active.id) == true,
+           let info = familyInfoProvider?(), remoteStamps["family"] == nil || family.map({ !$0.describesSameServer(as: info) }) ?? true {
             var current = info
             current.updatedAt = .now
             toSave.append(record(for: current))
             family = current
         }
-        if let user = currentUserRecordName, !profiles.profiles.contains(where: { $0.userRecordName == user }), let active = profiles.active {
+        if let user = currentUserRecordName, !profiles.profiles.contains(where: { $0.userRecordName == user }), let active = profiles.active,
+           accountState?.profileIDs.contains(active.id) == true, active.userRecordName == nil {
             // The profile in use becomes this iCloud user's own, so their other devices open it directly.
-            var bound = active
-            bound.userRecordName = user
-            profiles.update(bound, echo: false)
-            if let stored = profiles.profiles.first(where: { $0.id == bound.id }) {
+            profiles.bindActiveProfile(to: user)
+            if let stored = profiles.profiles.first(where: { $0.id == active.id }) {
                 toSave.removeAll { $0.recordID.recordName == stored.id }
                 toSave.append(record(for: stored))
             }
@@ -349,88 +507,267 @@ public final class CloudSync {
     }
 
     public func profileChanged(_ profile: Profile) {
+        guard accountState?.profileIDs.contains(profile.id) == true, !isTombstoned(profile.id) else { return }
         schedule(key: profile.id) { [weak self] in
             guard let self else { return }
             try await save([record(for: profile)])
         }
     }
 
-    public func profileDeleted(id: String) {
-        uploads[id]?.cancel()
-        uploads["state-\(id)"]?.cancel()
-        guard isActive else { return }
-        Task {
-            do {
-                _ = try await database.modifyRecords(saving: [], deleting: [CKRecord.ID(recordName: id, zoneID: zoneID), CKRecord.ID(recordName: "state-\(id)", zoneID: zoneID)], savePolicy: .changedKeys, atomically: false)
-                systemFields[id] = nil
-                systemFields["state-\(id)"] = nil
-                remoteStamps[id] = nil
-                remoteStamps["state-\(id)"] = nil
-                persistState()
-            } catch {
-                diagnostics("iCloud: could not delete a profile: \(Self.describe(error))")
+    func containsProfileInCurrentAccount(_ id: String) -> Bool {
+        accountState?.profileIDs.contains(id) == true && !isTombstoned(id)
+    }
+
+    /// A new profile inherits the active profile's verified account scope, including after an
+    /// offline relaunch. Persist that association before the profile is exposed locally.
+    func prepareProfileCreation(_ profile: Profile) -> Bool {
+        guard let active = profiles?.active else { return false }
+        let isVerified = currentUserRecordName != nil && accountState?.account == currentUserRecordName
+        do {
+            guard var snapshot = isVerified ? accountState : try persistence.deletionContext(profileID: active.id) else {
+                if active.userRecordName == nil, try !persistence.hasCloudAssociation(profileID: active.id) {
+                    return true // Local first-launch profiles are adopted on their first verified sync.
+                }
+                status = .failed("Connect to iCloud to confirm which family the new profile belongs to.")
+                return false
             }
+            guard snapshot.profileIDs.contains(active.id), snapshot.zones[snapshot.zoneOwner]?.deletions[active.id] == nil else {
+                status = .failed("Open a profile in this Apple Account before creating another profile.")
+                return false
+            }
+            snapshot.profileIDs.insert(profile.id)
+            try persistence.save(snapshot)
+            if isVerified { accountState = snapshot }
+            return true
+        } catch {
+            status = .failed("The new profile could not be created because its iCloud membership could not be saved on this device.")
+            return false
         }
     }
 
+    /// Must succeed before local removal; an offline deletion survives relaunch in this account/family.
+    func prepareProfileDeletion(id: String) -> Bool {
+        var snapshot: CloudAccountState
+        let isVerified = currentUserRecordName != nil && accountState?.account == currentUserRecordName
+        do {
+            guard let context = isVerified ? accountState : try persistence.deletionContext(profileID: id) else {
+                if profiles?.profiles.first(where: { $0.id == id })?.userRecordName == nil,
+                   try !persistence.hasCloudAssociation(profileID: id) {
+                    return true // A purely local profile has no remote deletion to retry.
+                }
+                status = .failed("Connect to iCloud to confirm which family's profile to delete.")
+                return false
+            }
+            snapshot = context
+        } catch {
+            status = .failed("The profile's pending iCloud deletion could not be saved on this device.")
+            return false
+        }
+        guard snapshot.profileIDs.contains(id) else {
+            status = .failed("This profile belongs to another Apple Account. Switch back to that account before deleting it.")
+            return false
+        }
+        let owner = snapshot.zoneOwner
+        if snapshot.zones[owner]?.deletions[id] != nil { return true }
+        var zone = snapshot.zones[owner] ?? .init()
+        if isVerified {
+            zone.changeToken = changeToken
+            zone.systemFields = systemFields
+            zone.remoteStamps = remoteStamps
+            zone.remoteStateDigests = remoteStateDigests
+        }
+        zone.deletions[id] = [id, "state-\(id)"]
+        snapshot.zones[owner] = zone
+        do {
+            try persistence.save(snapshot)
+            if isVerified { accountState = snapshot }
+            else { status = .failed("The profile deletion is saved and will sync when its Apple Account reconnects.") }
+        } catch {
+            status = .failed("The profile could not be deleted because its pending iCloud change could not be saved on this device.")
+            return false
+        }
+        uploads[id]?.cancel()
+        uploads["state-\(id)"]?.cancel()
+        return true
+    }
+
+    public func profileDeleted(id: String) {
+        guard isTombstoned(id), isActive else { return }
+        Task { await refresh(reason: "profile deleted") }
+    }
+
+    private func retryDeletions(_ expected: UUID) async throws {
+        guard let deletions = accountState?.zones[zoneOwnerName]?.deletions else { return }
+        // Reconcile first, including already-acknowledged tombstones: a crash or disk failure may
+        // have happened after the durable intent but before the local profile list was replaced.
+        for id in deletions.keys {
+            guard let profiles, profiles.removeRemote(id: id, replacementAccount: currentUserRecordName, replacementIsOwner: isOwner) else {
+                throw SyncFailure.message("A pending profile deletion could not be applied on this device. It will be retried.")
+            }
+        }
+        try registerRecoveryProfiles()
+        let names = Set(deletions.values.flatMap { $0 })
+        guard !names.isEmpty else { return }
+        let activeScope = try scope(expected)
+        let ids = names.map { CKRecord.ID(recordName: $0, zoneID: activeScope.zoneID) }
+        let result = try await services.modify(activeScope, [], ids)
+        try check(expected)
+        var firstFailure: (any Error)?
+        for id in ids {
+            let outcome = result.deleted[id] ?? .failure(SyncFailure.message("iCloud did not acknowledge a profile deletion."))
+            let succeeded: Bool
+            switch outcome {
+            case .success: succeeded = true
+            case .failure(let error):
+                succeeded = (error as? CKError)?.code == .unknownItem
+                if !succeeded, firstFailure == nil { firstFailure = error }
+            }
+            if succeeded {
+                for profileID in deletions.keys { accountState?.zones[zoneOwnerName]?.deletions[profileID]?.remove(id.recordName) }
+                systemFields[id.recordName] = nil
+                remoteStamps[id.recordName] = nil
+                remoteStateDigests[id.recordName] = nil
+            }
+        }
+        try persistState()
+        if let firstFailure { throw SyncFailure.message("A profile deletion is pending: \(Self.describe(firstFailure))") }
+    }
+
+    private func registerRecoveryProfiles() throws {
+        guard let account = currentUserRecordName else { return }
+        var changed = false
+        for profile in profiles?.profiles ?? [] {
+            if case .recovery(_)? = profile.localOrigin {
+                let belongs = try recoveryProfileBelongs(profile, to: account)
+                if belongs != (accountState?.profileIDs.contains(profile.id) == true) {
+                    if belongs { accountState?.profileIDs.insert(profile.id) }
+                    else { accountState?.profileIDs.remove(profile.id) }
+                    changed = true
+                }
+            }
+        }
+        if changed { try persistState() }
+    }
+
+    private func recoveryProfileBelongs(_ profile: Profile, to account: String) throws -> Bool {
+        guard case .recovery(let origin)? = profile.localOrigin else { return false }
+        if let origin { return origin == account }
+        if let previous = try persistence.deletionContext(profileID: profile.id) {
+            guard previous.account == account else { return false }
+        } else if try persistence.hasCloudAssociation(profileID: profile.id) {
+            return false // Multiple known account owners require resolution instead of guessing.
+        }
+        guard profiles?.bindUnassignedRecoveryProfile(id: profile.id, to: account) == true else {
+            throw SyncFailure.message("The recovery profile's Apple Account could not be saved on this device.")
+        }
+        return true
+    }
+
     public func stateChanged(_ state: ProfileState, id: String) {
+        guard accountState?.profileIDs.contains(id) == true, !isTombstoned(id) else { return }
         schedule(key: "state-\(id)") { [weak self] in
-            guard let self, let record = record(for: state, profileID: id) else { return }
+            guard let self, let profiles, containsProfileInCurrentAccount(id) else { return }
+            let record = try record(for: profiles.storedState(id: id), profileID: id)
             try await save([record])
         }
     }
 
     private func schedule(key: String, _ work: @escaping () async throws -> Void) {
         guard isActive else { return }
+        let expected = generation
         uploads[key]?.cancel()
         uploads[key] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
+            guard let self, generation == expected, !Task.isCancelled else { return }
             do {
                 try await work()
+            } catch is CancellationError {
+                return
             } catch {
-                diagnostics("iCloud upload failed: \(Self.describe(error))")
+                guard generation == expected else { return }
+                status = .failed(Self.describe(error))
+                services.log("iCloud upload failed: \(Self.describe(error))")
             }
-            self?.uploads[key] = nil
+            if generation == expected { uploads[key] = nil }
         }
     }
 
-    /// Saves records, taking the server's copy when it moved on and ours is older. One bad record
+    /// Reconciles profile-state fields with the server before retrying a changed record. One bad record
     /// makes CloudKit report "Atomic failure" for the others in the batch; those are retried on their
     /// own so the real problem, not its side effect, is what gets logged and shown.
-    private func save(_ records: [CKRecord]) async throws {
-        let result = try await database.modifyRecords(saving: records, deleting: [], savePolicy: .changedKeys, atomically: false)
+    private func save(_ records: [CKRecord], conflictAttempt: Int = 0) async throws {
+        let expected = generation
+        let activeScope = try scope(expected)
+        guard records.allSatisfy({ $0.recordID.zoneID == activeScope.zoneID }) else { throw CancellationError() }
+        let result = try await services.modify(activeScope, records, [])
+        guard generation == expected else { throw CancellationError() }
+        var returnedDeletedRecord = false
+        for record in records {
+            let profileID = record.recordType == "Profile" ? record.recordID.recordName : record["profileID"] as? String
+            if let profileID, isTombstoned(profileID) {
+                try retainDeletionForReturnedRecord(profileID)
+                returnedDeletedRecord = true
+            }
+        }
+        if returnedDeletedRecord {
+            Task { await refresh(reason: "completed upload for a deleted profile") }
+            throw CancellationError()
+        }
+        try check(expected)
         var retry: [CKRecord] = []
         var heldBack: [CKRecord] = []
         var problem: (any Error)?
-        for (id, outcome) in result.saveResults {
+        for record in records {
+            let id = record.recordID
+            let outcome = result.saved[id] ?? .failure(SyncFailure.message("iCloud did not acknowledge a saved record."))
             switch outcome {
             case .success(let saved):
                 remember(saved)
                 if let stamp = saved["updatedAt"] as? Date { remoteStamps[id.recordName] = stamp }
+                if saved.recordType == "ProfileState", let data = saved["document"] as? Data,
+                   let state = try? ProfileCloudDocument.decode(data) {
+                    remoteStateDigests[id.recordName] = state.syncDigest
+                }
             case .failure(let error):
                 guard let ours = records.first(where: { $0.recordID == id }) else { throw error }
                 let ckError = error as? CKError
                 if ckError?.code == .serverRecordChanged, let server = ckError?.serverRecord {
                     remember(server)
+                    if ours.recordType == "ProfileState" {
+                        // Applying merges into the newest durable local state, including edits made
+                        // while this request was suspended. Retry with the server's current tag.
+                        try apply(server)
+                        guard let profileID = ours["profileID"] as? String, let profiles else {
+                            throw SyncFailure.message("The profile is unavailable for iCloud reconciliation.")
+                        }
+                        let latest = profiles.storedState(id: profileID)
+                        if latest.syncDigest != remoteStateDigests[id.recordName] {
+                            if conflictAttempt >= 3 {
+                                problem = SyncFailure.message("iCloud changes are still arriving. Saved changes will be reconciled on the next sync.")
+                            } else {
+                                retry.append(try self.record(for: latest, profileID: profileID))
+                            }
+                        }
+                        continue
+                    }
                     let serverStamp = server["updatedAt"] as? Date ?? .distantPast
                     let ourStamp = ours["updatedAt"] as? Date ?? .distantPast
                     if ourStamp > serverStamp {
                         for key in ours.allKeys() { server[key] = ours[key] }
                         retry.append(server)
                     } else {
-                        apply(server)
+                        try apply(server)
                     }
                 } else if ckError?.code == .batchRequestFailed, records.count > 1 {
                     heldBack.append(ours)
                 } else {
-                    diagnostics("iCloud: could not save \(ours.recordType) \(id.recordName): \(Self.detail(error))")
+                    services.log("iCloud: could not save \(ours.recordType) \(id.recordName): \(Self.detail(error))")
                     if problem == nil { problem = SaveFailure(record: ours, underlying: error) }
                 }
             }
         }
-        persistState()
-        if !retry.isEmpty { try await save(retry) }
+        try persistState()
+        if !retry.isEmpty { try await save(retry, conflictAttempt: conflictAttempt + 1) }
         if let problem { throw problem }
         // Only side effects came back: the record that caused them is found by saving each alone.
         for record in heldBack { try await save([record]) }
@@ -483,8 +820,8 @@ public final class CloudSync {
         return record
     }
 
-    private func record(for state: ProfileState, profileID: String) -> CKRecord? {
-        guard let data = try? Self.encoder.encode(state) else { return nil }
+    private func record(for state: ProfileState, profileID: String) throws -> CKRecord {
+        let data = try ProfileCloudDocument.encode(state)
         let record = baseRecord(named: "state-\(profileID)", type: "ProfileState")
         record["document"] = data
         record["profileID"] = profileID
@@ -533,7 +870,14 @@ public final class CloudSync {
 
     /// The share for the family zone, made on first use. Only the owner can call this.
     public func share() async throws -> CKShare {
-        let existing = try? await database.record(for: shareRecordID) as? CKShare
+        try await verifyIdentity(generation)
+        let expected = generation
+        _ = try scope(expected)
+        guard membership == .owner else { throw CKError(.permissionFailure) }
+        let database = database
+        let recordID = shareRecordID
+        let existing = try? await database.record(for: recordID) as? CKShare
+        try check(expected)
         let share = existing ?? CKShare(recordZoneID: zoneID)
         let title = familyTitle
         if existing != nil, share.publicPermission == .readWrite, share.url != nil, share[CKShare.SystemFieldKey.title] as? String == title {
@@ -547,11 +891,12 @@ public final class CloudSync {
         // The app hands the link out itself, so anyone who opens it may join and write their own profile.
         share.publicPermission = .readWrite
         let result = try await database.modifyRecords(saving: [share], deleting: [], savePolicy: .changedKeys, atomically: true)
+        try check(expected)
         guard case .success(let saved) = result.saveResults[share.recordID], let savedShare = saved as? CKShare else {
             throw CKError(.internalError)
         }
         update(savedShare)
-        diagnostics("\(existing == nil ? "Family share created" : "Family share updated"); link \(savedShare.url == nil ? "not ready yet" : "ready")")
+        services.log("\(existing == nil ? "Family share created" : "Family share updated"); link \(savedShare.url == nil ? "not ready yet" : "ready")")
         return savedShare
     }
 
@@ -577,27 +922,37 @@ public final class CloudSync {
     public func accept(url: URL) async -> String? {
         guard Self.isInvitation(url) else { return "That isn't a Skyr invitation link. It starts with icloud.com/share." }
         let metadata: CKShare.Metadata
+        var expected = generation
         do {
+            try await verifyIdentity(expected)
+            expected = generation
             metadata = try await container.shareMetadata(for: url)
+            try check(expected)
         } catch {
+            guard generation == expected, !(error is CancellationError) else { return "The Apple Account changed. Try the invitation again." }
             let message = Self.describeInvitation(error)
-            diagnostics("Could not read the invitation link: \(Self.detail(error))")
+            services.log("Could not read the invitation link: \(Self.detail(error))")
             return message
         }
         return await join(metadata)
     }
 
     private func join(_ metadata: CKShare.Metadata) async -> String? {
+        var expected = generation
         do {
+            try await verifyIdentity(expected)
+            expected = generation
             _ = try await container.accept(metadata)
-            join(zoneOwnerName: metadata.share.recordID.zoneID.ownerName)
-            diagnostics("Joined the family shared by \(metadata.share.recordID.zoneID.ownerName)")
+            try check(expected)
+            try join(zoneOwnerName: metadata.share.recordID.zoneID.ownerName)
+            services.log("Joined the family shared by \(metadata.share.recordID.zoneID.ownerName)")
             await refresh(reason: "joined family")
             return nil
         } catch {
+            guard generation == expected, !(error is CancellationError) else { return "The Apple Account changed. Try the invitation again." }
             let message = Self.describeInvitation(error)
             status = .failed(message)
-            diagnostics("Could not join the family: \(Self.detail(error))")
+            services.log("Could not join the family: \(Self.detail(error))")
             return message
         }
     }
@@ -623,42 +978,73 @@ public final class CloudSync {
         return describe(error)
     }
 
-    /// Owner: nobody else can reach the family zone any more. Member: this person steps out of it.
-    public func stopSharing() async {
+    /// A retry must stay attached to the Apple Account and family that requested it.
+    public var sharingScopeIdentifier: String? {
+        guard let account = currentUserRecordName else { return nil }
+        return "\(account.utf8.count):\(account)\(zoneOwnerName.utf8.count):\(zoneOwnerName)"
+    }
+
+    /// Returns only after CloudKit acknowledges removal; callers must surface failures.
+    public func stopSharing() async throws {
+        let expected = generation
+        guard let requestedScope = sharingScopeIdentifier else { throw CKError(.notAuthenticated) }
         do {
-            try await database.deleteRecord(withID: shareRecordID)
+            try await verifyIdentity(expected)
+            try check(expected)
+            guard sharingScopeIdentifier == requestedScope else { throw CancellationError() }
+            let context = try scope(expected)
+            let id = shareRecordID
+            let result = try await services.modify(context, [], [id])
+            try check(expected)
+            guard let acknowledgement = result.deleted[id] else { throw CKError(.internalError) }
+            switch acknowledgement {
+            case .success: break
+            case .failure(let error):
+                if (error as? CKError)?.code != .unknownItem { throw error }
+            }
             participants = []
             isShared = false
             if membership == .member {
+                try persistState()
+                guard var snapshot = accountState else { throw CKError(.notAuthenticated) }
+                snapshot.membership = Membership.owner.rawValue
+                snapshot.zoneOwner = CKCurrentUserDefaultName
+                try persistence.save(snapshot)
+                generation = UUID()
+                for task in uploads.values { task.cancel() }
+                uploads = [:]
                 membership = .owner
                 zoneOwnerName = CKCurrentUserDefaultName
-                changeToken = nil
-                remoteStamps = [:]
-                systemFields = [:]
-                persistState()
-                diagnostics("Left the family")
+                accountState = snapshot
+                loadZoneState()
+                services.log("Left the family")
                 await refresh(reason: "left family")
             } else {
-                diagnostics("Stopped sharing the family")
+                services.log("Stopped sharing the family")
             }
         } catch {
-            diagnostics("Could not change the family share: \(Self.describe(error))")
+            if generation == expected, !(error is CancellationError) {
+                services.log("Could not change the family share: \(Self.describe(error))")
+                status = .failed(Self.describe(error))
+            }
+            throw error
         }
     }
 
     // MARK: Persistence
 
-    private func persistState() {
-        let defaults = UserDefaults.standard
-        defaults.set(membership.rawValue, forKey: "cloud.membership")
-        defaults.set(zoneOwnerName, forKey: "cloud.zoneOwner")
-        if let changeToken, let data = try? NSKeyedArchiver.archivedData(withRootObject: changeToken, requiringSecureCoding: true) {
-            defaults.set(data, forKey: "cloud.changeToken")
-        } else {
-            defaults.removeObject(forKey: "cloud.changeToken")
-        }
-        Self.saveDictionary(systemFields, "cloud-system-fields.json")
-        Self.saveDictionary(remoteStamps, "cloud-remote-stamps.json")
+    private func persistState() throws {
+        guard var snapshot = accountState, snapshot.account == currentUserRecordName else { throw CKError(.notAuthenticated) }
+        snapshot.membership = membership.rawValue
+        snapshot.zoneOwner = zoneOwnerName
+        var zone = snapshot.zones[zoneOwnerName] ?? .init()
+        zone.changeToken = changeToken
+        zone.systemFields = systemFields
+        zone.remoteStamps = remoteStamps
+        zone.remoteStateDigests = remoteStateDigests
+        snapshot.zones[zoneOwnerName] = zone
+        try persistence.save(snapshot)
+        accountState = snapshot
     }
 
     private static let directory: URL = {
@@ -679,17 +1065,6 @@ public final class CloudSync {
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }()
-
-    private static func loadDictionary<Value: Decodable>(_ file: String) -> [String: Value]? {
-        guard let data = try? Data(contentsOf: directory.appending(path: file)) else { return nil }
-        return try? decoder.decode([String: Value].self, from: data)
-    }
-
-    private static func saveDictionary<Value: Encodable>(_ dictionary: [String: Value], _ file: String) {
-        if let data = try? encoder.encode(dictionary) {
-            try? data.write(to: directory.appending(path: file), options: .atomic)
-        }
-    }
 
     private nonisolated static func describe(_ error: any Error) -> String {
         if let failure = error as? SaveFailure { return failure.errorDescription ?? "" }
@@ -719,9 +1094,12 @@ public final class CloudSync {
     }
 }
 
-private extension ProfileState {
+extension ProfileState {
     /// Nothing favourited, played or made: the profile was never used.
     var isPristine: Bool {
-        libraries.values.allSatisfy { $0.favourites.isEmpty && $0.playlists.isEmpty && $0.played.isEmpty }
+        settings == ProfileSettings() && (sync?.libraries.isEmpty ?? true)
+            && libraries.values.allSatisfy {
+                $0.favourites.isEmpty && $0.playlists.isEmpty && $0.played.isEmpty && $0.recentAlbums.isEmpty && $0.searches.isEmpty
+            }
     }
 }

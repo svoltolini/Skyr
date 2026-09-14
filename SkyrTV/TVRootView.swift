@@ -10,6 +10,8 @@ struct TVRootView: View {
         ZStack {
             if model.stage == .ready {
                 TVMainView()
+                    .allowsHitTesting(!profiles.isLocked)
+                    .accessibilityHidden(profiles.isLocked)
                     .transition(.opacity)
             } else {
                 ConnectFlowView()
@@ -69,6 +71,9 @@ struct TVMainView: View {
             Tab("Search", systemImage: "magnifyingglass", value: TVTab.search, role: .search) {
                 SearchView()
             }
+        }
+        .onChange(of: model.albumNavigationRequest) { _, _ in
+            tab = .library
         }
         .task {
             // Development shortcuts, applied once the tabs exist: `--play` starts the first album,

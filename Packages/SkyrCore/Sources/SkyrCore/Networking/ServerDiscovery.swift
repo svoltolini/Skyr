@@ -13,18 +13,18 @@ public nonisolated struct DiscoveredServer: Identifiable, Hashable, Sendable {
         self.model = model
     }
 
-    /// Plain host and port; HTTPS is assumed only for DSM's default secure port.
+    /// Discovery suggests HTTPS. A service advertisement never grants permission to use HTTP.
     public init(name: String, host: String, port: Int, model: String?) {
         var components = URLComponents()
-        components.scheme = port == 5001 ? "https" : "http"
+        components.scheme = "https"
         components.host = host
-        components.port = port
-        self.init(name: name, baseURL: components.url ?? URL(string: "http://\(host):\(port)")!, model: model)
+        components.port = port == 5000 ? 5001 : (port == 80 ? 443 : port)
+        self.init(name: name, baseURL: components.url!, model: model)
     }
 
     public var id: String { baseURL.absoluteString }
     public var host: String { baseURL.host() ?? "" }
-    public var address: String { host + (baseURL.port.map { ":\($0)" } ?? "") }
+    public var address: String { NASOrigin(url: baseURL)?.identifier ?? baseURL.absoluteString }
 }
 
 /// Browses Bonjour for Synology devices and resolves them to host and port.

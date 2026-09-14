@@ -15,11 +15,13 @@ final class WatchStore: NSObject, WCSessionDelegate {
     private static let catalogueURL = AppDirectories.support.appending(path: "Skyr/watch-catalogue.json")
     private static let accountKey = "watch.account"
     private static let baseURLKey = "watch.baseURL"
+    private static let driveIDKey = "watch.driveID"
 
     override init() {
         super.init()
         if let data = try? Data(contentsOf: Self.catalogueURL), let saved = try? JSONDecoder().decode(WatchCatalogue.self, from: data) {
             catalogue = saved
+            WatchDownloads.shared.reconcile(saved)
         }
         hasCredentials = credentials() != nil
         guard WCSession.isSupported() else { return }
@@ -33,7 +35,7 @@ final class WatchStore: NSObject, WCSessionDelegate {
         guard let account = defaults.string(forKey: Self.accountKey),
               let base = defaults.string(forKey: Self.baseURLKey), let url = URL(string: base),
               let password = KeychainStore.password(for: "watch|\(account)") else { return nil }
-        return WatchCredentials(baseURL: url, account: account, password: password)
+        return WatchCredentials(baseURL: url, account: account, password: password, driveID: defaults.string(forKey: Self.driveIDKey))
     }
 
     /// Asks the phone for everything, when it is within reach. The phone answers the message
@@ -47,13 +49,14 @@ final class WatchStore: NSObject, WCSessionDelegate {
             let base = reply["baseURL"] as? String
             let account = reply["account"] as? String
             let password = reply["password"] as? String
+            let driveID = reply["driveID"] as? String
             Task { @MainActor in
                 DiagnosticsLog.shared.record("Watch: sync answered, status \(status), \(packed?.count ?? 0) bytes")
                 if let packed, let data = try? (packed as NSData).decompressed(using: .lzfse) as Data {
                     self.apply(catalogueData: data)
                 }
                 if let base, let url = URL(string: base), let account, let password {
-                    self.apply(credentials: WatchCredentials(baseURL: url, account: account, password: password))
+                    self.apply(credentials: WatchCredentials(baseURL: url, account: account, password: password, driveID: driveID))
                 }
             }
         }, errorHandler: { @Sendable error in
@@ -82,6 +85,7 @@ final class WatchStore: NSObject, WCSessionDelegate {
         }
         catalogue = WatchCatalogue(serverName: SampleLibrary.serverName, profileName: "Me", playlists: playlists)
         isSample = true
+        if let catalogue { WatchDownloads.shared.reconcile(catalogue) }
     }
 
     private func apply(catalogueData data: Data) {
@@ -91,6 +95,8 @@ final class WatchStore: NSObject, WCSessionDelegate {
         }
         DiagnosticsLog.shared.record("Watch: received \(received.playlists.count) playlists")
         catalogue = received
+        isSample = false
+        WatchDownloads.shared.reconcile(received)
         try? FileManager.default.createDirectory(at: Self.catalogueURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: Self.catalogueURL, options: .atomic)
     }
@@ -102,6 +108,7 @@ final class WatchStore: NSObject, WCSessionDelegate {
         }
         defaults.set(credentials.account, forKey: Self.accountKey)
         defaults.set(credentials.baseURL.absoluteString, forKey: Self.baseURLKey)
+        defaults.set(credentials.driveID, forKey: Self.driveIDKey)
         KeychainStore.save(password: credentials.password, for: "watch|\(credentials.account)")
         hasCredentials = true
     }
@@ -134,7 +141,7 @@ final class WatchStore: NSObject, WCSessionDelegate {
         guard userInfo["kind"] as? String == "credentials",
               let base = userInfo["baseURL"] as? String, let url = URL(string: base),
               let account = userInfo["account"] as? String, let password = userInfo["password"] as? String else { return }
-        let credentials = WatchCredentials(baseURL: url, account: account, password: password)
+        let credentials = WatchCredentials(baseURL: url, account: account, password: password, driveID: userInfo["driveID"] as? String)
         Task { @MainActor in self.apply(credentials: credentials) }
     }
 }

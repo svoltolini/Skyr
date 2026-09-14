@@ -18,6 +18,8 @@ public final class PlayerModel {
     /// The queue as it was handed over, for turning shuffle back off.
     private var orderedQueue: [Track] = []
     public private(set) var index = 0
+    /// Shared by app, widget and CarPlay requests so a late server response cannot replace newer intent.
+    public private(set) var commandRevision = UUID()
     public var repeatMode: RepeatMode = .off {
         didSet { if repeatMode != oldValue { settingsChanged?(repeatMode, isShuffling) } }
     }
@@ -33,6 +35,7 @@ public final class PlayerModel {
 
     /// Clears everything: another profile is taking over.
     public func stop() {
+        recordPlaybackCommand()
         teardown()
         queue = []
         orderedQueue = []
@@ -41,6 +44,9 @@ public final class PlayerModel {
         queueTitle = nil
         isPlaying = false
         position = 0
+        lastError = nil
+        nowPlayingArtwork = nil
+        artworkAlbumID = nil
         updateNowPlayingInfo()
     }
     public private(set) var isPlaying = false
@@ -61,29 +67,45 @@ public final class PlayerModel {
     public var didStartAlbum: ((Album) -> Void)?
     public var didStartTrack: ((Track) -> Void)?
 
-    private var player: AVPlayer?
-    private var timeObserver: Any?
-    private var endObserver: (any NSObjectProtocol)?
-    private var statusObservation: NSKeyValueObservation?
+    private var player: (any PlaybackTransport)?
+    private let makePlayer: (URL) -> any PlaybackTransport
+    private let publishNowPlaying: ([String: Any]?) -> Void
+    private let usesSystemControls: Bool
+    /// User intent survives item preparation, but pausing must prevent a late callback from starting audio.
+    private var wantsToPlay = false
+    private var playbackGeneration = UUID()
+    private var seekGeneration = UUID()
+    private var pendingStartPosition: TimeInterval?
+    private var recoverySeekInFlight = false
+    private var hasRecordedTrackStart = false
     private var ticker: Task<Void, Never>?
     private var anchorDate: Date?
     private var anchorPosition: TimeInterval = 0
     private var isSimulated = false
     private var remoteCommandsReady = false
     private var interruptionObservers: [any NSObjectProtocol] = []
-    private var wasPlayingBeforeInterruption = false
+    private var interruptionResumeRevision: UUID?
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var artworkAlbumID: String?
 
-    public init() {}
+    public init() {
+        makePlayer = { AVPlaybackTransport(url: $0) }
+        publishNowPlaying = { MPNowPlayingInfoCenter.default().nowPlayingInfo = $0 }
+        usesSystemControls = true
+    }
+
+    /// Exercises the actual command and recovery paths without audio output or shared system controls.
+    init(makePlayer: @escaping (URL) -> any PlaybackTransport, publishNowPlaying: @escaping ([String: Any]?) -> Void) {
+        self.makePlayer = makePlayer
+        self.publishNowPlaying = publishNowPlaying
+        usesSystemControls = false
+    }
 
     public var track: Track? { queue.indices.contains(index) ? queue[index] : nil }
     public var hasTrack: Bool { track != nil }
 
     public var duration: TimeInterval {
-        if let item = player?.currentItem, item.duration.isNumeric, item.duration.seconds > 0 {
-            return item.duration.seconds
-        }
+        if let duration = player?.duration { return duration }
         return track?.duration ?? 0
     }
 
@@ -94,11 +116,24 @@ public final class PlayerModel {
 
     // MARK: Commands
 
+    /// Reserves a command before an asynchronous server wait; compare the returned revision before playing.
+    @discardableResult
+    public func beginDeferredPlaybackCommand() -> UUID {
+        recordPlaybackCommand()
+        return commandRevision
+    }
+
+    private func recordPlaybackCommand() {
+        commandRevision = UUID()
+        interruptionResumeRevision = nil
+    }
+
     public func play(album: Album, startingAt index: Int = 0) {
         play(queue: album.tracks, startingAt: index, title: nil)
     }
 
     public func play(queue: [Track], startingAt index: Int = 0, title: String?) {
+        recordPlaybackCommand()
         guard !queue.isEmpty else { return }
         orderedQueue = queue
         queueTitle = title
@@ -135,23 +170,42 @@ public final class PlayerModel {
     }
 
     public func togglePlayPause() {
-        isPlaying ? pause() : resume()
+        wantsToPlay ? pause() : resume()
     }
 
     public func resume() {
+        recordPlaybackCommand()
+        resumePlayback()
+    }
+
+    private func resumePlayback() {
         guard hasTrack else { return }
+        wantsToPlay = true
         if isSimulated {
             anchorPosition = position
             anchorDate = .now
             startTicker()
+            isPlaying = true
+            recordTrackStart()
+        } else if let player, case .failed = player.status {
+            load(index: index, autoplay: true, resumingAt: position, isRetry: true)
+        } else if player == nil {
+            // A reconnect or a completed download may now provide a URL. Resolve it again.
+            load(index: index, autoplay: true, resumingAt: position, isRetry: true)
         } else {
-            player?.play()
+            playWhenReady()
         }
-        isPlaying = true
         updateNowPlayingInfo()
     }
 
     public func pause() {
+        recordPlaybackCommand()
+        pausePlayback()
+    }
+
+    /// The interruption path uses this without discarding its conditional resume token.
+    private func pausePlayback() {
+        wantsToPlay = false
         if isSimulated {
             syncSimulatedPosition()
             stopTicker()
@@ -163,10 +217,18 @@ public final class PlayerModel {
         updateNowPlayingInfo()
     }
 
-    public func next() { advance(by: 1, autoplay: isPlaying || position == 0) }
-    public func previous() { advance(by: -1, autoplay: isPlaying || position == 0) }
+    public func next() {
+        recordPlaybackCommand()
+        advance(by: 1, autoplay: wantsToPlay || position == 0)
+    }
+
+    public func previous() {
+        recordPlaybackCommand()
+        advance(by: -1, autoplay: wantsToPlay || position == 0)
+    }
 
     public func seek(toFraction fraction: Double) {
+        recordPlaybackCommand()
         let target = max(0, min(1, fraction)) * duration
         if isSimulated {
             position = target
@@ -174,7 +236,10 @@ public final class PlayerModel {
             anchorDate = isPlaying ? .now : nil
         } else {
             position = target
-            player?.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            seekGeneration = UUID()
+            recoverySeekInFlight = false
+            pendingStartPosition = target
+            playWhenReady()
         }
         updateNowPlayingInfo()
     }
@@ -207,61 +272,52 @@ public final class PlayerModel {
         }
     }
 
-    private func load(index: Int, autoplay: Bool) {
+    private func load(index: Int, autoplay: Bool, resumingAt savedPosition: TimeInterval = 0, isRetry: Bool = false) {
+        let alreadyRecordedStart = isRetry && hasRecordedTrackStart
         teardown()
         self.index = index
-        position = 0
+        position = savedPosition.isFinite ? max(0, savedPosition) : 0
         lastError = nil
+        wantsToPlay = autoplay
+        hasRecordedTrackStart = alreadyRecordedStart
         guard let track else { return }
         let resolved = albumProvider?(track)
         if resolved?.id != album?.id, let resolved { didStartAlbum?(resolved) }
         album = resolved
-        if autoplay { didStartTrack?(track) }
+        // CarPlay and lock-screen Play must also work after the first URL lookup failed.
+        if usesSystemControls { setupRemoteCommands() }
 
         if let url = streamURLProvider?(track) {
             isSimulated = false
-            configureAudioSession()
-            let item = AVPlayerItem(url: url)
-            let player = AVPlayer(playerItem: item)
+            if usesSystemControls { configureAudioSession() }
+            let player = makePlayer(url)
             player.volume = volume
-            player.automaticallyWaitsToMinimizeStalling = true
             self.player = player
-            timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { [weak self] time in
-                MainActor.assumeIsolated {
-                    guard let self, !self.isSimulated else { return }
-                    let seconds = time.seconds
-                    self.position = seconds.isFinite ? max(0, seconds) : 0
-                }
+            pendingStartPosition = position > 0 ? position : nil
+            let generation = playbackGeneration
+            player.positionChanged = { [weak self] seconds in
+                guard let self, playbackGeneration == generation,
+                      self.player?.status == .ready,
+                      pendingStartPosition == nil, !recoverySeekInFlight else { return }
+                position = seconds.isFinite ? max(0, seconds) : 0
             }
-            endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    self?.trackEnded()
-                }
+            player.ended = { [weak self] in
+                guard let self, playbackGeneration == generation, wantsToPlay else { return }
+                trackEnded()
             }
-            statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    if item.status == .failed {
-                        self.lastError = item.error?.localizedDescription ?? "This track couldn't be played."
-                        self.isPlaying = false
-                    }
-                    // The real duration is known once the item is ready; the lock screen wants it.
-                    self.updateNowPlayingInfo()
-                }
+            player.statusChanged = { [weak self] in
+                guard let self, playbackGeneration == generation else { return }
+                playWhenReady()
             }
-            if autoplay {
-                player.play()
-                isPlaying = true
-            } else {
-                isPlaying = false
-            }
+            playWhenReady()
         } else if allowsSimulation?() ?? true {
             isSimulated = true
             if autoplay {
-                anchorPosition = 0
+                anchorPosition = position
                 anchorDate = .now
                 isPlaying = true
                 startTicker()
+                recordTrackStart()
             } else {
                 isPlaying = false
             }
@@ -269,26 +325,75 @@ public final class PlayerModel {
             // Offline and not downloaded: say so rather than pretending to play.
             isSimulated = false
             isPlaying = false
-            lastError = "This song isn't on your iPhone and the server can't be reached."
+            wantsToPlay = false
+            lastError = "This song isn't downloaded and the server can't be reached."
         }
         refreshNowPlayingArtwork()
         updateNowPlayingInfo()
     }
 
     private func teardown() {
+        playbackGeneration = UUID()
+        seekGeneration = UUID()
+        wantsToPlay = false
+        isPlaying = false
+        isSimulated = false
+        pendingStartPosition = nil
+        recoverySeekInFlight = false
+        if nowPlayingArtwork == nil { artworkAlbumID = nil }
         stopTicker()
         anchorDate = nil
-        if let player, let timeObserver {
-            player.removeTimeObserver(timeObserver)
-        }
-        timeObserver = nil
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-        }
-        endObserver = nil
-        statusObservation = nil
-        player?.pause()
+        player?.invalidate()
         player = nil
+    }
+
+    /// A play request becomes playback only once the current item and any recovery seek are ready.
+    private func playWhenReady() {
+        guard let player else { return }
+        switch player.status {
+        case .loading:
+            isPlaying = false
+        case .failed(let message):
+            wantsToPlay = false
+            isPlaying = false
+            lastError = message
+            player.pause()
+        case .ready:
+            if let requestedPosition = pendingStartPosition, !recoverySeekInFlight {
+                let target = player.duration.map { min(requestedPosition, $0) } ?? requestedPosition
+                position = target
+                recoverySeekInFlight = true
+                isPlaying = false
+                player.pause()
+                let generation = playbackGeneration
+                let seek = seekGeneration
+                player.seek(to: target) { [weak self] finished in
+                    guard let self, playbackGeneration == generation, seekGeneration == seek else { return }
+                    recoverySeekInFlight = false
+                    if finished {
+                        pendingStartPosition = nil
+                        playWhenReady()
+                    } else {
+                        wantsToPlay = false
+                        isPlaying = false
+                        lastError = "Playback couldn't return to this position. Try playing again."
+                        updateNowPlayingInfo()
+                    }
+                }
+            } else if !recoverySeekInFlight, wantsToPlay, !isPlaying {
+                lastError = nil
+                player.play()
+                isPlaying = true
+                recordTrackStart()
+            }
+        }
+        updateNowPlayingInfo()
+    }
+
+    private func recordTrackStart() {
+        guard !hasRecordedTrackStart, let track else { return }
+        hasRecordedTrackStart = true
+        didStartTrack?(track)
     }
 
     private func configureAudioSession() {
@@ -302,6 +407,26 @@ public final class PlayerModel {
 
     // MARK: Lock screen, Control Center and headphone controls
 
+    /// System interruption handling is separate from explicit Pause, which cancels an automatic resume.
+    func interruptionBegan() {
+        let shouldResume = wantsToPlay
+        recordPlaybackCommand()
+        interruptionResumeRevision = shouldResume ? commandRevision : nil
+        pausePlayback()
+    }
+
+    func interruptionEnded(shouldResume: Bool) {
+        let interruptedCommand = interruptionResumeRevision
+        interruptionResumeRevision = nil
+        guard shouldResume, interruptedCommand == commandRevision else { return }
+        resumePlayback()
+    }
+
+    func outputDeviceRemoved() {
+        // This must cancel a pending interruption resume even while the transport is already paused.
+        pause()
+    }
+
     /// Registers once for the system transport controls and for interruptions such as calls.
     private func setupRemoteCommands() {
         guard !remoteCommandsReady else { return }
@@ -311,7 +436,8 @@ public final class PlayerModel {
         func onMain(_ action: @escaping @MainActor (PlayerModel) -> Void) -> @Sendable (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
             { [weak self] _ in
                 Task { @MainActor in
-                    guard let self, self.hasTrack else { return }
+                    // Pause also cancels deferred widget/CarPlay starts before a track exists.
+                    guard let self else { return }
                     action(self)
                 }
                 return .success
@@ -343,11 +469,9 @@ public final class PlayerModel {
                 guard let self, let type else { return }
                 switch type {
                 case .began:
-                    self.wasPlayingBeforeInterruption = self.isPlaying
-                    if self.isPlaying { self.pause() }
+                    self.interruptionBegan()
                 case .ended:
-                    if self.wasPlayingBeforeInterruption, options.contains(.shouldResume) { self.resume() }
-                    self.wasPlayingBeforeInterruption = false
+                    self.interruptionEnded(shouldResume: options.contains(.shouldResume))
                 @unknown default:
                     break
                 }
@@ -357,8 +481,8 @@ public final class PlayerModel {
         interruptionObservers.append(notifications.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
             MainActor.assumeIsolated {
-                guard let self, reason == .oldDeviceUnavailable, self.isPlaying else { return }
-                self.pause()
+                guard let self, reason == .oldDeviceUnavailable else { return }
+                self.outputDeviceRemoved()
             }
         })
         #endif
@@ -366,9 +490,8 @@ public final class PlayerModel {
 
     /// What the lock screen and Control Center show: title, artist, artwork, duration and position.
     private func updateNowPlayingInfo() {
-        let center = MPNowPlayingInfoCenter.default()
         guard let track else {
-            center.nowPlayingInfo = nil
+            publishNowPlaying(nil)
             return
         }
         var info: [String: Any] = [
@@ -384,7 +507,7 @@ public final class PlayerModel {
         if let nowPlayingArtwork, artworkAlbumID == album?.id {
             info[MPMediaItemPropertyArtwork] = nowPlayingArtwork
         }
-        center.nowPlayingInfo = info
+        publishNowPlaying(info)
     }
 
     /// Loads the album cover for the lock screen once per album.
@@ -400,9 +523,10 @@ public final class PlayerModel {
         guard CoverStore.hasCover(for: album.id) else { return }
         let url = CoverStore.fileURL(for: album.id)
         let key = "\(album.id)|lockscreen"
+        let generation = playbackGeneration
         Task { [weak self] in
             guard let image = await CoverImageCache.shared.image(url: url, key: key, maxPixelSize: CoverImageCache.largePixels) else { return }
-            guard let self, artworkAlbumID == album.id else { return }
+            guard let self, playbackGeneration == generation, artworkAlbumID == album.id else { return }
             let size = CGSize(width: image.width, height: image.height)
             // Requested on a background thread by the system; only the CGImage crosses into the closure.
             nowPlayingArtwork = MPMediaItemArtwork(boundsSize: size) { @Sendable _ in

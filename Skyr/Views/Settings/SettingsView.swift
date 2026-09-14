@@ -26,6 +26,7 @@ struct SettingsView: View {
     @State private var versionTaps = 0
     @State private var isShowingDiagnostics = false
     @State private var hasUnseenNotes = Release.hasUnseenNotes
+    @State private var isRecoveringLegacyLibrary = false
 
     private var permissions: Permissions { Permissions(profiles: profiles, cloud: cloud) }
 
@@ -77,6 +78,14 @@ struct SettingsView: View {
                                 .foregroundStyle(.red)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
+                        }
+                    }
+                }
+
+                if !model.legacyLibraryRecoveries.isEmpty {
+                    SettingsGroup(title: "Saved library", footer: "An earlier version kept favourites, playlists and history under the server name. Recover them into this connection after confirming the old server. Current edits are kept; older downloads need downloading again.") {
+                        SettingsButtonRow(symbol: "clock.arrow.circlepath", tint: .blue, title: "Recover saved library") {
+                            isRecoveringLegacyLibrary = true
                         }
                     }
                 }
@@ -203,6 +212,7 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .largeTitle()
         .navigationDestination(isPresented: $isShowingDiagnostics) { DiagnosticsView() }
+        .sheet(isPresented: $isRecoveringLegacyLibrary) { LegacyLibraryRecoverySheet() }
         .onAppear { hasUnseenNotes = Release.hasUnseenNotes }
         .animation(.default, value: model.isScanning)
         .animation(.default, value: model.indexer.isEnriching)
@@ -264,6 +274,71 @@ struct SettingsView: View {
     private static func sentence(_ text: String) -> String {
         guard let first = text.first else { return text }
         return String(first).uppercased() + text.dropFirst()
+    }
+}
+
+/// Shared by iPhone, iPad, Mac and TV. Only listening data is copied after a named-source confirmation.
+private struct LegacyLibraryRecoverySheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: LegacyLibraryRecovery?
+    @State private var problem: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Choose the old server whose favourites, playlists and history belong to this connection. Your current edits and the original saved library are kept. Older downloads must be downloaded again.")
+                        .font(.callout)
+                }
+                if let current = model.legacyLibraryRecoveries.first {
+                    Section("Current connection") {
+                        LabeledContent("Address", value: current.address)
+                        LabeledContent("Account", value: current.account)
+                    }
+                    Section("Earlier libraries") {
+                        ForEach(model.legacyLibraryRecoveries) { choice in
+                            Button {
+                                selected = choice
+                                problem = nil
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(choice.legacySourceID)
+                                    Text("\(choice.favouritesCount) favourites · \(choice.playlistsCount) playlists · \(choice.historyCount) history entries")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Section { Text("No earlier libraries are waiting to be recovered for this connection. Reconnect to your server and finish scanning if needed.") }
+                }
+                if let problem {
+                    Section { Text(problem).foregroundStyle(.red).font(.footnote) }
+                }
+            }
+            .groupedForm()
+            .navigationTitle("Recover saved library")
+            .inlineTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+            }
+            .confirmationDialog("Recover this saved library?", isPresented: Binding(
+                get: { selected != nil },
+                set: { if !$0 { selected = nil } }
+            ), titleVisibility: .visible, presenting: selected) { choice in
+                Button("Recover saved library") {
+                    problem = model.recoverLegacyLibrary(choice)
+                    selected = nil
+                    if problem == nil { dismiss() }
+                }
+                Button("Cancel", role: .cancel) { selected = nil }
+            } message: { choice in
+                Text("Copy saved listening data from \(choice.legacySourceID) to \(choice.address), signed in as \(choice.account). Existing edits stay in place. This does not transfer passwords or downloaded audio.")
+            }
+        }
+        .sheetDetents([.medium, .large])
     }
 }
 

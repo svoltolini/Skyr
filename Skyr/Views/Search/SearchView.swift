@@ -8,7 +8,7 @@ struct SearchView: View {
     @Environment(PlayerModel.self) private var player
 
     @Namespace private var artworkNamespace
-    /// Found once per query change rather than every time the screen redraws.
+    /// Recomputed for query changes or a published catalogue revision, preserving the search field and stack.
     @State private var results = SearchResults()
     @FocusState private var isSearchFocused: Bool
 
@@ -28,6 +28,9 @@ struct SearchView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: query.isEmpty)
             .onChange(of: query, initial: true) { _, query in
+                results = library.searchResults(query)
+            }
+            .onChange(of: library.contentRevision) { _, _ in
                 results = library.searchResults(query)
             }
             .hiddenScrollBackground()

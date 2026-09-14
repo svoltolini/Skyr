@@ -28,7 +28,7 @@ struct FamilyView: View {
                 }
 
                 if permissions.canManageFamily, model.connection?.isHomeOnly == true {
-                    SettingsGroup(title: "Reaching the server", footer: "You are connected to a local address, which members can only use on your home network. To let them listen from anywhere, give the NAS a DDNS name and connect to that instead; the family follows automatically.") {
+                    SettingsGroup(title: "Reaching the server", footer: "Members need a route to this NAS. Tailscale is an optional way to connect remotely. When you change the server address or owner account, verify family access again for that connection.") {
                         SettingsRow(symbol: "house.fill", tint: .orange, title: "Home network only") {
                             EmptyView()
                         }
@@ -40,8 +40,8 @@ struct FamilyView: View {
                 }
 
                 #if !os(tvOS)
-                if cloud.isActive, cloud.isOwner, !cloud.isShared {
-                    SettingsGroup(title: "Joining someone else's family", footer: "Invitations are icloud.com/share links made in Skyr. Opening one on this device normally joins straight away; if it opened in a browser instead, paste it here. Any Apple Account can join, wherever it lives; Family Sharing is not needed.") {
+                if (cloud.isActive && cloud.isOwner && !cloud.isShared) || cloud.needsFamilyInvitation {
+                    SettingsGroup(title: cloud.needsFamilyInvitation ? "Reconnect with your family" : "Joining someone else's family", footer: "Invitations are icloud.com/share links made in Skyr. Opening one on this device normally joins straight away; if it opened in a browser instead, paste it here. Any Apple Account can join, wherever it lives; Family Sharing is not needed.") {
                         SettingsButtonRow(symbol: "link", tint: .blue, title: "Join with an invitation link") {
                             isJoiningWithLink = true
                         }
@@ -49,13 +49,14 @@ struct FamilyView: View {
                 }
                 #endif
 
-                if cloud.isActive {
-                    if (cloud.isOwner && cloud.isShared && permissions.canManageFamily) || (!cloud.isOwner && permissions.canLeave) {
+                if cloud.isActive || (model.familyRevocationPending && cloud.currentUserRecordName != nil) {
+                    if (cloud.isOwner && (cloud.isShared || model.familyRevocationPending) && permissions.canManageFamily) || (!cloud.isOwner && permissions.canLeave) {
                         SettingsGroup(footer: cloud.isOwner ? "Everyone you invited loses access to the family's profiles." : "Your profile stays on this device; the family's profiles go.") {
-                            SettingsButtonRow(symbol: cloud.isOwner ? "xmark.circle" : "rectangle.portrait.and.arrow.right", tint: .red, title: cloud.isOwner ? "Stop sharing" : "Leave family", role: .destructive) {
+                            SettingsButtonRow(symbol: cloud.isOwner ? "xmark.circle" : "rectangle.portrait.and.arrow.right", tint: .red, title: model.familyRevocationPending ? "Finish stopping sharing" : (cloud.isOwner ? "Stop sharing" : "Leave family"), role: .destructive) {
                                 isConfirmingStop = true
                             }
                         }
+                        .disabled(isWorkingOnAccess)
                     }
                 }
 
@@ -84,9 +85,9 @@ struct FamilyView: View {
         .confirmationDialog(cloud.isOwner ? "Stop sharing the family?" : "Leave the family?", isPresented: $isConfirmingStop, titleVisibility: .visible) {
             Button(cloud.isOwner ? "Stop sharing" : "Leave", role: .destructive) {
                 Task {
-                    await cloud.stopSharing()
-                    // Devices that had the family account should not keep working.
-                    if cloud.isOwner, model.familyAccess != nil { _ = await model.rotateFamilyAccess() }
+                    isWorkingOnAccess = true
+                    problem = await model.stopFamilySharing(using: cloud)
+                    isWorkingOnAccess = false
                 }
             }
         }
@@ -94,12 +95,12 @@ struct FamilyView: View {
             Button("Remove", role: .destructive) {
                 Task {
                     isWorkingOnAccess = true
-                    await model.removeFamilyAccess()
+                    problem = await model.removeFamilyAccess()
                     isWorkingOnAccess = false
                 }
             }
         } message: {
-            Text("Members lose their connection to the server until you set it up again.")
+            Text("Skyr will ask the NAS to remove the family account. Access remains until the NAS confirms removal. Existing sessions and files already downloaded may remain available.")
         }
         .sheet(isPresented: $isEnteringAccount) {
             FamilyAccountSheet()
@@ -134,6 +135,12 @@ struct FamilyView: View {
                 }
                 .disabled(isWorkingOnAccess)
             } else {
+                if model.familyAccessNeedsVerification {
+                    Text("An earlier family account needs verification for this connection. Use its existing name and password below. Your previous setup is still kept.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(16)
+                }
                 SettingsButtonRow(symbol: "key.fill", tint: .green, title: isWorkingOnAccess ? "Setting up…" : "Set up family access") {
                     Task {
                         isWorkingOnAccess = true
@@ -141,8 +148,8 @@ struct FamilyView: View {
                         isWorkingOnAccess = false
                     }
                 }
-                .disabled(isWorkingOnAccess)
-                SettingsButtonRow(symbol: "person.text.rectangle", tint: .indigo, title: "Add an account yourself") {
+                .disabled(isWorkingOnAccess || model.familyRevocationPending)
+                SettingsButtonRow(symbol: "person.text.rectangle", tint: .indigo, title: "Use an existing account") {
                     isEnteringAccount = true
                 }
             }
@@ -198,7 +205,7 @@ private struct FamilyAccountSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 28) {
-                    SettingsGroup(title: "In DSM", footer: "One account covers the whole family, so you only do this once. Open DSM in a browser on your Mac or PC, follow these steps, then enter it below.") {
+                    SettingsGroup(title: "In DSM", footer: "If you already have a family account, verify its read-only permissions and enter it below. To create one, open DSM on your Mac or PC and follow these steps.") {
                         InstructionRow(number: 1, text: "Go to Control Panel, then User & Group, and select Create.")
                         InstructionRow(number: 2, text: "Name it skyr-family and give it a password you won't need to remember. This one account is for everyone, not one per person.")
                         InstructionRow(number: 3, text: "On the permissions step, give it Read only on your music folder and no access to everything else.")

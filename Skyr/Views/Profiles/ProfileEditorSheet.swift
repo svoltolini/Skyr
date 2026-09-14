@@ -22,6 +22,8 @@ struct ProfileEditorSheet: View {
     @State private var biometrics: Bool
     @State private var isSettingPIN = false
     @State private var isConfirmingDelete = false
+    @State private var problem: String?
+    @State private var openingSession: UUID?
 
     private enum PINChange { case keep, set(String), remove }
     private enum PhotoChange {
@@ -65,9 +67,26 @@ struct ProfileEditorSheet: View {
         }
     }
 
-    private var canSave: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && isCurrentDraft
+    }
+
+    private var isCurrentDraft: Bool {
+        guard let openingSession, profiles.sessionID == openingSession else { return false }
+        return profile.map { profiles.canEditDraft($0, session: openingSession) } ?? profiles.canManageProfiles
+    }
+
+    private func validateDraft() -> Bool {
+        guard isCurrentDraft else {
+            problem = "This profile or session changed. Close this editor and open it again."
+            return false
+        }
+        return true
+    }
 
     var body: some View {
+        let photoLabel = hasPhoto ? "Change Photo" : "Choose Photo"
         NavigationStack {
             ScrollView {
                 VStack(spacing: 28) {
@@ -76,7 +95,7 @@ struct ProfileEditorSheet: View {
                             .animation(.snappy(duration: 0.25), value: preview.map(ObjectIdentifier.init))
                         #if canImport(PhotosUI) && !os(tvOS)
                         PhotosPicker(selection: $pickedItem, matching: .images, photoLibrary: .shared()) {
-                            Label(hasPhoto ? "Change Photo" : "Choose Photo", systemImage: "photo")
+                            Label(photoLabel, systemImage: "photo")
                         }
                         .buttonStyle(.glass)
                         #else
@@ -126,10 +145,9 @@ struct ProfileEditorSheet: View {
                                 SettingsRow(symbol: "icloud.fill", tint: .blue, title: "This is you") { EmptyView() }
                             } else {
                                 SettingsButtonRow(symbol: "icloud.fill", tint: .blue, title: "Use on my Apple Account") {
-                                    var bound = profile
-                                    bound.userRecordName = user
-                                    profiles.update(bound)
-                                    dismiss()
+                                    guard validateDraft() else { return }
+                                    if profiles.bindToCurrentUser(profile) { dismiss() }
+                                    else { problem = "Open your profile before making changes." }
                                 }
                             }
                         }
@@ -141,12 +159,18 @@ struct ProfileEditorSheet: View {
                         }
                         .confirmationDialog("Delete “\(profile.name)”?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
                             Button("Delete Profile", role: .destructive) {
-                                profiles.delete(profile)
-                                dismiss()
+                                guard validateDraft() else { return }
+                                if profiles.delete(profile) { dismiss() }
+                                else { problem = "Open the owner's profile to delete a profile." }
                             }
                         } message: {
                             Text("Its favourites, playlists and history on this device go with it.")
                         }
+                    }
+                    if let problem {
+                        Text(problem)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -165,6 +189,7 @@ struct ProfileEditorSheet: View {
                 }
             }
             .onAppear {
+                if openingSession == nil { openingSession = profiles.sessionID }
                 if let profile { biometrics = profiles.biometricsEnabled(for: profile) }
             }
             #if canImport(PhotosUI) && !os(tvOS)
@@ -184,10 +209,18 @@ struct ProfileEditorSheet: View {
     }
 
     private func save() {
+        guard validateDraft() else { return }
+        guard canSave else {
+            problem = "Open your profile before saving changes."
+            return
+        }
         let newPIN: String? = if case .set(let pin) = pinChange { pin } else { nil }
         var saved: Profile?
         if let profile {
-            var updated = profile
+            guard var updated = profiles.profiles.first(where: { $0.id == profile.id }) else {
+                problem = "This profile is no longer available."
+                return
+            }
             updated.name = name
             updated.avatar = avatar
             switch pinChange {
@@ -195,19 +228,24 @@ struct ProfileEditorSheet: View {
             case .set(let pin): updated.pin = PINRecord.make(pin)
             case .remove: updated.pin = nil
             }
-            profiles.update(updated)
+            guard profiles.update(updated) else {
+                problem = "This profile changed. Open it again to save your changes."
+                return
+            }
             profiles.setBiometrics(biometrics && updated.isLocked, for: updated)
             saved = profiles.profiles.first { $0.id == profile.id }
         } else if let created = profiles.create(name: name, avatar: avatar, pin: newPIN) {
             profiles.setBiometrics(biometrics && created.isLocked, for: created)
             saved = created
         }
-        if let saved {
-            switch photoChange {
-            case .keep: break
-            case .set(let data): profiles.setPhoto(data, for: saved)
-            case .remove: profiles.setPhoto(nil, for: saved)
-            }
+        guard let saved else {
+            problem = "The profile could not be saved."
+            return
+        }
+        switch photoChange {
+        case .keep: break
+        case .set(let data): profiles.setPhoto(data, for: saved)
+        case .remove: profiles.setPhoto(nil, for: saved)
         }
         dismiss()
     }

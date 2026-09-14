@@ -23,28 +23,61 @@ public final class AppModel {
     public private(set) var isRestoring = false
     public private(set) var isReconnecting = false
     private var session: DSMSession?
+    private var connectionGeneration = UUID()
+    private let defaults: UserDefaults
+    private let services: ConnectionServices
 
     public var isDemo: Bool { library.isDemo }
     public var isConnected: Bool { session != nil }
     public var serverTitle: String { connection?.name ?? library.catalogue.serverName }
 
-    public init(library: LibraryStore) {
+    public convenience init(library: LibraryStore) {
+        self.init(library: library, defaults: .standard, services: ConnectionServices(), restoresSession: true)
+    }
+
+    init(library: LibraryStore, defaults: UserDefaults, services: ConnectionServices, restoresSession: Bool) {
         self.library = library
+        self.defaults = defaults
+        self.services = services
         loadSettings()
-        // Covers cached by earlier builds could belong to the wrong album; fetch them again once.
-        if UserDefaults.standard.integer(forKey: "coverCacheVersion") < 3 {
-            CoverStore.clear()
-            UserDefaults.standard.set(3, forKey: "coverCacheVersion")
+        if let data = defaults.data(forKey: "family.access.v2"),
+           let records = try? JSONDecoder().decode([String: FamilyAccessRecord].self, from: data) {
+            familyAccessRecords = records
         }
-        restoreSession()
+        // Covers cached by earlier builds could belong to the wrong album; fetch them again once.
+        if restoresSession, defaults.integer(forKey: "coverCacheVersion") < 3 {
+            CoverStore.clear()
+            defaults.set(3, forKey: "coverCacheVersion")
+        }
+        if restoresSession { restoreSession() }
+    }
+
+    /// Invalidate every suspended connection operation before a new intent takes over.
+    @discardableResult
+    private func beginConnectionChange() -> UUID {
+        connectionGeneration = UUID()
+        isSigningIn = false
+        isRestoring = false
+        isReconnecting = false
+        isJoiningFamily = false
+        indexer.cancel()
+        return connectionGeneration
+    }
+
+    private func isCurrent(_ generation: UUID) -> Bool {
+        generation == connectionGeneration && !Task.isCancelled
     }
 
     public func findServers() {
+        joiningFamily = nil
+        beginConnectionChange()
         stage = .discovering
         discovery.start()
     }
 
     public func select(_ server: DiscoveredServer) {
+        joiningFamily = nil
+        beginConnectionChange()
         signInError = nil
         needsOTP = false
         pendingServer = server
@@ -61,78 +94,123 @@ public final class AppModel {
 
     /// Takes an address, finds where DSM answers, and offers that server for sign-in.
     public func connect(to entry: String) async throws {
+        let generation = beginConnectionChange()
         let url = try await SynologyClient.reachableBaseURL(for: entry.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard isCurrent(generation) else { throw CancellationError() }
         guard enterAddress(url.absoluteString) else { throw SynologyError.invalidAddress }
     }
 
     public func cancelSignIn() {
+        beginConnectionChange()
         pendingServer = nil
-        isSigningIn = false
+        needsOTP = false
     }
 
     public func signIn(account: String, password: String, otpCode: String, remember: Bool) async {
         guard let server = pendingServer else { return }
+        let generation = beginConnectionChange()
         isSigningIn = true
         signInError = nil
+        defer { if generation == connectionGeneration { isSigningIn = false } }
         do {
-            let session = try await SynologyClient.login(baseURL: server.baseURL, account: account, password: password, otpCode: otpCode.isEmpty ? nil : otpCode)
-            let info = await SynologyClient.info(session)
+            let session = try await services.login(server.baseURL, account, password, otpCode.isEmpty ? nil : otpCode)
+            guard isCurrent(generation) else { await services.logout(session); return }
+            let info = await services.info(session)
+            guard isCurrent(generation) else { await services.logout(session); return }
             let name = (info?.model ?? server.model).map { "Synology \($0)" } ?? server.name
             var connection = ServerConnection(
                 name: name, baseURL: server.baseURL, account: account,
                 musicPath: nil
             )
-            if let previous = self.connection, previous.host == server.host {
+            if let previous = self.connection, previous.sourceID == connection.sourceID {
                 connection.musicPath = previous.musicPath
             }
-            if connection.musicPath == nil, let family = joiningFamily, family.address.flatMap { URL(string: $0)?.host() } == server.host {
+            if connection.musicPath == nil, let family = joiningFamily, family.familyAccount == nil || family.familyAccount == account, family.address.flatMap(URL.init(string:)).flatMap(NASOrigin.init(url:)) == NASOrigin(url: server.baseURL) {
                 connection.musicPath = family.musicPath
             }
             self.connection = connection
             saveConnection()
             if remember {
-                KeychainStore.save(password: password, for: connection.keychainAccount)
+                services.savePassword(password, connection.keychainAccount)
             } else {
-                KeychainStore.delete(account: connection.keychainAccount)
+                services.deletePassword(connection.keychainAccount)
             }
             self.session = session
             let drive = SynologyDrive(session: session, displayName: name)
-            DiagnosticsLog.shared.record("Signed in to \(name) at \(server.address)")
+            services.log("Signed in to \(name) at \(server.address)")
             pendingServer = nil
+            needsOTP = false
             discovery.stop()
-            library.replace(with: .empty, drive: drive)
-            stage = .chooseFolder
+            if library.catalogue.belongs(to: connection), !library.isEmpty {
+                library.drive = drive
+                stage = .ready
+                startAutoRefresh()
+            } else {
+                library.replace(with: .empty, drive: drive)
+                if connection.musicPath != nil { startIndexing(showsProgress: true) }
+                else { stage = .chooseFolder }
+            }
         } catch SynologyError.twoFactorRequired {
+            guard isCurrent(generation) else { return }
             needsOTP = true
             signInError = "Enter the code from your authenticator app."
         } catch {
-            DiagnosticsLog.shared.record("Sign-in failed at \(server.address): \(error.localizedDescription)")
+            guard isCurrent(generation) else { return }
+            services.log("Sign-in failed at \(server.address): \(error.localizedDescription)")
             signInError = error.localizedDescription
         }
-        isSigningIn = false
     }
 
     /// Back to the folder picker, keeping the session.
     public func chooseAnotherFolder() {
-        indexer.cancel()
+        beginConnectionChange()
         stage = .chooseFolder
     }
 
     /// Signs in again at the saved address, keeping the current library.
     public func reconnect() async {
-        guard let saved = connection, let password = storedPassword(for: saved) else { return }
+        guard let saved = connection else { return }
+        let generation = beginConnectionChange()
+        guard let password = storedPassword(for: saved) else {
+            requestReauthentication(saved, needsOTP: false)
+            return
+        }
         isReconnecting = true
-        defer { isReconnecting = false }
+        defer { if generation == connectionGeneration { isReconnecting = false } }
         let connection = saved
         do {
-            let session = try await SynologyClient.login(baseURL: connection.baseURL, account: connection.account, password: password, otpCode: nil)
+            let session = try await services.login(connection.baseURL, connection.account, password, nil)
+            guard isCurrent(generation) else { await services.logout(session); return }
             self.session = session
             self.connection = connection
             saveConnection()
             library.drive = SynologyDrive(session: session, displayName: connection.name)
             signInError = nil
-        } catch {
+        } catch SynologyError.twoFactorRequired {
+            guard isCurrent(generation) else { return }
+            requestReauthentication(connection, needsOTP: true)
+        } catch let error as NASTransportError {
+            guard isCurrent(generation) else { return }
+            requestReauthentication(saved, needsOTP: false)
             signInError = error.localizedDescription
+        } catch {
+            guard isCurrent(generation) else { return }
+            signInError = error.localizedDescription
+        }
+    }
+
+    private func requestReauthentication(_ saved: ServerConnection, needsOTP: Bool) {
+        if stage != .ready { stage = .discovering }
+        pendingServer = DiscoveredServer(name: saved.name, baseURL: saved.baseURL, model: nil)
+        self.needsOTP = needsOTP
+        if needsOTP {
+            signInError = "Enter your password and the code from your authenticator app to reconnect."
+        } else if services.password("\(saved.host)|\(saved.account)") != nil {
+            // This older key did not distinguish ports. Its existence explains the recovery prompt;
+            // its password is never promoted or sent to the newly scoped connection.
+            signInError = "Confirm your password once for this server address. Earlier versions saved it without distinguishing server ports. After connecting and scanning, Settings can recover older favourites and playlists."
+        } else {
+            signInError = "Sign in again to reconnect to your server."
         }
     }
 
@@ -149,17 +227,18 @@ public final class AppModel {
         guard let drive = library.drive else { throw SynologyError.notSignedIn }
         guard let parent else {
             let roots = try await drive.roots()
-            DiagnosticsLog.shared.record("Shares: \(roots.map(\.path).joined(separator: ", "))")
+            services.log("Shares: \(roots.map(\.path).joined(separator: ", "))")
             return roots
         }
         let entries = try await drive.list(parent)
-        DiagnosticsLog.shared.record("Picker listed \(parent): \(entries.count) entries, \(entries.filter(\.isAudio).count) audio files")
+        services.log("Picker listed \(parent): \(entries.count) entries, \(entries.filter(\.isAudio).count) audio files")
         return entries.filter { $0.isDirectory && !$0.name.hasPrefix(".") && $0.name != "@eaDir" && $0.name != "#recycle" }
     }
 
     /// Records the folder to index and starts indexing.
     public func chooseMusicFolder(path: String, showsProgress: Bool) {
         guard var connection, let drive = library.drive else { return }
+        beginConnectionChange()
         let changed = connection.musicPath != path
         connection.musicPath = path
         self.connection = connection
@@ -173,6 +252,7 @@ public final class AppModel {
 
     /// Back from the folder picker to pick another server.
     public func cancelFolderChoice() {
+        beginConnectionChange()
         if let session { Task { await SynologyClient.logout(session) } }
         session = nil
         library.replace(with: .empty, drive: nil)
@@ -202,14 +282,18 @@ public final class AppModel {
         guard let drive = library.drive, let connection, let path = connection.musicPath else { return }
         if showsProgress { stage = .indexing }
         let existing = library.catalogue.isEmpty ? nil : library.catalogue
+        let generation = connectionGeneration
         indexer.start(drive: drive, rootPath: path, serverName: connection.name, existing: existing) { [weak self] catalogue in
-            guard let self else { return }
+            guard let self, generation == connectionGeneration,
+                  self.connection == connection, library.drive?.id == drive.id else { return }
             library.replace(with: catalogue, drive: drive)
             library.saveCatalogue()
         }
     }
 
     public func useSampleLibrary() {
+        beginConnectionChange()
+        pendingServer = nil
         connection = nil
         saveConnection()
         session = nil
@@ -241,7 +325,7 @@ public final class AppModel {
     public func refreshIfStale(olderThan age: TimeInterval) {
         guard watchFolder, stage == .ready, isConnected, !isDemo, !isScanning else { return }
         guard Date.now.timeIntervalSince(library.catalogue.indexedAt) > age else { return }
-        DiagnosticsLog.shared.record("Automatic refresh started")
+        services.log("Automatic refresh started")
         startIndexing(showsProgress: false)
     }
 
@@ -261,7 +345,7 @@ public final class AppModel {
     }
 
     public func backToServers() {
-        indexer.cancel()
+        beginConnectionChange()
         stage = .discovering
         discovery.start()
     }
@@ -279,22 +363,26 @@ public final class AppModel {
     }
 
     public func signOut() async {
-        indexer.cancel()
+        beginConnectionChange()
+        pendingServer = nil
+        joiningFamily = nil
+        needsOTP = false
         demoTask?.cancel()
         autoRefreshTask?.cancel()
-        if let session { await SynologyClient.logout(session) }
+        let oldSession = session
         session = nil
         if let connection {
-            KeychainStore.delete(account: connection.keychainAccount)
-            KeychainStore.delete(account: connection.legacyKeychainAccount)
+            services.deletePassword(connection.keychainAccount)
+            services.deletePassword(connection.legacyKeychainAccount)
         }
         connection = nil
         saveConnection()
-        LibraryStore.deleteCache()
+        services.deleteCatalogue()
         library.replace(with: .empty, drive: nil)
         selectedTab = .library
         facet = .recentlyAdded
         stage = .welcome
+        if let oldSession { await services.logout(oldSession) }
     }
 
     /// Demo mode counts up to the design's library size before opening.
@@ -318,41 +406,46 @@ public final class AppModel {
         }
     }
 
-    /// The remembered password for a connection. Older builds keyed it by the resolved address,
-    /// which changes between home and away routes; such entries move to the stable key on first use.
     /// What a paired Apple Watch needs to reach the server on its own: the same address and account
     /// this device uses, with the password the Keychain holds for it. Nothing for the sample library.
     public func watchCredentials() -> WatchCredentials? {
-        guard let connection, !isDemo, let password = storedPassword(for: connection) else { return nil }
-        return WatchCredentials(baseURL: connection.baseURL, account: connection.account, password: password)
+        guard profiles?.sessionID != nil, let connection, !isDemo, let password = storedPassword(for: connection) else { return nil }
+        return WatchCredentials(baseURL: connection.baseURL, account: connection.account, password: password, driveID: library.catalogue.driveID)
     }
 
+    /// Only an exact-address legacy entry can migrate automatically; hostname-only entries require sign-in.
     private func storedPassword(for connection: ServerConnection) -> String? {
-        if let password = KeychainStore.password(for: connection.keychainAccount) { return password }
-        guard let legacy = KeychainStore.password(for: connection.legacyKeychainAccount) else { return nil }
-        KeychainStore.save(password: legacy, for: connection.keychainAccount)
-        KeychainStore.delete(account: connection.legacyKeychainAccount)
+        if let password = services.password(connection.keychainAccount) { return password }
+        guard let legacy = services.password(connection.legacyKeychainAccount) else { return nil }
+        services.savePassword(legacy, connection.keychainAccount)
+        services.deletePassword(connection.legacyKeychainAccount)
         return legacy
     }
 
     // MARK: Session restore
 
     private func restoreSession() {
-        guard let data = UserDefaults.standard.data(forKey: "connection"),
+        guard let data = defaults.data(forKey: "connection"),
               let saved = try? JSONDecoder().decode(ServerConnection.self, from: data)
         else { return }
         connection = saved
-        guard let password = storedPassword(for: saved) else { return }
-        if saved.musicPath != nil, let cached = LibraryStore.loadCachedCatalogue(), !cached.isEmpty {
+        if let cached = services.loadCatalogue(), cached.belongs(to: saved), !cached.isEmpty {
             library.replace(with: cached, drive: nil)
             stage = .ready
         }
+        guard let password = storedPassword(for: saved) else {
+            requestReauthentication(saved, needsOTP: false)
+            return
+        }
+        let generation = connectionGeneration
         isRestoring = true
         Task { [weak self] in
+            guard let self else { return }
+            defer { if generation == connectionGeneration { isRestoring = false } }
             let connection = saved
             do {
-                let session = try await SynologyClient.login(baseURL: connection.baseURL, account: saved.account, password: password, otpCode: nil)
-                guard let self else { return }
+                let session = try await services.login(connection.baseURL, saved.account, password, nil)
+                guard isCurrent(generation) else { await services.logout(session); return }
                 self.session = session
                 let drive = SynologyDrive(session: session, displayName: connection.name)
                 if library.isEmpty {
@@ -368,24 +461,30 @@ public final class AppModel {
                     refreshIfStale(olderThan: 30 * 60)
                     startAutoRefresh()
                 }
+            } catch SynologyError.twoFactorRequired {
+                guard isCurrent(generation) else { return }
+                requestReauthentication(saved, needsOTP: true)
+            } catch let error as NASTransportError {
+                guard isCurrent(generation) else { return }
+                requestReauthentication(saved, needsOTP: false)
+                signInError = error.localizedDescription
             } catch {
-                guard let self else { return }
+                guard isCurrent(generation) else { return }
                 if library.isEmpty {
                     stage = .discovering
                     discovery.start()
-                    select(DiscoveredServer(name: saved.name, baseURL: connection.baseURL, model: nil))
+                    requestReauthentication(saved, needsOTP: false)
                 }
                 signInError = error.localizedDescription
             }
-            self?.isRestoring = false
         }
     }
 
     private func saveConnection() {
         if let connection, let data = try? JSONEncoder().encode(connection) {
-            UserDefaults.standard.set(data, forKey: "connection")
+            defaults.set(data, forKey: "connection")
         } else {
-            UserDefaults.standard.removeObject(forKey: "connection")
+            defaults.removeObject(forKey: "connection")
         }
     }
 
@@ -395,9 +494,11 @@ public final class AppModel {
     public var facet: LibraryFacet = .recentlyAdded
     /// Set to push an album onto the Library tab from outside it, for example from the player sheet.
     public var albumToOpen: Album?
+    public private(set) var albumNavigationRequest = 0
 
     /// Closes whatever is in front, switches to the Library tab and opens the album there.
     public func showAlbum(_ album: Album) {
+        albumNavigationRequest += 1
         selectedTab = .library
         Task { [weak self] in
             // Let the sheet finish dismissing before the page pushes underneath it.
@@ -431,6 +532,7 @@ public final class AppModel {
     public func waitForDrive(upTo limit: Duration) async {
         let deadline = ContinuousClock.now + limit
         while library.drive == nil, !isDemo, ContinuousClock.now < deadline {
+            guard !Task.isCancelled else { return }
             try? await Task.sleep(for: .milliseconds(200))
         }
     }
@@ -450,7 +552,7 @@ public final class AppModel {
 
     public var watchFolder = true {
         didSet {
-            UserDefaults.standard.set(watchFolder, forKey: "watchFolder")
+            defaults.set(watchFolder, forKey: "watchFolder")
             if watchFolder { refreshIfStale(olderThan: 10 * 60) }
         }
     }
@@ -462,38 +564,78 @@ public final class AppModel {
     /// What the family record says about this server, once a folder is chosen.
     public var familyInfo: FamilyInfo? {
         guard let connection, connection.musicPath != nil else { return nil }
+        let access = familyRevocationPending ? nil : familyAccess
         return FamilyInfo(
             name: "\(connection.name) family", serverName: connection.name,
             serverAccount: connection.account, musicPath: connection.musicPath, updatedAt: .distantPast,
-            familyAccount: familyAccess?.account, familyPassword: familyAccess?.password,
+            familyAccount: access?.account, familyPassword: access?.password,
             address: connection.baseURL.absoluteString
         )
     }
 
     // MARK: Family access
 
-    /// The read-only NAS account made for the family, on the owner's device.
-    public private(set) var familyAccess: FamilyAccess? = {
-        guard let account = UserDefaults.standard.string(forKey: "family.account"), let password = KeychainStore.password(for: "family|\(account)") else { return nil }
-        return FamilyAccess(account: account, password: password)
-    }()
-    /// Set by the app: the family record needs pushing.
+    /// A connection sees only family credentials verified for its exact origin and provisioning account.
+    private var familyAccessRecords: [String: FamilyAccessRecord] = [:]
+    public var familyAccess: FamilyAccess? {
+        guard let source = connection?.sourceID, let record = familyAccessRecords[source],
+              record.sourceID == source, let password = services.password(record.keychainAccount) else { return nil }
+        return FamilyAccess(account: record.account, password: password, sourceID: source)
+    }
+    public var familyRevocationPending: Bool {
+        guard let source = connection?.sourceID else { return false }
+        return familyAccessRecords[source]?.pendingRevocationScope != nil
+    }
+    public var familyAccessNeedsVerification: Bool {
+        familyAccess == nil && (!familyAccessRecords.isEmpty || defaults.string(forKey: "family.account") != nil)
+    }
     public var onFamilyAccessChanged: (() -> Void)?
-    /// A member's device is signing in with the family account.
+    public private(set) var isChangingFamilyAccess = false
     public private(set) var isJoiningFamily = false
 
-    private func store(_ access: FamilyAccess?) {
-        if let previous = familyAccess, previous.account != access?.account {
-            KeychainStore.delete(account: "family|\(previous.account)")
+    private func persistFamilyRecords() throws {
+        defaults.set(try JSONEncoder().encode(familyAccessRecords), forKey: "family.access.v2")
+    }
+
+    private func store(_ access: FamilyAccess?, sourceID: String) throws {
+        guard connection?.sourceID == sourceID else { throw CancellationError() }
+        let previous = familyAccessRecords[sourceID]
+        if let previous, previous.pendingRevocationScope != nil, access?.account != previous.account {
+            throw CocoaError(.userCancelled)
         }
-        familyAccess = access
         if let access {
-            UserDefaults.standard.set(access.account, forKey: "family.account")
-            KeychainStore.save(password: access.password, for: "family|\(access.account)")
+            guard access.sourceID == sourceID else { throw CancellationError() }
+            let record = FamilyAccessRecord(account: access.account, sourceID: sourceID,
+                                            pendingRevocationScope: previous?.pendingRevocationScope)
+            services.savePassword(access.password, record.keychainAccount)
+            guard services.password(record.keychainAccount) == access.password else {
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            familyAccessRecords[sourceID] = record
+            try persistFamilyRecords()
+            if let previous, previous.keychainAccount != record.keychainAccount {
+                services.deletePassword(previous.keychainAccount)
+            }
         } else {
-            UserDefaults.standard.removeObject(forKey: "family.account")
+            familyAccessRecords.removeValue(forKey: sourceID)
+            try persistFamilyRecords()
+            if let previous { services.deletePassword(previous.keychainAccount) }
         }
         onFamilyAccessChanged?()
+    }
+
+    private struct FamilyContext {
+        let connection: UUID
+        let profileSession: UUID?
+    }
+
+    private var familyContext: FamilyContext {
+        FamilyContext(connection: connectionGeneration, profileSession: profiles?.sessionID)
+    }
+
+    private func checkFamilyContext(_ expected: FamilyContext, sourceID: String) throws {
+        guard isCurrent(expected.connection), connection?.sourceID == sourceID,
+              profiles?.sessionID == expected.profileSession else { throw CancellationError() }
     }
 
     private var musicShareName: String? {
@@ -503,19 +645,25 @@ public final class AppModel {
     /// Makes the family account on the NAS with a long random password and read-only access to the
     /// music share. Returns what went wrong, if anything; the owner's account must be an administrator.
     public func setUpFamilyAccess() async -> String? {
+        guard !isChangingFamilyAccess else { return "Wait for the current family access change to finish." }
+        isChangingFamilyAccess = true
+        defer { isChangingFamilyAccess = false }
+        guard !familyRevocationPending else { return "Finish stopping sharing before creating another family account." }
         guard session != nil, let connection else { return "Not connected to the server." }
         guard let share = musicShareName else { return "Choose the music folder first." }
+        let expected = familyContext
         let account = "skyr-" + Self.randomToken(length: 6, from: "abcdefghijkmnpqrstuvwxyz23456789")
         let password = Self.randomPassword()
         do {
             try await withAdministrator { admin, confirm in
-                try await SynologyClient.createFamilyUser(admin, name: account, password: password, shareName: share, confirm: confirm)
+                try await self.services.createFamilyUser(admin, account, password, share, confirm)
             }
-            store(FamilyAccess(account: account, password: password))
-            DiagnosticsLog.shared.record("Family account \(account) ready with read-only access to “\(share)” on \(connection.name)")
+            try checkFamilyContext(expected, sourceID: connection.sourceID)
+            try store(FamilyAccess(account: account, password: password, sourceID: connection.sourceID), sourceID: connection.sourceID)
+            services.log("Family account \(account) ready with read-only access to “\(share)” on \(connection.name)")
             return nil
         } catch {
-            DiagnosticsLog.shared.record("Family account could not be created: \(error.localizedDescription)")
+            services.log("Family account could not be created: \(error.localizedDescription)")
             return "Your NAS wouldn't let the app create the account. DSM blocks account management from outside its own web interface, especially with two-factor authentication on. Use “Add an account yourself” below; it takes a minute and works everywhere."
         }
     }
@@ -529,25 +677,37 @@ public final class AppModel {
         // Only the session that is already open is used. Signing in again to gain more rights fails
         // on any account with two-factor authentication, and repeated tries make DSM mail its owner
         // emergency codes and eventually block the device, so the app never does that on its own.
-        guard await SynologyClient.canManageUsers(session) == true else {
-            DiagnosticsLog.shared.record("\(connection.account) may not manage users through this connection")
+        let expected = familyContext
+        guard await services.canManageUsers(session) == true else {
+            services.log("\(connection.account) may not manage users through this connection")
             throw SynologyError.api(code: 105, api: "SYNO.Core.User")
         }
+        try checkFamilyContext(expected, sourceID: connection.sourceID)
         var confirm: String?
         if let password = storedPassword(for: connection) {
-            confirm = await SynologyClient.confirmToken(session, password: password)
+            confirm = await services.confirmPassword(session, password)
         }
+        try checkFamilyContext(expected, sourceID: connection.sourceID)
         try await body(session, confirm)
     }
 
     /// An account the owner made by hand; checked with a sign-in before it is kept.
     public func useFamilyAccess(account: String, password: String) async -> String? {
+        guard !isChangingFamilyAccess else { return "Wait for the current family access change to finish." }
+        isChangingFamilyAccess = true
+        defer { isChangingFamilyAccess = false }
         guard let connection else { return "Not connected to the server." }
+        if let pending = familyAccessRecords[connection.sourceID], pending.pendingRevocationScope != nil,
+           pending.account != account {
+            return "Verify the existing family account \(pending.account) to finish stopping sharing before using another account."
+        }
+        let expected = familyContext
         do {
-            let probe = try await SynologyClient.login(baseURL: connection.baseURL, account: account, password: password, otpCode: nil)
-            await SynologyClient.logout(probe)
-            store(FamilyAccess(account: account, password: password))
-            DiagnosticsLog.shared.record("Family account \(account) set by hand")
+            let probe = try await services.login(connection.baseURL, account, password, nil)
+            await services.logout(probe)
+            try checkFamilyContext(expected, sourceID: connection.sourceID)
+            try store(FamilyAccess(account: account, password: password, sourceID: connection.sourceID), sourceID: connection.sourceID)
+            services.log("Family account \(account) set by hand")
             return nil
         } catch {
             return error.localizedDescription
@@ -556,33 +716,93 @@ public final class AppModel {
 
     /// A new password for the family account, so devices that left stop working.
     public func rotateFamilyAccess() async -> String? {
-        guard session != nil, let access = familyAccess else { return nil }
+        guard !isChangingFamilyAccess else { return "Wait for the current family access change to finish." }
+        isChangingFamilyAccess = true
+        defer { isChangingFamilyAccess = false }
+        guard !familyRevocationPending else { return "Finish stopping sharing before changing the family password." }
+        return await rotateFamilyAccess(verifyScope: { true })
+    }
+
+    private func rotateFamilyAccess(verifyScope: () -> Bool) async -> String? {
+        guard session != nil, let access = familyAccess else { return "Reconnect to the NAS before changing family access." }
+        let expected = familyContext
         let password = Self.randomPassword()
         do {
             try await withAdministrator { admin, confirm in
-                try await SynologyClient.setPassword(admin, user: access.account, password: password, confirm: confirm)
+                try await self.services.setFamilyPassword(admin, access.account, password, confirm)
             }
-            store(FamilyAccess(account: access.account, password: password))
-            DiagnosticsLog.shared.record("Family account password rotated")
+            try checkFamilyContext(expected, sourceID: access.sourceID)
+            guard verifyScope() else { throw CancellationError() }
+            try store(FamilyAccess(account: access.account, password: password, sourceID: access.sourceID), sourceID: access.sourceID)
+            services.log("Family account password rotated")
             return nil
         } catch {
             return error.localizedDescription
         }
     }
 
-    /// Deletes the family account from the NAS when the owner can, and forgets it either way.
-    public func removeFamilyAccess() async {
-        if session != nil, let access = familyAccess {
-            do {
-                try await withAdministrator { admin, confirm in
-                    try await SynologyClient.deleteUser(admin, name: access.account, confirm: confirm)
-                }
-                DiagnosticsLog.shared.record("Family account \(access.account) deleted from the server")
-            } catch {
-                DiagnosticsLog.shared.record("Family account could not be deleted: \(error.localizedDescription)")
+    /// Keep the local recovery details until the NAS confirms deletion.
+    public func removeFamilyAccess() async -> String? {
+        guard !isChangingFamilyAccess else { return "Wait for the current family access change to finish." }
+        isChangingFamilyAccess = true
+        defer { isChangingFamilyAccess = false }
+        guard !familyRevocationPending else { return "Finish stopping sharing before removing the saved family account." }
+        guard session != nil, let access = familyAccess else { return "Reconnect to the NAS before removing family access." }
+        let expected = familyContext
+        do {
+            try await withAdministrator { admin, confirm in
+                try await self.services.deleteFamilyUser(admin, access.account, confirm)
             }
+            try checkFamilyContext(expected, sourceID: access.sourceID)
+            try store(nil, sourceID: access.sourceID)
+            return nil
+        } catch { return error.localizedDescription }
+    }
+
+    /// Revocation is complete only after CloudKit confirms removal and the NAS password changes.
+    public func stopFamilySharing(using cloud: CloudSync) async -> String? {
+        guard !isChangingFamilyAccess else { return "Wait for the current family access change to finish." }
+        isChangingFamilyAccess = true
+        defer { isChangingFamilyAccess = false }
+        let wasOwner = cloud.isOwner
+        let expected = familyContext
+        let source = connection?.sourceID
+        let scope = cloud.sharingScopeIdentifier
+        let hadNASAccess = familyAccess != nil || !familyAccessRecords.isEmpty
+            || defaults.string(forKey: "family.account") != nil || cloud.family?.familyAccount != nil
+        do {
+            if wasOwner, let source, var record = familyAccessRecords[source] {
+                guard let scope else { return "Refresh iCloud before stopping family sharing." }
+                if let pending = record.pendingRevocationScope, pending != scope {
+                    return "This pending change belongs to another Apple Account or family. Return to that account to finish it."
+                }
+                record.pendingRevocationScope = scope
+                familyAccessRecords[source] = record
+                try persistFamilyRecords()
+            }
+            try await cloud.stopSharing()
+            guard wasOwner else { return nil }
+            guard let source else {
+                return hadNASAccess ? "iCloud sharing has stopped. Reconnect to the original NAS and revoke its family account in DSM; NAS access has not been confirmed as revoked." : nil
+            }
+            try checkFamilyContext(expected, sourceID: source)
+            guard scope == cloud.sharingScopeIdentifier else { throw CancellationError() }
+            if familyAccess != nil {
+                if let error = await rotateFamilyAccess(verifyScope: { cloud.sharingScopeIdentifier == scope }) {
+                    return "iCloud sharing has stopped, but NAS access has not been revoked. \(error) Retry here, or change the family account password in DSM. Existing NAS sessions may also need to be ended in DSM."
+                }
+                try checkFamilyContext(expected, sourceID: source)
+                guard cloud.sharingScopeIdentifier == scope else { throw CancellationError() }
+                familyAccessRecords[source]?.pendingRevocationScope = nil
+                try persistFamilyRecords()
+                onFamilyAccessChanged?()
+            } else if hadNASAccess {
+                return "iCloud sharing has stopped, but the saved NAS credentials could not be verified. Change or disable the family account in DSM, end its existing sessions, then verify family access here."
+            }
+            return nil
+        } catch {
+            return "Family sharing could not be fully stopped. \(error.localizedDescription) Retry after reconnecting."
         }
-        store(nil)
     }
 
     /// The family record arrived: a member's device connects with the family account on its own,
@@ -590,9 +810,9 @@ public final class AppModel {
     public func familyArrived(_ info: FamilyInfo) {
         guard let account = info.familyAccount, let password = info.familyPassword else { return }
         if let connection {
-            if connection.account == account, info.address.flatMap { URL(string: $0)?.host() } == connection.host,
+            if connection.account == account, info.address.flatMap(URL.init(string:)).flatMap(NASOrigin.init(url:)) == NASOrigin(url: connection.baseURL),
                storedPassword(for: connection) != password {
-                KeychainStore.save(password: password, for: connection.keychainAccount)
+                services.savePassword(password, connection.keychainAccount)
                 Task { await reconnect() }
             }
             return
@@ -604,29 +824,40 @@ public final class AppModel {
     /// Signs in with the family account and indexes the family's folder; no password asked.
     public func connectWithFamilyAccess(_ info: FamilyInfo) async {
         guard info.isReachable, let account = info.familyAccount, let password = info.familyPassword, !isJoiningFamily else { return }
+        let generation = beginConnectionChange()
         isJoiningFamily = true
         signInError = nil
-        defer { isJoiningFamily = false }
+        defer { if generation == connectionGeneration { isJoiningFamily = false } }
         do {
             let url = try familyURL(info)
-            let session = try await SynologyClient.login(baseURL: url, account: account, password: password, otpCode: nil)
-            let dsm = await SynologyClient.info(session)
+            let session = try await services.login(url, account, password, nil)
+            guard isCurrent(generation) else { await services.logout(session); return }
+            let dsm = await services.info(session)
+            guard isCurrent(generation) else { await services.logout(session); return }
             let name = dsm?.model.map { "Synology \($0)" } ?? info.serverName
             let connection = ServerConnection(name: name, baseURL: url, account: account, musicPath: info.musicPath)
             self.connection = connection
             saveConnection()
-            KeychainStore.save(password: password, for: connection.keychainAccount)
+            services.savePassword(password, connection.keychainAccount)
             self.session = session
             discovery.stop()
             library.replace(with: .empty, drive: SynologyDrive(session: session, displayName: name))
-            DiagnosticsLog.shared.record("Connected to \(name) with the family account at \(url.host() ?? "its address")")
+            services.log("Connected to \(name) with the family account at \(url.host() ?? "its address")")
             if connection.musicPath != nil {
                 startIndexing(showsProgress: true)
             } else {
                 stage = .chooseFolder
             }
+        } catch let error as NASTransportError {
+            guard isCurrent(generation) else { return }
+            if let url = try? familyURL(info) {
+                select(DiscoveredServer(name: info.serverName, baseURL: url, model: nil))
+                joiningFamily = info
+            }
+            signInError = error.localizedDescription
         } catch {
-            DiagnosticsLog.shared.record("Family sign-in failed: \(error.localizedDescription)")
+            guard isCurrent(generation) else { return }
+            services.log("Family sign-in failed: \(error.localizedDescription)")
             signInError = error.localizedDescription
         }
     }
@@ -646,13 +877,15 @@ public final class AppModel {
 
     /// The family this device is joining; its music folder is used instead of asking.
     private var joiningFamily: FamilyInfo?
+    public var pendingFamilyAccount: String? { joiningFamily?.familyAccount }
+    public var pendingFamilyPassword: String? { joiningFamily?.familyPassword }
 
     /// A member's device: reach the family's server and ask for the password.
     public func joinFamilyServer(_ info: FamilyInfo) async {
         guard info.isReachable else { return }
-        joiningFamily = info
         do {
             select(DiscoveredServer(name: info.serverName, baseURL: try familyURL(info), model: nil))
+            joiningFamily = info
         } catch {
             signInError = error.localizedDescription
         }
@@ -696,7 +929,6 @@ public final class AppModel {
     }
 
     private func loadSettings() {
-        let defaults = UserDefaults.standard
         if defaults.object(forKey: "watchFolder") != nil { watchFolder = defaults.bool(forKey: "watchFolder") }
     }
 }

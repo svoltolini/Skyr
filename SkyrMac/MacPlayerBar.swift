@@ -8,6 +8,7 @@ struct MacPlayerBar: View {
     static let height: CGFloat = 84
     let openNowPlaying: () -> Void
     @Environment(PlayerModel.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scrubbing = false
     @State private var scrubValue = 0.0
 
@@ -27,12 +28,16 @@ struct MacPlayerBar: View {
                 Image(systemName: "speaker.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Slider(value: $player.volume, in: 0...1)
                     .controlSize(.small)
                     .frame(width: 100)
+                    .accessibilityLabel("Volume")
+                    .accessibilityValue(Text(player.volume, format: .percent.precision(.fractionLength(0))))
                 Image(systemName: "speaker.wave.3.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 MacRoutePicker()
                     .frame(width: 26, height: 26)
                     .padding(.leading, 4)
@@ -72,7 +77,7 @@ struct MacPlayerBar: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                .animation(.easeInOut(duration: 0.25), value: track.id)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: track.id)
             }
         } else {
             HStack(spacing: 12) {
@@ -136,24 +141,46 @@ struct MacPlayerBar: View {
         HStack(spacing: 8) {
             Text(TimeText.clock(scrubbing ? scrubValue * player.duration : player.position))
                 .frame(width: 42, alignment: .trailing)
+                .accessibilityHidden(true)
             Slider(
                 value: Binding(
                     get: { scrubbing ? scrubValue : player.progress },
-                    set: { scrubValue = $0 }
+                    set: { value in
+                        scrubValue = value
+                        // Keyboard and VoiceOver adjustments need not begin a mouse drag.
+                        if !scrubbing { player.seek(toFraction: value) }
+                    }
                 ),
                 in: 0...1
             ) { editing in
+                if editing { scrubValue = player.progress }
                 scrubbing = editing
                 if !editing { player.seek(toFraction: scrubValue) }
             }
             .controlSize(.mini)
             .disabled(!player.hasTrack)
+            .accessibilityLabel("Playback position")
+            .accessibilityValue(playbackPositionDescription)
             Text("-" + TimeText.clock(scrubbing ? (1 - scrubValue) * player.duration : player.remaining))
                 .frame(width: 42, alignment: .leading)
+                .accessibilityHidden(true)
         }
         .font(.system(size: 10.5))
         .monospacedDigit()
         .foregroundStyle(.secondary)
+    }
+
+    private var playbackPositionDescription: Text {
+        let elapsed = scrubbing ? scrubValue * player.duration : player.position
+        let remaining = max(0, player.duration - elapsed)
+        return Text("\(spokenDuration(elapsed)) elapsed, \(spokenDuration(remaining)) remaining")
+    }
+
+    private func spokenDuration(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "0 seconds" }
+        return Duration.seconds(seconds.rounded(.down)).formatted(.units(
+            allowed: [.hours, .minutes, .seconds], width: .wide
+        ))
     }
 }
 
@@ -164,9 +191,15 @@ struct MacVolumeSlider: View {
     var body: some View {
         @Bindable var player = player
         HStack(spacing: 10) {
-            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+            Image(systemName: "speaker.fill")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Slider(value: $player.volume, in: 0...1)
-            Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
+                .accessibilityLabel("Volume")
+                .accessibilityValue(Text(player.volume, format: .percent.precision(.fractionLength(0))))
+            Image(systemName: "speaker.wave.3.fill")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
     }
 }
