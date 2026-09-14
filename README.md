@@ -39,4 +39,3 @@ Passing a build or local simulator check is not sufficient release evidence. Pro
 ## Current audit
 
 The release-readiness review from 14 September 2026 is in [docs/RELEASE-AUDIT-2026-09-14.md](docs/RELEASE-AUDIT-2026-09-14.md). The tracked backlog is in [GitHub Issues](https://github.com/svoltolini/Skyr/issues).
-
