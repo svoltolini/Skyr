@@ -1,4 +1,5 @@
 import Foundation
+import SkyrShared
 
 /// A song as the watch knows it: enough to list it, size it and fetch it from the server.
 public nonisolated struct WatchTrack: Codable, Hashable, Sendable, Identifiable {
@@ -180,12 +181,35 @@ public nonisolated struct WatchCatalogue: Codable, Sendable {
     public var profileName: String?
     public var playlists: [WatchPlaylist]
     public var generatedAt: Date
+    public private(set) var artworkPolicyVersion: Int
 
     public init(serverName: String, profileName: String?, playlists: [WatchPlaylist], generatedAt: Date = .now) {
         self.serverName = serverName
         self.profileName = profileName
         self.playlists = playlists
         self.generatedAt = generatedAt
+        artworkPolicyVersion = ArtworkPolicy.version
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        serverName = try values.decode(String.self, forKey: .serverName)
+        profileName = try values.decodeIfPresent(String.self, forKey: .profileName)
+        playlists = try values.decode([WatchPlaylist].self, forKey: .playlists)
+        generatedAt = try values.decode(Date.self, forKey: .generatedAt)
+        let storedPolicy = try? values.decode(Int.self, forKey: .artworkPolicyVersion)
+        if storedPolicy != ArtworkPolicy.version {
+            // Apply this to every decode, including queued messages from an older phone.
+            // Playlist/track identities and download ownership remain unchanged.
+            for index in playlists.indices {
+                let id = playlists[index].id
+                playlists[index].coverColours = playlists[index].coverColours.indices.map { offset in
+                    let colours = ArtPalette.pair(for: "watch-\(id)-\(offset)")
+                    return WatchColourPair(a: colours.0, b: colours.1)
+                }
+            }
+        }
+        artworkPolicyVersion = ArtworkPolicy.version
     }
 
     /// The same catalogue with the timestamp removed, so two builds of the same content compare equal.

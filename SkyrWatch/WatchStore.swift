@@ -98,7 +98,10 @@ final class WatchStore: NSObject, WCSessionDelegate {
         isSample = false
         WatchDownloads.shared.reconcile(received)
         try? FileManager.default.createDirectory(at: Self.catalogueURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: Self.catalogueURL, options: .atomic)
+        // Persist normalized colours and their policy marker after receiving an older catalogue.
+        if let normalized = try? JSONEncoder().encode(received) {
+            try? normalized.write(to: Self.catalogueURL, options: .atomic)
+        }
     }
 
     private func apply(credentials: WatchCredentials) {

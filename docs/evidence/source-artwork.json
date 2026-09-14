@@ -1,0 +1,39 @@
+{
+  "issue": 34,
+  "baselineCommit": "6c6126b14e4213e01bc39f4f517ad6908a9dc7ae",
+  "patchSHA256": "311ec2c63060260e135a583b8737102c587c90b56a105e0dd9d7208e4b3584a0",
+  "tests": {
+    "configuration": "Release",
+    "focusedPassed": 27,
+    "combinedPassed": 216
+  },
+  "builds": {
+    "macOS": "passed",
+    "tvOS": "passed",
+    "iOSSimulatorIncludingWatchWidgets": "passed",
+    "integratedMacOS": "passed"
+  },
+  "removedFiles": [
+    "Packages/SkyrCore/Sources/SkyrCore/Indexing/ArtworkLookup.swift",
+    "Packages/SkyrCore/Sources/SkyrCore/Indexing/ArtworkPrivacyPreference.swift"
+  ],
+  "sourceHashes": {
+    "Packages/SkyrCore/Sources/SkyrCore/Indexing/CoverStore.swift": "d95c9a9c3e106f7153cf16425c846c3e0aba8e5a2c38b7ffcf518923d7ab66d9",
+    "Packages/SkyrCore/Sources/SkyrCore/Indexing/LibraryIndexer.swift": "77a26c5750b72a26711bd7483d34dba45f4078f597415b4947d0f1de2214f385",
+    "Packages/SkyrCore/Sources/SkyrCore/Models/Catalogue.swift": "d17bec27bf17d84dac9249a403222921b58f9160cdcdf61563b358729889a60f",
+    "Packages/SkyrCore/Sources/SkyrCore/Models/WatchCatalogue.swift": "8c450a8a5e2ab55a05c94f09c8016149141732a39bae1f4b8fc054b03c642478",
+    "Packages/SkyrCore/Sources/SkyrCore/State/LibraryStore.swift": "ab8d7f2d2370c2038149888fcb8e7695c7770212586baa8997d77a3c29467ed4",
+    "Packages/SkyrCore/Sources/SkyrShared/WidgetSnapshot.swift": "62e4a7010e1d915e2c8caf918bb5d14c87cb4e4012ca863a8b12670be4504337",
+    "Packages/SkyrCore/Sources/SkyrShared/ArtworkPolicy.swift": "b219ebe804f871da0451d6e01941283be05cde504268a4c22eb96c8ff3f05831",
+    "SkyrWatch/WatchStore.swift": "a6f0866b043f46e7a7788380c08e33d95c4310285b873dad5c7afb258e55cc92"
+  },
+  "dataBoundary": "Legacy cover files left unused and untouched; metadata/download/music identities preserved; source cover cache rebuilt when connected",
+  "remainingAcceptance": [
+    "Signed NAS artwork regeneration",
+    "Watch delivery from older/current phone",
+    "Widget timeline refresh and already-rendered OS surfaces"
+  ],
+  "uploadPerformed": false,
+  "marketingVersion": "1.0",
+  "sourceBuild": "202609142150"
+}

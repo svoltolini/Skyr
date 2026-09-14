@@ -232,21 +232,13 @@ struct SettingsView: View {
 
     private var privacySection: some View {
         Section {
-            Toggle("Look up artwork with Apple", isOn: Binding(
-                get: { model.artworkLookup.isEnabled },
-                set: { model.artworkLookup.setEnabled($0) }
-            ))
-            .accessibilityHint("Optional. Sends artist and album names to Apple from this device.")
-            if let error = model.artworkLookup.preferenceError {
-                Text(error).font(.callout).foregroundStyle(.red)
-            }
             NavigationLink { PrivacyDetailsView() } label: {
                 Label("Privacy Details", systemImage: "hand.raised")
             }
         } header: {
             Text("Privacy")
         } footer: {
-            Text(ArtworkLookup.disclosure)
+            Text(PrivacyDetailsView.artworkDisclosure)
         }
     }
 
@@ -457,8 +449,8 @@ struct SettingsView: View {
                     .buttonStyle(RowPressStyle())
                 }
 
-                SettingsGroup(title: "Privacy", footer: ArtworkLookup.disclosure) {
-                    ArtworkPrivacyControl()
+                SettingsGroup(title: "Privacy", footer: PrivacyDetailsView.artworkDisclosure) {
+                    PrivacyDetailsButton()
                         .padding(16)
                 }
 

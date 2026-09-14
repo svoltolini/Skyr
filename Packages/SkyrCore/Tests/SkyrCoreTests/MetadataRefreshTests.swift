@@ -77,11 +77,7 @@ private nonisolated func cachedMetadata(_ files: [RemoteEntry]) -> Catalogue {
 @MainActor private func withMetadataStorage(_ body: @MainActor (LibraryIndexer) async throws -> Void) async throws {
     let directory = FileManager.default.temporaryDirectory.appending(path: "skyr-metadata-\(UUID())")
     defer { try? FileManager.default.removeItem(at: directory) }
-    let lookup = ArtworkLookup(preference: ArtworkPrivacyPreference(fileURL: directory.appending(path: "artwork-choice"))) { _, _ in
-        Issue.record("Metadata fixture attempted an external artwork request")
-        throw URLError(.unsupportedURL)
-    }
-    let indexer = LibraryIndexer(recordDiagnostics: { _ in }, artworkLookup: lookup)
+    let indexer = LibraryIndexer(recordDiagnostics: { _ in })
     defer { indexer.cancel() }
     try await CoverStore.$directoryOverride.withValue(directory.appending(path: "covers")) {
         try await body(indexer)

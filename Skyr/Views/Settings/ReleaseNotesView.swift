@@ -15,7 +15,7 @@ struct Release: Identifiable {
             version: "1.0",
             date: "September 2026",
             highlights: platformHighlights,
-            fixes: []
+            fixes: ["Album covers now come from your NAS and embedded music tags. Some older cached covers may show placeholders while offline; the next connected scan restores available source covers. Your music and downloaded songs stay in place."]
         ),
     ]
 

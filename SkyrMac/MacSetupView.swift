@@ -204,7 +204,7 @@ private struct MacWelcomeStep: View {
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                                 if page.id == 3 {
-                                    ArtworkPrivacyControl()
+                                    PrivacyDetailsButton()
                                         .padding(.top, 8)
                                 }
                             }

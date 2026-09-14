@@ -1,5 +1,7 @@
 # Skyr 1.0 — responsiveness and artwork privacy
 
+This is the historical batch 4 record. Its optional Apple artwork behavior is superseded by the source-only release change tracked in [#34](https://github.com/svoltolini/Skyr/issues/34); see the current privacy policy and release evidence.
+
 Batch 4 addresses [#33](https://github.com/svoltolini/Skyr/issues/33) and the in-app work in [#14](https://github.com/svoltolini/Skyr/issues/14). Marketing version remains **1.0**; every target uses build **202609142150**.
 
 ## Changes

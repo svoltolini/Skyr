@@ -10,7 +10,7 @@ struct OnboardingPage: Identifiable {
     let tint: Color
 
     /// What Skyr does with a person's music and sign-in, told before anything is asked of them.
-    /// NAS playback, iCloud sharing and optional Apple artwork are explained separately.
+    /// NAS playback, iCloud sharing and source artwork are explained separately.
     static var privacy: [OnboardingPage] {
         [
             OnboardingPage(
@@ -33,8 +33,8 @@ struct OnboardingPage: Identifiable {
             ),
             OnboardingPage(
                 id: 3,
-                title: "Artwork is\nyour choice.",
-                text: ArtworkLookup.disclosure,
+                title: "Covers from\nyour own library.",
+                text: PrivacyDetailsView.artworkDisclosure,
                 tint: Palette.neutralTint
             ),
         ]
@@ -88,7 +88,7 @@ struct OnboardingView: View {
                             .focusable()
                             #endif
                         if page.id == 3 {
-                            ArtworkPrivacyControl()
+                            PrivacyDetailsButton()
                                 .padding(.top, 8)
                         }
                     }

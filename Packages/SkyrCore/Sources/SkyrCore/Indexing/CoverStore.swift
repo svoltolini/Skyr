@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import SkyrShared
 
 /// Album covers extracted from files or downloaded from the drive, kept on disk.
 public nonisolated enum CoverStore {
@@ -9,8 +10,13 @@ public nonisolated enum CoverStore {
     private static let mutationLock = NSRecursiveLock()
 
     /// Resolved once: every cover lookup used to create the folder again, a file system call per artwork drawn.
-    private static let defaultDirectory = AppDirectories.support
-        .appending(path: "Skyr/covers", directoryHint: .isDirectory)
+    private static let defaultDirectory = sourceDirectory(in: AppDirectories.support)
+
+    /// Earlier caches mixed source pictures with external artwork without recording provenance.
+    /// Leave those files untouched; every reader and writer uses this source-only namespace.
+    static func sourceDirectory(in support: URL) -> URL {
+        support.appending(path: "Skyr/source-covers-v\(ArtworkPolicy.version)", directoryHint: .isDirectory)
+    }
     public static var directory: URL { directoryOverride ?? defaultDirectory }
 
     private static func mutate(_ description: String, _ operation: () throws -> Void) {
@@ -73,7 +79,7 @@ public nonisolated enum CoverStore {
         fileURL(for: albumID).deletingPathExtension().appendingPathExtension("missing")
     }
 
-    /// Remembers that the folder, the files and the store had no picture, so the search is not repeated on every refresh.
+    /// Remembers that the folder and the files had no picture, so the search is not repeated on every refresh.
     public static func noteMissingCover(for albumID: String) {
         mutate("record missing album artwork") {
             try Data().write(to: missingURL(for: albumID), options: .atomic)
@@ -183,14 +189,4 @@ public nonisolated enum CoverStore {
         Set(albums.filter { hasCover(for: $0.id) }.map(\.id))
     }
 
-    /// Hashes of the covers already on disk, grouped by lowercased artist, to spot repeated pictures.
-    public static func hashesByArtist(among albums: [Album]) -> [String: Set<String>] {
-        var result: [String: Set<String>] = [:]
-        for album in albums where hasCover(for: album.id) {
-            if let data = try? Data(contentsOf: fileURL(for: album.id)) {
-                result[album.artist.lowercased(), default: []].insert(ArtworkLookup.hash(data))
-            }
-        }
-        return result
-    }
 }
