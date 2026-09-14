@@ -5,6 +5,7 @@ Batch 4 addresses [#33](https://github.com/svoltolini/Skyr/issues/33) and the in
 ## Changes
 
 - Routine profile edits write a small ordered journal before publishing the new state. Full snapshot normalization, encoding and compression run on a serial background queue. Relaunch replays accepted edits with their original revisions, while checkpoint tokens prevent an older save from replacing newer state.
+- The cloud document format is unchanged. Local journal replay requires this build or later; older builds read only the most recent completed checkpoint.
 - Cloud document preparation runs outside the main actor. Account/generation and deletion checks still govern publication. Profile activation, remote merges and explicit recovery continue to use synchronous acknowledgement paths; this change does not move every profile operation off the main actor.
 - Failed edits and failed background saves surface a profile-save error on iPhone/iPad, Mac and TV. A journal write failure rejects the edit; a snapshot failure retains its journal for recovery.
 - Apple artwork lookup defaults off. Its consent file is local to the device, excluded from backup and separate from profile/iCloud settings. Both scanning and manual cover refresh use the same choice. Disabling cancels the URLSession transfer and invalidates late results before they can be cached.
@@ -36,7 +37,19 @@ On an iPhone 17 Pro simulator running iOS 26.5, the default-off choice and offli
 
 The final source, including the account-change correction, passed iOS (with Watch/widgets), universal Mac and TV Release archives and App Store exports. All five app/extension bundles are **1.0 (202609142150)**, include their privacy manifests and pass signature verification. Exported CloudKit environments are Production; development debugging is disabled. The iPhone signature and provisioning profile both contain the approved CarPlay audio entitlement. TV reports only the expected skipped AppIntents extraction notice.
 
-[Export verification](evidence/batch-4-export-verification.json) records package hashes and bundle checks. The frozen source manifest matched after archiving. An earlier, unuploaded candidate was superseded by the final account-change correction. TestFlight processing and availability will be recorded here after Apple's checks finish.
+[Export verification](evidence/batch-4-export-verification.json) records package hashes and bundle checks. The frozen source manifest matched after archiving. An earlier, unuploaded candidate was superseded by the final account-change correction.
+
+## TestFlight release
+
+Apple accepted all three uploads. App Store Connect verified every build as **VALID / IN_BETA_TESTING**, included in the existing internal Testers group, at **21:17 UTC on 14 September 2026**. The en-GB testing notes were saved and read back for each platform. [The API verification record](evidence/batch-4-testflight-status.json) contains the platform build IDs and exact check time.
+
+| Platform | Build resource |
+| --- | --- |
+| iPhone/iPad, including Watch/widgets | `ac236a12-c2e9-4b46-961b-84480686a0e5` |
+| Mac | `02764b35-932c-4c4c-9677-9be4e77e605c` |
+| Apple TV | `b664224f-0899-4f01-858e-0e22dfa6b8ea` |
+
+Source implementation: `75fdd1b1ac307dc70b6da6c0b5a54fe44ae89530`, [PR #36](https://github.com/svoltolini/Skyr/pull/36). Subsequent evidence-only documentation changes do not alter the binaries. External beta review and public App Store submission were not performed. Availability for installation does not complete device/provider acceptance.
 
 The tests use synthetic profiles, ordinary local audio and intercepted artwork requests. They do not send personal library terms to Apple or connect to a live NAS. Axiom HIG, SwiftUI performance and accessibility guidance informed the controls and profiling procedure, using the previously reviewed reference revision `71d342b65068d45787f5b6f45ce9deaf58f9629d`.
 

@@ -1,0 +1,38 @@
+{
+  "checkedAt": "2026-09-14T21:17:29.340402+00:00",
+  "builds": [
+    {
+      "id": "ac236a12-c2e9-4b46-961b-84480686a0e5",
+      "platform": "IOS",
+      "version": "1.0",
+      "build": "202609142150",
+      "processingState": "VALID",
+      "internalBuildState": "IN_BETA_TESTING",
+      "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+      "inInternalTestersGroup": true,
+      "testingNotesVerified": true
+    },
+    {
+      "id": "b664224f-0899-4f01-858e-0e22dfa6b8ea",
+      "platform": "TV_OS",
+      "version": "1.0",
+      "build": "202609142150",
+      "processingState": "VALID",
+      "internalBuildState": "IN_BETA_TESTING",
+      "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+      "inInternalTestersGroup": true,
+      "testingNotesVerified": true
+    },
+    {
+      "id": "02764b35-932c-4c4c-9677-9be4e77e605c",
+      "platform": "MAC_OS",
+      "version": "1.0",
+      "build": "202609142150",
+      "processingState": "VALID",
+      "internalBuildState": "IN_BETA_TESTING",
+      "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+      "inInternalTestersGroup": true,
+      "testingNotesVerified": true
+    }
+  ]
+}
