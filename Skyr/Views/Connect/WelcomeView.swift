@@ -16,6 +16,7 @@ struct WelcomeView: View {
                     withAnimation(.easeInOut(duration: 0.4)) { isShowingOnboarding = true }
                 }
             }
+            .accessibilityHidden(isShowingOnboarding)
             if isShowingOnboarding {
                 OnboardingView(initialIndex: onboardingStart) {
                     hasSeenOnboarding = true
@@ -89,7 +90,7 @@ private struct WelcomeContent: View {
                     .font(.system(size: 38 * Metrics.scale, weight: .semibold))
                     .lineSpacing(-2)
                     .kerning(-0.8 * Metrics.scale)
-                Text("Connect the server you already own. Nothing leaves your network.")
+                Text("Connect the server you already own. Music streams straight from your NAS.")
                     .font(Metrics.scale > 1 ? .title3 : .body)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 300 * Metrics.scale, alignment: .leading)

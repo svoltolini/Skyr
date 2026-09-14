@@ -1,0 +1,72 @@
+{
+  "version": "1.0",
+  "build": "202609142150",
+  "exports": [
+    {
+      "platform": "ios",
+      "sha256": "27e3e499c6f2b751c9540b188bc763adcf412e3839aa51cbcc1c643b538d1409",
+      "signatureVerified": true,
+      "bundles": [
+        {
+          "bundle": "com.samuelvoltolini.skyr",
+          "version": "1.0",
+          "build": "202609142150",
+          "privacyManifest": true,
+          "cloudEnvironment": "Production",
+          "carplay": true,
+          "developmentDebugging": false
+        },
+        {
+          "bundle": "com.samuelvoltolini.skyr.watchkitapp",
+          "version": "1.0",
+          "build": "202609142150",
+          "privacyManifest": true,
+          "cloudEnvironment": null,
+          "carplay": false,
+          "developmentDebugging": false
+        },
+        {
+          "bundle": "com.samuelvoltolini.skyr.widgets",
+          "version": "1.0",
+          "build": "202609142150",
+          "privacyManifest": true,
+          "cloudEnvironment": null,
+          "carplay": false,
+          "developmentDebugging": false
+        }
+      ]
+    },
+    {
+      "platform": "tv",
+      "sha256": "27788fc780223b0f576407edfd45ee79358d256267dc1539b321e6bf20dc15ff",
+      "signatureVerified": true,
+      "bundles": [
+        {
+          "bundle": "com.samuelvoltolini.skyr",
+          "version": "1.0",
+          "build": "202609142150",
+          "privacyManifest": true,
+          "cloudEnvironment": "Production",
+          "carplay": false,
+          "developmentDebugging": false
+        }
+      ]
+    },
+    {
+      "platform": "mac",
+      "sha256": "7996362eec8d4bcbef43a9494d8219793d910a9e60aa1f7e8e40d4e9ba99339e",
+      "signatureVerified": true,
+      "bundles": [
+        {
+          "bundle": "com.samuelvoltolini.skyr",
+          "version": "1.0",
+          "build": "202609142150",
+          "privacyManifest": true,
+          "cloudEnvironment": "Production",
+          "carplay": false,
+          "developmentDebugging": false
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,8 @@ public final class ProfileStore {
     public private(set) var sessionID: UUID?
     /// The active profile's document.
     public private(set) var state = ProfileState()
+    /// Journal failures reject an edit; snapshot failures keep accepted edits in the journal.
+    public private(set) var persistenceError: String?
     /// The profile that was open last, highlighted in the picker.
     public private(set) var lastActiveID: String?
 
@@ -34,6 +36,9 @@ public final class ProfileStore {
     private let storageDirectory: URL
     private let defaults: UserDefaults
     private let log: (String) -> Void
+    private let persistence: ProfilePersistence
+    @ObservationIgnored private var persistenceTokens: [String: ProfilePersistenceToken] = [:]
+    @ObservationIgnored private var failedSnapshotToken: ProfilePersistenceToken?
     private var authenticationGeneration = UUID()
     private var unreadableStateIDs: Set<String> = []
     @ObservationIgnored private lazy var stateReplicaID: String = {
@@ -67,10 +72,11 @@ public final class ProfileStore {
     }
 
     /// Separate storage keeps policy tests away from the person's saved profiles and preferences.
-    init(directory: URL, defaults: UserDefaults, log: @escaping (String) -> Void = { _ in }) {
+    init(directory: URL, defaults: UserDefaults, log: @escaping (String) -> Void = { _ in }, persistenceHooks: ProfilePersistenceHooks = .init()) {
         storageDirectory = directory
         self.defaults = defaults
         self.log = log
+        persistence = ProfilePersistence(directory: directory, hooks: persistenceHooks)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let stored = loadProfiles() {
             profiles = stored.isEmpty ? [Self.recoveryProfile(isOwner: true, account: nil)] : stored
@@ -111,6 +117,7 @@ public final class ProfileStore {
         guard !unreadableStateIDs.contains(profile.id) else { return false }
         if activeID != nil { lock() }
         state = saved
+        persistenceError = nil
         activeID = profile.id
         sessionID = UUID()
         authenticationGeneration = UUID()
@@ -207,7 +214,12 @@ public final class ProfileStore {
         guard saveProfiles(remaining) else { return false }
         if activeID == profile.id { lock() }
         profiles = remaining
-        try? FileManager.default.removeItem(at: stateURL(id: profile.id))
+        do { try persistence.retire(id: profile.id) }
+        catch {
+            persistenceError = "The profile was removed, but some local files could not be deleted."
+            log(persistenceError!)
+        }
+        persistenceTokens[profile.id] = nil
         try? FileManager.default.removeItem(at: storageDirectory.appending(path: "\(profile.id)-photo.jpg"))
         defaults.removeObject(forKey: Self.biometricsKey(profile.id))
         if lastActiveID == profile.id {
@@ -492,13 +504,13 @@ public final class ProfileStore {
 
     public func updateLibrary(_ driveID: String, recordingHistory: ProfileHistory? = nil, _ change: (inout LibraryState) -> Void) {
         guard activeID != nil else { return }
-        let previous = state
-        var library = state.libraries[driveID] ?? LibraryState()
+        let previous = state.libraries[driveID] ?? LibraryState()
+        var library = previous
         change(&library)
-        guard library != (state.libraries[driveID] ?? LibraryState()) || recordingHistory != nil else { return }
-        state.libraries[driveID] = library
-        state.recordChanges(from: previous, operationID: stateReplicaID, recordingHistory: recordingHistory.map { (driveID, $0) })
-        touch()
+        guard library != previous || recordingHistory != nil else { return }
+        let edit = ProfileStateEdit.library(driveID, .init(from: previous, to: library, recordingHistory: recordingHistory),
+                                            ProfileStateEdit.revision(after: state, operation: stateReplicaID), recordingHistory: recordingHistory?.rawValue)
+        accept(edit)
     }
 
     public func updateSettings(_ change: (inout ProfileSettings) -> Void) {
@@ -506,15 +518,29 @@ public final class ProfileStore {
         var settings = state.settings
         change(&settings)
         guard settings != state.settings else { return }
-        let previous = state
-        state.settings = settings
-        state.recordChanges(from: previous, operationID: stateReplicaID)
-        touch()
+        accept(.settings(settings, ProfileStateEdit.revision(after: state, operation: stateReplicaID)))
+    }
+
+    private func accept(_ edit: ProfileStateEdit) {
+        guard let activeID, !unreadableStateIDs.contains(activeID) else { return }
+        do {
+            // Publish only after the small immutable intention is durably replayable.
+            let token = try persistence.append(edit, id: activeID)
+            state = edit.applying(to: state)
+            persistenceTokens[activeID] = token
+            persistenceError = nil
+            failedSnapshotToken = nil
+            touch()
+        } catch {
+            persistenceError = "This change could not be saved. Your previously saved library and settings are unchanged."
+            log(persistenceError!)
+            isApplyingRemote = true
+            onRemoteState?()
+            isApplyingRemote = false
+        }
     }
 
     private func touch() {
-        // Persist the values and their deletion/revision metadata together before queuing a push.
-        guard let activeID, writeState(state, id: activeID) else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
@@ -523,13 +549,33 @@ public final class ProfileStore {
         }
     }
 
-    /// Writes the active profile's document right away.
+    /// All accepted edits are already journaled. Request a background checkpoint and cloud push;
+    /// a process exit or suspension before either completes is recovered by journal replay.
     public func flushSave() {
         saveTask?.cancel()
-        guard let activeID else { return }
-        guard writeState(state, id: activeID) else { return }
+        guard let activeID, let token = persistenceTokens[activeID], !unreadableStateIDs.contains(activeID) else { return }
+        let opening = sessionID
+        persistence.enqueue(state, id: activeID, token: token) { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.activeID == activeID, self.sessionID == opening,
+                      self.persistenceTokens[activeID] == token else { return }
+                if case .failure = result {
+                    self.failedSnapshotToken = token
+                    self.persistenceError = "Your changes are saved for recovery. Skyr will retry updating this profile after the next change or when you close it."
+                    self.log(self.persistenceError!)
+                } else if self.failedSnapshotToken == token {
+                    self.failedSnapshotToken = nil
+                    self.persistenceError = nil
+                }
+            }
+        }
         if !isApplyingRemote { sync?.stateChanged(state, id: activeID) }
     }
+
+    public func dismissPersistenceError() { persistenceError = nil; failedSnapshotToken = nil }
+
+    /// Deterministic fixture cleanup and explicit completion checks; normal UI never waits here.
+    func drainPersistence() async { await persistence.drain() }
 
     // MARK: Files
 
@@ -572,14 +618,14 @@ public final class ProfileStore {
     }
 
     private func loadState(id: String) -> ProfileState {
-        let url = stateURL(id: id)
-        guard FileManager.default.fileExists(atPath: url.path) else { return ProfileState() }
         do {
-            let saved = try Self.decoder.decode(ProfileState.self, from: Data(contentsOf: url))
+            let saved = try persistence.load(id: id)
             unreadableStateIDs.remove(id)
-            return saved
+            persistenceTokens[id] = saved.token
+            return saved.state
         } catch {
             unreadableStateIDs.insert(id)
+            persistenceError = "The profile's saved data could not be read. The original files have been preserved."
             log("The profile's saved data could not be read. The original file has been preserved.")
             return ProfileState()
         }
@@ -589,10 +635,13 @@ public final class ProfileStore {
     private func writeState(_ state: ProfileState, id: String) -> Bool {
         guard !unreadableStateIDs.contains(id) else { return false }
         do {
-            try Self.encoder.encode(state.normalizedForSync()).write(to: stateURL(id: id), options: .atomic)
+            persistenceTokens[id] = try persistence.replace(state, id: id)
+            persistenceError = nil
+            failedSnapshotToken = nil
             return true
         } catch {
             log("The profile's library and settings could not be saved on this device.")
+            persistenceError = "The profile's library and settings could not be saved on this device."
             return false
         }
     }

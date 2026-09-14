@@ -98,6 +98,7 @@ struct SkyrTVApp: App {
         WindowGroup {
             TVRootView()
                 .reauthenticationSheet()
+                .profileSaveErrorAlert()
                 .environment(model)
                 .environment(library)
                 .environment(player)

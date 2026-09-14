@@ -16,7 +16,7 @@ enum SetupStep: Int, CaseIterable {
 
     var blurb: String {
         switch self {
-        case .welcome: "Connect the server you already own. Nothing leaves your network."
+        case .welcome: "Connect the server you already own. Music streams straight from your NAS."
         case .server: "Skyr looks for Synology servers on this network. Away from home, enter the address you set up in DSM."
         case .folder: "Point Skyr at the shared folder that holds your music. Everything inside it is indexed."
         case .indexing: "Tags, artwork and folder structure are read straight from the server. Listening starts as soon as the scan is done."

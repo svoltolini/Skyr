@@ -94,7 +94,8 @@ public nonisolated struct SearchResults: Sendable {
 public final class LibraryStore {
     public private(set) var catalogue: Catalogue = .empty
 
-    public init() {}
+    public let artworkLookup: ArtworkLookup
+    public init(artworkLookup: ArtworkLookup = .shared) { self.artworkLookup = artworkLookup }
     public var drive: (any RemoteDrive)?
 
     public private(set) var albums: [Album] = []
@@ -368,17 +369,25 @@ public final class LibraryStore {
     /// Throws away the cached cover and fetches it again from the album's own folder and files.
     public func refreshCover(for album: Album) async -> String {
         guard let drive else { return "Not connected to the server." }
+        let sourceID = catalogue.driveID
         CoverStore.remove(for: album.id)
         coveredAlbumIDs.remove(album.id)
         palettes[album.id] = nil
         let siblings = albums.filter { $0.artist.lowercased() == album.artist.lowercased() && $0.id != album.id }
         let siblingHashes = CoverStore.hashesByArtist(among: siblings)[album.artist.lowercased()] ?? []
         var chosen = await LibraryIndexer.fetchCover(for: album, drive: drive)
+        guard !Task.isCancelled, catalogue.driveID == sourceID, self.drive?.id == drive.id else {
+            return "The library changed before the cover finished loading."
+        }
         let isDuplicate = chosen.map { siblingHashes.contains(ArtworkLookup.hash($0.0)) } ?? false
         if chosen == nil || isDuplicate {
-            if let online = await ArtworkLookup.itunesCover(artist: album.artist, album: album.title) {
+            if let result = await artworkLookup.itunesCover(artist: album.artist, album: album.title),
+               let online = artworkLookup.acceptedData(from: result) {
                 chosen = (online, isDuplicate ? "the iTunes Store, because the files share one picture with another album" : "the iTunes Store")
             }
+        }
+        guard !Task.isCancelled, catalogue.driveID == sourceID, self.drive?.id == drive.id else {
+            return "The library changed before the cover finished loading."
         }
         if let (data, source) = chosen {
             CoverStore.save(data, for: album.id)

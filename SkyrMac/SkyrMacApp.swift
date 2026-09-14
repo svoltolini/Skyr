@@ -125,7 +125,7 @@ struct SkyrMacApp: App {
 
     var body: some Scene {
         WindowGroup("Skyr", id: "main") {
-            wired(MacRootView().reauthenticationSheet().downloadErrorAlert())
+            wired(MacRootView().reauthenticationSheet().downloadErrorAlert().profileSaveErrorAlert())
                 .onAppear { MacSetupSnapshots.runIfRequested(model: model) }
                 .onChange(of: scenePhase) { _, phase in
                     model.scenePhaseChanged(phase)
@@ -142,7 +142,7 @@ struct SkyrMacApp: App {
         }
 
         Settings {
-            wired(MacSettingsView())
+            wired(MacSettingsView().profileSaveErrorAlert())
                 .frame(width: 600, height: 760)
         }
     }

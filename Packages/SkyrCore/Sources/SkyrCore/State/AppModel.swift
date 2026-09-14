@@ -9,7 +9,8 @@ public final class AppModel {
 
     public let library: LibraryStore
     public let discovery = ServerDiscovery()
-    public let indexer = LibraryIndexer()
+    public let indexer: LibraryIndexer
+    public var artworkLookup: ArtworkLookup { library.artworkLookup }
 
     // MARK: Connection
 
@@ -37,6 +38,7 @@ public final class AppModel {
 
     init(library: LibraryStore, defaults: UserDefaults, services: ConnectionServices, restoresSession: Bool) {
         self.library = library
+        indexer = LibraryIndexer(artworkLookup: library.artworkLookup)
         self.defaults = defaults
         self.services = services
         loadSettings()
