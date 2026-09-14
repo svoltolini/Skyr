@@ -166,6 +166,9 @@ public final class LibraryStore {
         let previous = self.catalogue
         let firstLoad = albums.isEmpty
         let driveChanged = catalogue.driveID != previous.driveID
+        if driveChanged || catalogue.rootPath != previous.rootPath {
+            CatalogueCache.shared.invalidatePendingWrites()
+        }
         let sameAlbums = !firstLoad && !driveChanged && catalogue.albums == previous.albums
         self.catalogue = catalogue
         self.drive = drive
@@ -622,34 +625,16 @@ public final class LibraryStore {
 
     // MARK: Persistence
 
-    private static let cacheURL: URL = {
-        let directory = AppDirectories.support
-            .appending(path: "Skyr", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appending(path: "catalogue.json")
-    }()
-
     public static func loadCachedCatalogue() -> Catalogue? {
-        guard let data = try? Data(contentsOf: cacheURL) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(Catalogue.self, from: data)
+        CatalogueCache.shared.load()
     }
 
     public func saveCatalogue() {
-        let snapshot = catalogue
-        let url = Self.cacheURL
-        Task.detached(priority: .utility) {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            if let data = try? encoder.encode(snapshot) {
-                try? data.write(to: url, options: .atomic)
-            }
-        }
+        CatalogueCache.shared.save(catalogue)
     }
 
     public static func deleteCache() {
-        try? FileManager.default.removeItem(at: cacheURL)
+        CatalogueCache.shared.remove()
         CoverStore.clear()
         CoverImageCache.shared.removeAll()
     }
