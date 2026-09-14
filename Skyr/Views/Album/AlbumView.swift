@@ -1,22 +1,58 @@
 import SkyrCore
 import SwiftUI
 
+/// A retained row or confirmation can outlive the library or authenticated profile that opened it.
+private struct AlbumActionScope: Equatable {
+    let sourceID: String
+    let profileID: String?
+    let sessionID: UUID?
+
+    init(library: LibraryStore, profiles: ProfileStore) {
+        sourceID = library.catalogue.driveID
+        profileID = profiles.activeID
+        sessionID = profiles.sessionID
+    }
+
+    func isCurrent(library: LibraryStore, profiles: ProfileStore) -> Bool {
+        profileID != nil && sessionID != nil && library.contentSourceID == sourceID
+            && self == AlbumActionScope(library: library, profiles: profiles)
+    }
+}
+
+private struct AlbumRemovalRequest {
+    let album: Album
+    let owner: DownloadOwner
+    let scope: AlbumActionScope
+}
+
 struct AlbumView: View {
     let album: Album
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
     @Environment(DownloadManager.self) private var downloads
+    @Environment(ProfileStore.self) private var profiles
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The album as the library has it now: colours, tags and track order can change after the page opens.
-    private var live: Album { library.album(id: album.id) ?? album }
     @State private var isFlipped = false
     @State private var isConfirmingRemoval = false
+    @State private var removalRequest: AlbumRemovalRequest?
 
     var body: some View {
-        let album = live
-        ScrollView {
+        Group {
+            if let current = library.album(id: album.id) {
+                albumContent(current)
+            } else {
+                ContentUnavailableView("Album Unavailable", systemImage: "square.stack", description: Text("This album is no longer in the current library."))
+                    .inlineTitle()
+                    .windowTitle("Album Unavailable")
+            }
+        }
+    }
+
+    private func albumContent(_ album: Album) -> some View {
+        let scope = AlbumActionScope(library: library, profiles: profiles)
+        return ScrollView {
             VStack(spacing: 0) {
                 DetailHeader(coverSize: 260) {
                     // Tap the cover to turn it over; the back carries the year, genre and quality.
@@ -55,8 +91,10 @@ struct AlbumView: View {
                 } actions: {
                     HStack(spacing: 10) {
                         PlayActions {
+                            guard scope.isCurrent(library: library, profiles: profiles), library.album(id: album.id) == album else { return }
                             player.play(album: album)
                         } shuffle: {
+                            guard scope.isCurrent(library: library, profiles: profiles), library.album(id: album.id) == album else { return }
                             player.play(queue: album.tracks.shuffled(), startingAt: 0, title: album.title)
                         }
                         #if !os(tvOS)
@@ -118,18 +156,22 @@ struct AlbumView: View {
 
     private func downloadButton(for album: Album) -> some View {
         let owner = downloads.owner(for: album)
+        let scope = AlbumActionScope(library: library, profiles: profiles)
         return DownloadStateReader(owner: owner) { state in
             if let state {
                 DownloadButton(state: state) {
+                    guard scope.isCurrent(library: library, profiles: profiles),
+                          library.album(id: album.id) == album, downloads.owner(for: album) == owner else { return }
                     switch state {
                     case .none, .failed, .partial, .cancelled:
-                        downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                        downloads.download(owner, driveID: scope.sourceID, isSample: library.isDemo) {
                             track in
                             library.streamURL(for: track, quality: .original)
                         }
                     case .downloading:
                         downloads.cancel(owner)
                     case .downloaded:
+                        removalRequest = AlbumRemovalRequest(album: album, owner: owner, scope: scope)
                         isConfirmingRemoval = true
                     }
                 }
@@ -141,7 +183,14 @@ struct AlbumView: View {
             "Remove this album from your \(Device.noun)?", isPresented: $isConfirmingRemoval,
             titleVisibility: .visible
         ) {
-            Button("Remove Download", role: .destructive) { downloads.remove(owner) }
+            Button("Remove Download", role: .destructive) {
+                guard let request = removalRequest else { return }
+                removalRequest = nil
+                guard request.scope.isCurrent(library: library, profiles: profiles),
+                      library.album(id: request.album.id) == request.album,
+                      downloads.owner(for: request.album) == request.owner else { return }
+                downloads.remove(request.owner)
+            }
         } message: {
             Text("The songs stay on your server; copies a downloaded playlist still needs are kept.")
         }
@@ -214,15 +263,20 @@ struct TrackRow: View {
     @Environment(PlayerModel.self) private var player
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadManager.self) private var downloads
+    @Environment(ProfileStore.self) private var profiles
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAddingToPlaylist = false
 
     private var isCurrent: Bool { player.isCurrent(track: track) }
 
     var body: some View {
+        let scope = AlbumActionScope(library: library, profiles: profiles)
         HStack(spacing: 0) {
             Button {
-                player.play(album: album, startingAt: track.index)
+                guard scope.isCurrent(library: library, profiles: profiles),
+                      let current = library.album(id: album.id),
+                      let index = current.tracks.firstIndex(where: { $0.id == track.id }) else { return }
+                player.play(album: current, startingAt: index)
             } label: {
                 HStack(spacing: 14) {
                     Group {

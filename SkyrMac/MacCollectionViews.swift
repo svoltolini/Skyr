@@ -29,9 +29,19 @@ struct MacAlbumDetailView: View {
     @State private var songSummary = ""
 
     var body: some View {
-        let album = library.album(id: album.id) ?? album
+        Group {
+            if let current = library.album(id: album.id) {
+                albumContent(current)
+            } else {
+                ContentUnavailableView("Album Unavailable", systemImage: "square.stack", description: Text("This album is no longer in the current library."))
+                    .navigationTitle("Album Unavailable")
+            }
+        }
+    }
+
+    private func albumContent(_ album: Album) -> some View {
         let scope = MacLibraryActionScope(library: library, profiles: profiles)
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 20) {
                 ArtworkView(album: album, cornerRadius: 8, highlight: false)
                     .frame(width: 112, height: 112)
@@ -168,9 +178,19 @@ struct MacArtistDetailView: View {
     @Environment(ProfileStore.self) private var profiles
 
     var body: some View {
-        let artist = library.artist(named: artist.name) ?? artist
+        Group {
+            if let current = library.artist(named: artist.name), !current.albums.isEmpty {
+                artistContent(current)
+            } else {
+                ContentUnavailableView("Artist Unavailable", systemImage: "person.crop.circle", description: Text("This artist is no longer in the current library."))
+                    .navigationTitle("Artist Unavailable")
+            }
+        }
+    }
+
+    private func artistContent(_ artist: Artist) -> some View {
         let scope = MacLibraryActionScope(library: library, profiles: profiles)
-        ScrollView {
+        return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .top, spacing: 20) {
                     if let album = artist.albums.first {
@@ -202,16 +222,24 @@ struct MacArtistDetailView: View {
 
 struct MacAlbumCollectionView: View {
     let collection: AlbumCollection
+    @Environment(LibraryStore.self) private var library
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(collection.title).font(.title2.weight(.semibold))
-                Text("\(collection.albums.count) \(collection.albums.count == 1 ? "album" : "albums")")
-                    .foregroundStyle(.secondary)
-                MacAlbumGrid(albums: collection.albums)
+        let albums = collection.albums.compactMap { library.album(id: $0.id) }
+        Group {
+            if albums.isEmpty {
+                ContentUnavailableView("Collection Unavailable", systemImage: "square.stack", description: Text("These albums are no longer in the current library."))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(collection.title).font(.title2.weight(.semibold))
+                        Text("\(albums.count) \(albums.count == 1 ? "album" : "albums")")
+                            .foregroundStyle(.secondary)
+                        MacAlbumGrid(albums: albums)
+                    }
+                    .padding(20)
+                }
             }
-            .padding(20)
         }
         .navigationTitle(collection.title)
     }
