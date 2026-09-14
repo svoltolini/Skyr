@@ -69,9 +69,11 @@ struct CardList<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
         // Lazy: the artists facet can hold hundreds of rows, and only the visible ones need to exist.
         LazyVStack(spacing: 0) {
             ForEach(Array(data.enumerated()), id: \.element.id) { index, element in
-                row(element)
-                if index < data.count - 1 {
-                    Divider().padding(.leading, separatorInset)
+                VStack(spacing: 0) {
+                    row(element)
+                    if index < data.count - 1 {
+                        Divider().padding(.leading, separatorInset)
+                    }
                 }
             }
         }

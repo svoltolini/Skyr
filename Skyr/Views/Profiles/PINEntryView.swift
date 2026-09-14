@@ -100,6 +100,64 @@ struct PINEntryView: View {
     }
 }
 
+#if os(macOS)
+/// Mac users enter and confirm a PIN using native secure text fields.
+struct PINSetupSheet: View {
+    let onSet: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var pin = ""
+    @State private var confirmation = ""
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case pin, confirmation }
+    private var isValidPIN: Bool { pin.count == 4 && pin.allSatisfy { "0123456789".contains($0) } }
+    private var canSet: Bool { isValidPIN && confirmation == pin }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("New PIN", text: $pin)
+                        .focused($focusedField, equals: .pin)
+                        .onSubmit { if isValidPIN { focusedField = .confirmation } }
+                    SecureField("Confirm PIN", text: $confirmation)
+                        .focused($focusedField, equals: .confirmation)
+                        .onSubmit { setPIN() }
+                    if pin.count >= 4, !isValidPIN {
+                        Text("Use exactly four digits from 0 to 9.")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                    }
+                    if confirmation.count >= 4, confirmation != pin {
+                        Text("The PINs don't match.")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                    }
+                } footer: {
+                    Text("Choose four digits from 0 to 9. The PIN is asked for before this profile opens and is saved when you save the profile.")
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Set a PIN")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Use PIN") { setPIN() }.disabled(!canSet)
+                }
+            }
+            .onAppear { focusedField = .pin }
+        }
+        .frame(minWidth: 400, idealWidth: 440, minHeight: 250, idealHeight: 300)
+    }
+
+    private func setPIN() {
+        guard canSet else { return }
+        onSet(pin)
+        dismiss()
+    }
+}
+
+#else
 /// Choose a PIN, then type it once more.
 struct PINSetupSheet: View {
     let onSet: (String) -> Void
@@ -146,6 +204,8 @@ struct PINSetupSheet: View {
         .sheetDetents([.large])
     }
 }
+
+#endif
 
 /// A locked profile: its PIN, or the device's own biometrics when the profile allows them here.
 struct UnlockSheet: View {

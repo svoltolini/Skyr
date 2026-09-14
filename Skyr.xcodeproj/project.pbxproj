@@ -13,7 +13,9 @@
 		0298A754D9858ED6EA364C00 /* SkyrShared in Frameworks */ = {isa = PBXBuildFile; productRef = 28E0FC34241746F2CB1AD89C /* SkyrShared */; };
 		04517348ABB438716EDEE913 /* DownloadsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DE48E86000F79FABF497C05 /* DownloadsWidget.swift */; };
 		0500BAF15889E9E1A26640B4 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB6D97D7638167EDE4E5C4F /* RootView.swift */; };
+		0543FED3B0DE122AED65B46E /* DownloadStateReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D290F34A8C0AB6E79409EFD /* DownloadStateReader.swift */; };
 		05FB9815D74D21AE4BFA4F67 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9732916395F86A8F3B95F9C0 /* Assets.xcassets */; };
+		076A09C707F13AB5A006C987 /* MacNowPlayingInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF181D248B3E8878D49D80C /* MacNowPlayingInspector.swift */; };
 		09444DE2609B45746AA1FFB7 /* ProfileAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95629FDF867F6A21E4D67BB6 /* ProfileAvatarView.swift */; };
 		0B8C97FD24280ADCB6DB5FFB /* ConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4047FC415D2744B36E067CD7 /* ConnectSheet.swift */; };
 		0BAB43F8EE4459C1C0A2A783 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8300C3725A73515B9C00AE /* WelcomeView.swift */; };
@@ -36,11 +38,13 @@
 		2B57D6A227345CEBF3AED2F3 /* RediscoverWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3942EFC950D7551434BE5B76 /* RediscoverWidget.swift */; };
 		2BB30932586C729F1929B329 /* ArtistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */; };
 		2C4CFE124EE1401586E17735 /* ConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4047FC415D2744B36E067CD7 /* ConnectSheet.swift */; };
+		2FF484DFF1603D566E0364AE /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD2043386F7133672069F5B /* MacSettingsView.swift */; };
 		31C78B1871DAA0DF7172894F /* InviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594813A7DCA7E4DF567366EF /* InviteSheet.swift */; };
 		32ABDCC9D4307AF6BD9E050B /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76999B3E83B1E35FE548B258 /* AlbumView.swift */; };
 		32F9DA7ED5FF5D23D7A606C2 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508BD333628DA5F796703A05 /* Components.swift */; };
 		348B902A3731E164CEABD1A8 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
 		35F5226C6042EB5BB29A74D3 /* ArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */; };
+		37EC6BECD69BCDED64A69525 /* MacLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1733D389F81827BE438ADB7 /* MacLibraryView.swift */; };
 		381935247CB6E48FC3EF2611 /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76999B3E83B1E35FE548B258 /* AlbumView.swift */; };
 		39577BF3A8D2106736D6FDDE /* ServerDiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF17A498A17C05B923557591 /* ServerDiscoveryView.swift */; };
 		3D41BEDA1FAD49FFA00BCB27 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98EA1B07C06B2A991E8BBB9F /* OnboardingView.swift */; };
@@ -69,6 +73,7 @@
 		588D952890C3D53FBDB37840 /* FamilyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76DE0D52AA1EDF4C76279121 /* FamilyView.swift */; };
 		5940B62E4C1F31FB656BF1FC /* PINEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADC3FC81179141D26CCADE0 /* PINEntryView.swift */; };
 		59675305C271743889344CCB /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DF322746A43E9949FB09C1 /* PlaylistDetailView.swift */; };
+		5BEFF35D5435590BFC2DBD62 /* DownloadStateReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D290F34A8C0AB6E79409EFD /* DownloadStateReader.swift */; };
 		5D940A757AE2685205AAC1E4 /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE3AB997C10C4D6F455FAC3 /* Platform.swift */; };
 		6027A67DDF082E66E41222FD /* ServerDiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF17A498A17C05B923557591 /* ServerDiscoveryView.swift */; };
 		60ED5E3EFA324EED03BB5B74 /* InviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594813A7DCA7E4DF567366EF /* InviteSheet.swift */; };
@@ -89,6 +94,7 @@
 		73321F54A26921D51251883B /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
 		7434850786AA8A9470C493BF /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4861070908870505AA4418B2 /* WatchStore.swift */; };
 		79AB09648F40C7538D23183B /* PlaylistsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42FA1EB27E94507C208E3F2A /* PlaylistsWidget.swift */; };
+		7D7B5E172FA1A1C87178957A /* DownloadStateReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D290F34A8C0AB6E79409EFD /* DownloadStateReader.swift */; };
 		7DC58CFF77E4AD615CBBF991 /* ConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4047FC415D2744B36E067CD7 /* ConnectSheet.swift */; };
 		7EA13D39C9FC899DE575CBE8 /* RemoteAccessGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD9E68703127323E4DFC118 /* RemoteAccessGuide.swift */; };
 		81963E1B55CF02988239421C /* LoginSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46A7E609C705A923E1A4A36B /* LoginSheet.swift */; };
@@ -111,6 +117,7 @@
 		9AD2451CD489F9710B6CABAB /* WidgetPieces.swift in Sources */ = {isa = PBXBuildFile; fileRef = A561FFEF329CE08B5853237E /* WidgetPieces.swift */; };
 		9B192C196B10D3D8B02F30B8 /* ArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */; };
 		9BF5F74944297DF674CB046D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 91BCEC41F9CD4D339C365DCE /* Assets.xcassets */; };
+		9D2019E325F2854088B27A4D /* MacTrackTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 717B68B5D4C40F594AB0C8AE /* MacTrackTable.swift */; };
 		9DBF2499BADA63DF28EFC40A /* SkyrWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29FCE943D299378E6086D87D /* SkyrWatchApp.swift */; };
 		9EB1CD3A4A578BC052D68F62 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FDAC4329CDE50566FC5C8A5E /* PrivacyInfo.xcprivacy */; };
 		A025AFB6A780B3A86E6CCD66 /* PINEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADC3FC81179141D26CCADE0 /* PINEntryView.swift */; };
@@ -127,6 +134,7 @@
 		AE42B1881675EBCA563605F2 /* ArtworkPrivacyControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47A65097302DBDA36E30795 /* ArtworkPrivacyControl.swift */; };
 		AE43D8ABD1FBA97DA7377089 /* PINEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADC3FC81179141D26CCADE0 /* PINEntryView.swift */; };
 		B214A7CC1C0AB3F9D145F8EA /* InviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594813A7DCA7E4DF567366EF /* InviteSheet.swift */; };
+		B35F5596AAC760B98A97218F /* MacCollectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8ADF42127ECD4B197B6E444 /* MacCollectionViews.swift */; };
 		B4C8361B2467B9E6C975652E /* ArtistsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318CE4E53FA5678964B51521 /* ArtistsListView.swift */; };
 		B64963A171FD00C0CABCE0E6 /* SetupPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AAEECA63B8D43194D61D1A /* SetupPage.swift */; };
 		BBA724B9A3B8AEF6FC4DE0B8 /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109C0D3C9C7619A07BD64D02 /* NowPlayingView.swift */; };
@@ -231,7 +239,9 @@
 		193085B15767A136FFF4F666 /* SkyrTV.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SkyrTV.entitlements; sourceTree = "<group>"; };
 		1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkView.swift; sourceTree = "<group>"; };
 		1C1C3BAAC9E91767DF359608 /* DownloadLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadLiveActivity.swift; sourceTree = "<group>"; };
+		1CD2043386F7133672069F5B /* MacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSettingsView.swift; sourceTree = "<group>"; };
 		1D2370B6FFC67940F379B9D3 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
+		1D290F34A8C0AB6E79409EFD /* DownloadStateReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadStateReader.swift; sourceTree = "<group>"; };
 		1D6EE678F97602207BC1885D /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		1DE48E86000F79FABF497C05 /* DownloadsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsWidget.swift; sourceTree = "<group>"; };
 		2165359FA4FD48C8C7533A36 /* SkyrHomeWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrHomeWidget.swift; sourceTree = "<group>"; };
@@ -242,6 +252,7 @@
 		36FFE56E0B6BBE8C73F1A9D3 /* MacRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRootView.swift; sourceTree = "<group>"; };
 		3942EFC950D7551434BE5B76 /* RediscoverWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RediscoverWidget.swift; sourceTree = "<group>"; };
 		3C5BDA8A2E4DF6D45A4240D3 /* SkyrWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrWidgetsBundle.swift; sourceTree = "<group>"; };
+		3CF181D248B3E8878D49D80C /* MacNowPlayingInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacNowPlayingInspector.swift; sourceTree = "<group>"; };
 		3E8C28E8B21EB4ACC5E6ECAA /* GenreEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreEditorSheet.swift; sourceTree = "<group>"; };
 		4047FC415D2744B36E067CD7 /* ConnectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectSheet.swift; sourceTree = "<group>"; };
 		42380B2A1080CB70CDE4ED90 /* SkyrMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrMacApp.swift; sourceTree = "<group>"; };
@@ -261,6 +272,7 @@
 		652AC6E18CDFF3BFD367FE50 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6544B0243192EE2F88FE8415 /* Skyr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Skyr.entitlements; sourceTree = "<group>"; };
 		7119DE395B61433117AB45F5 /* SkyrWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyrWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		717B68B5D4C40F594AB0C8AE /* MacTrackTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacTrackTable.swift; sourceTree = "<group>"; };
 		73F67107430ADA54D387DE22 /* SkyrMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyrMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		74CE07649C500D2BB916B8CB /* WatchDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDownloads.swift; sourceTree = "<group>"; };
 		76999B3E83B1E35FE548B258 /* AlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumView.swift; sourceTree = "<group>"; };
@@ -274,6 +286,7 @@
 		9732916395F86A8F3B95F9C0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		98EA1B07C06B2A991E8BBB9F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9E2023DA8DBF0BC310181698 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A1733D389F81827BE438ADB7 /* MacLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLibraryView.swift; sourceTree = "<group>"; };
 		A242FD77040DD6B873089DE5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A2F4443F474A757E2D313398 /* Skyr.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Skyr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A47A65097302DBDA36E30795 /* ArtworkPrivacyControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkPrivacyControl.swift; sourceTree = "<group>"; };
@@ -306,6 +319,7 @@
 		F009469D88D2C0DF695B0362 /* JoinWithLinkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinWithLinkSheet.swift; sourceTree = "<group>"; };
 		F06FB342C0C5E493EABB9658 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F0CCEFE404B5B4A4A29194E1 /* PlaylistsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistsListView.swift; sourceTree = "<group>"; };
+		F8ADF42127ECD4B197B6E444 /* MacCollectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacCollectionViews.swift; sourceTree = "<group>"; };
 		FDAC4329CDE50566FC5C8A5E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -406,6 +420,7 @@
 			children = (
 				508BD333628DA5F796703A05 /* Components.swift */,
 				17E88961FDFDEF9C5E4D1714 /* DownloadButton.swift */,
+				1D290F34A8C0AB6E79409EFD /* DownloadStateReader.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -516,10 +531,15 @@
 			isa = PBXGroup;
 			children = (
 				081C95020ED88399E5AB75C6 /* Info.plist */,
+				F8ADF42127ECD4B197B6E444 /* MacCollectionViews.swift */,
+				A1733D389F81827BE438ADB7 /* MacLibraryView.swift */,
 				64000F873C5960D6EB056C3C /* MacNavigation.swift */,
+				3CF181D248B3E8878D49D80C /* MacNowPlayingInspector.swift */,
 				D0B671802E92818945920D95 /* MacPlayerBar.swift */,
 				36FFE56E0B6BBE8C73F1A9D3 /* MacRootView.swift */,
+				1CD2043386F7133672069F5B /* MacSettingsView.swift */,
 				EF319001B11C89BAB57D5E4C /* MacSetupView.swift */,
+				717B68B5D4C40F594AB0C8AE /* MacTrackTable.swift */,
 				FDAC4329CDE50566FC5C8A5E /* PrivacyInfo.xcprivacy */,
 				B04638E49D6ADF4830637751 /* SkyrMac.entitlements */,
 				42380B2A1080CB70CDE4ED90 /* SkyrMacApp.swift */,
@@ -861,6 +881,7 @@
 				2C4CFE124EE1401586E17735 /* ConnectSheet.swift in Sources */,
 				206A6D190DD9D65A82961675 /* DiagnosticsView.swift in Sources */,
 				E0B81D5A11A1B7972478DB5E /* DownloadButton.swift in Sources */,
+				7D7B5E172FA1A1C87178957A /* DownloadStateReader.swift in Sources */,
 				C573C7D937326A37ACE38830 /* DownloadsView.swift in Sources */,
 				588D952890C3D53FBDB37840 /* FamilyView.swift in Sources */,
 				EBC55E3A2BC6F9D8EB5AE4BA /* FolderPickerView.swift in Sources */,
@@ -925,6 +946,7 @@
 				7DC58CFF77E4AD615CBBF991 /* ConnectSheet.swift in Sources */,
 				C361FE619B9AC39BCC0C42B3 /* DiagnosticsView.swift in Sources */,
 				987D9D902702E816C21063FA /* DownloadButton.swift in Sources */,
+				5BEFF35D5435590BFC2DBD62 /* DownloadStateReader.swift in Sources */,
 				826C657A5BDE0125809DED19 /* DownloadsView.swift in Sources */,
 				21823B828C8395C811753D97 /* FamilyView.swift in Sources */,
 				40909950FA30383C26FE3E17 /* FolderPickerView.swift in Sources */,
@@ -936,10 +958,15 @@
 				C4F48A882E2F0ECCE7DF612F /* LibraryHomeView.swift in Sources */,
 				348B902A3731E164CEABD1A8 /* LibraryView.swift in Sources */,
 				69225495367BACC9A8566F96 /* LoginSheet.swift in Sources */,
+				B35F5596AAC760B98A97218F /* MacCollectionViews.swift in Sources */,
+				37EC6BECD69BCDED64A69525 /* MacLibraryView.swift in Sources */,
 				EEFFDC1F4F8C32F1C1F0F48C /* MacNavigation.swift in Sources */,
+				076A09C707F13AB5A006C987 /* MacNowPlayingInspector.swift in Sources */,
 				6AFEE65D46CC8852AB7F4660 /* MacPlayerBar.swift in Sources */,
 				44E07C99829272FA4FEA9DA8 /* MacRootView.swift in Sources */,
+				2FF484DFF1603D566E0364AE /* MacSettingsView.swift in Sources */,
 				12F7B27AE8D531F2C5FB83A9 /* MacSetupView.swift in Sources */,
+				9D2019E325F2854088B27A4D /* MacTrackTable.swift in Sources */,
 				BBA724B9A3B8AEF6FC4DE0B8 /* NowPlayingView.swift in Sources */,
 				3D41BEDA1FAD49FFA00BCB27 /* OnboardingView.swift in Sources */,
 				AE43D8ABD1FBA97DA7377089 /* PINEntryView.swift in Sources */,
@@ -992,6 +1019,7 @@
 				0B8C97FD24280ADCB6DB5FFB /* ConnectSheet.swift in Sources */,
 				E8ED3A0140B1E90B3DE84D74 /* DiagnosticsView.swift in Sources */,
 				CE65845714C213D939242747 /* DownloadButton.swift in Sources */,
+				0543FED3B0DE122AED65B46E /* DownloadStateReader.swift in Sources */,
 				003880528CB5B68DCCAADFB9 /* DownloadsView.swift in Sources */,
 				E99BACF8C0C1398047A4B6CC /* FamilyView.swift in Sources */,
 				F72FA379588F9C53F6406B40 /* FolderPickerView.swift in Sources */,

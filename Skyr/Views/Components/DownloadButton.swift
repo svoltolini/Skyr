@@ -71,11 +71,11 @@ struct DownloadButton: View {
     private var label: String {
         switch state {
         case .none: "Download"
-        case .downloading(_, let done, let total): "Downloading, \(done) of \(total) songs, tap to cancel"
-        case .downloaded: "Downloaded, tap to remove"
-        case .failed(let message): "Download failed. \(message). Tap to retry missing songs"
-        case .partial(let done, let total, _): "\(done) of \(total) songs saved, tap to retry missing songs"
-        case .cancelled(let done, let total): "Download cancelled, \(done) of \(total) songs saved, tap to retry"
+        case .downloading(_, let done, let total): "Downloading, \(done) of \(total) songs. Cancel download"
+        case .downloaded: "Downloaded. Remove download"
+        case .failed(let message): "Download failed. \(message). Retry missing songs"
+        case .partial(let done, let total, _): "\(done) of \(total) songs saved. Retry missing songs"
+        case .cancelled(let done, let total): "Download cancelled, \(done) of \(total) songs saved. Retry download"
         }
     }
 }

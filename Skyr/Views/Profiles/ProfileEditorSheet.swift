@@ -88,74 +88,157 @@ struct ProfileEditorSheet: View {
     var body: some View {
         let photoLabel = hasPhoto ? "Change Photo" : "Choose Photo"
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 28) {
-                    VStack(spacing: 14) {
-                        ProfileAvatarView(profile: draft, size: 124, isLocked: hasPIN, preview: photoChange.isRemove ? nil : preview)
-                            .animation(.snappy(duration: 0.25), value: preview.map(ObjectIdentifier.init))
-                        #if canImport(PhotosUI) && !os(tvOS)
-                        PhotosPicker(selection: $pickedItem, matching: .images, photoLibrary: .shared()) {
-                            Label(photoLabel, systemImage: "photo")
-                        }
-                        .buttonStyle(.glass)
-                        #else
-                        Text("Change the photo from your iPhone or Mac.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        #endif
-                    }
-                    .padding(.top, 8)
-
-                    SettingsGroup {
-                        HStack(spacing: 14) {
-                            SettingsIcon(symbol: "person.fill", tint: Color(hex: avatar.colorHex))
-                            TextField("Name", text: $name)
-                                .wordsAutocapitalization()
-                                .submitLabel(.done)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                    }
-
-                    SettingsGroup(title: "Lock", footer: hasPIN ? "The PIN is asked for before this profile opens on any device." : "Without a PIN anyone using this device can open the profile.") {
-                        if hasPIN {
-                            SettingsRow(symbol: "lock.fill", tint: .orange, title: "PIN") {
-                                Text("••••")
-                                    .foregroundStyle(.secondary)
+            Group {
+                #if os(tvOS)
+                ScrollView {
+                    VStack(spacing: 28) {
+                        VStack(spacing: 14) {
+                            ProfileAvatarView(profile: draft, size: 124, isLocked: hasPIN, preview: photoChange.isRemove ? nil : preview)
+                                .animation(.snappy(duration: 0.25), value: preview.map(ObjectIdentifier.init))
+                            #if canImport(PhotosUI) && !os(tvOS)
+                            PhotosPicker(selection: $pickedItem, matching: .images, photoLibrary: .shared()) {
+                                Label(photoLabel, systemImage: "photo")
                             }
-                            SettingsButtonRow(symbol: "arrow.triangle.2.circlepath", tint: .blue, title: "Change PIN") { isSettingPIN = true }
-                            SettingsButtonRow(symbol: "lock.open", tint: .red, title: "Remove PIN", role: .destructive) {
+                            .buttonStyle(.glass)
+                            #else
+                            Text("Change the photo from your iPhone or Mac.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            #endif
+                        }
+                        .padding(.top, 8)
+
+                        SettingsGroup {
+                            HStack(spacing: 14) {
+                                SettingsIcon(symbol: "person.fill", tint: Color(hex: avatar.colorHex))
+                                TextField("Name", text: $name)
+                                    .wordsAutocapitalization()
+                                    .submitLabel(.done)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
+
+                        SettingsGroup(title: "Lock", footer: hasPIN ? "The PIN is asked for before this profile opens on any device." : "Without a PIN anyone using this device can open the profile.") {
+                            if hasPIN {
+                                SettingsRow(symbol: "lock.fill", tint: .orange, title: "PIN") {
+                                    Text("••••")
+                                        .foregroundStyle(.secondary)
+                                }
+                                SettingsButtonRow(symbol: "arrow.triangle.2.circlepath", tint: .blue, title: "Change PIN") { isSettingPIN = true }
+                                SettingsButtonRow(symbol: "lock.open", tint: .red, title: "Remove PIN", role: .destructive) {
+                                    pinChange = .remove
+                                    biometrics = false
+                                }
+                                if let biometry = profiles.biometryName {
+                                    SettingsRow(symbol: biometry == "Face ID" ? "faceid" : "touchid", tint: .green, title: "Open with \(biometry)") {
+                                        Toggle("Open with \(biometry)", isOn: $biometrics)
+                                            .labelsHidden()
+                                    }
+                                }
+                            } else {
+                                SettingsButtonRow(symbol: "lock.fill", tint: .orange, title: "Set a PIN") { isSettingPIN = true }
+                            }
+                        }
+
+                        if let profile, cloud.isActive, let user = cloud.currentUserRecordName {
+                            SettingsGroup(title: "iCloud", footer: profile.userRecordName == user ? "Opens on its own on every device signed in with your Apple Account." : "Makes this the profile your own devices open first.") {
+                                if profile.userRecordName == user {
+                                    SettingsRow(symbol: "icloud.fill", tint: .blue, title: "This is you") { EmptyView() }
+                                } else {
+                                    SettingsButtonRow(symbol: "icloud.fill", tint: .blue, title: "Use on my Apple Account") {
+                                        guard validateDraft() else { return }
+                                        if profiles.bindToCurrentUser(profile) { dismiss() }
+                                        else { problem = "Open your profile before making changes." }
+                                    }
+                                }
+                            }
+                        }
+
+                        if let profile, profiles.profiles.count > 1, Permissions(profiles: profiles, cloud: cloud).canManageProfiles {
+                            SettingsGroup {
+                                SettingsButtonRow(symbol: "trash", tint: .red, title: "Delete Profile", role: .destructive) { isConfirmingDelete = true }
+                            }
+                            .confirmationDialog("Delete “\(profile.name)”?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+                                Button("Delete Profile", role: .destructive) {
+                                    guard validateDraft() else { return }
+                                    if profiles.delete(profile) { dismiss() }
+                                    else { problem = "Open the owner's profile to delete a profile." }
+                                }
+                            } message: {
+                                Text("Its favourites, playlists and history on this device go with it.")
+                            }
+                        }
+                        if let problem {
+                            Text(problem)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
+                }
+                .background(Palette.paper)
+                #else
+                Form {
+                    Section {
+                        HStack {
+                            ProfileAvatarView(profile: draft, size: 64, isLocked: hasPIN, preview: photoChange.isRemove ? nil : preview)
+                            VStack(alignment: .leading) {
+                                Text("Profile Photo").font(.headline)
+                                #if canImport(PhotosUI)
+                                PhotosPicker(selection: $pickedItem, matching: .images, photoLibrary: .shared()) {
+                                    Label(photoLabel, systemImage: "photo")
+                                }
+                                #endif
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        TextField("Name", text: $name)
+                            .wordsAutocapitalization()
+                            .submitLabel(.done)
+                    } header: {
+                        Text("Profile")
+                    }
+                    Section {
+                        if hasPIN {
+                            LabeledContent("PIN", value: "Set")
+                            Button("Change PIN", systemImage: "arrow.triangle.2.circlepath") { isSettingPIN = true }
+                            Button("Remove PIN", systemImage: "lock.open", role: .destructive) {
                                 pinChange = .remove
                                 biometrics = false
                             }
                             if let biometry = profiles.biometryName {
-                                SettingsRow(symbol: biometry == "Face ID" ? "faceid" : "touchid", tint: .green, title: "Open with \(biometry)") {
-                                    Toggle("Open with \(biometry)", isOn: $biometrics)
-                                        .labelsHidden()
-                                }
+                                Toggle("Open with \(biometry)", isOn: $biometrics)
                             }
                         } else {
-                            SettingsButtonRow(symbol: "lock.fill", tint: .orange, title: "Set a PIN") { isSettingPIN = true }
+                            Button("Set a PIN", systemImage: "lock") { isSettingPIN = true }
                         }
+                    } header: {
+                        Text("Lock")
+                    } footer: {
+                        Text(hasPIN ? "The PIN is asked for before this profile opens on any device." : "Without a PIN anyone using this device can open the profile.")
                     }
-
                     if let profile, cloud.isActive, let user = cloud.currentUserRecordName {
-                        SettingsGroup(title: "iCloud", footer: profile.userRecordName == user ? "Opens on its own on every device signed in with your Apple Account." : "Makes this the profile your own devices open first.") {
+                        Section {
                             if profile.userRecordName == user {
-                                SettingsRow(symbol: "icloud.fill", tint: .blue, title: "This is you") { EmptyView() }
+                                Label("This is you", systemImage: "icloud")
                             } else {
-                                SettingsButtonRow(symbol: "icloud.fill", tint: .blue, title: "Use on my Apple Account") {
+                                Button("Use on my Apple Account", systemImage: "icloud") {
                                     guard validateDraft() else { return }
                                     if profiles.bindToCurrentUser(profile) { dismiss() }
                                     else { problem = "Open your profile before making changes." }
                                 }
                             }
+                        } header: {
+                            Text("iCloud")
+                        } footer: {
+                            Text(profile.userRecordName == user ? "Opens on its own on every device signed in with your Apple Account." : "Makes this the profile your own devices open first.")
                         }
                     }
-
                     if let profile, profiles.profiles.count > 1, Permissions(profiles: profiles, cloud: cloud).canManageProfiles {
-                        SettingsGroup {
-                            SettingsButtonRow(symbol: "trash", tint: .red, title: "Delete Profile", role: .destructive) { isConfirmingDelete = true }
+                        Section {
+                            Button("Delete Profile", systemImage: "trash", role: .destructive) { isConfirmingDelete = true }
                         }
                         .confirmationDialog("Delete “\(profile.name)”?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
                             Button("Delete Profile", role: .destructive) {
@@ -168,15 +251,12 @@ struct ProfileEditorSheet: View {
                         }
                     }
                     if let problem {
-                        Text(problem)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
+                        Section { Text(problem).font(.callout).foregroundStyle(.red) }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
+                .groupedForm()
+                #endif
             }
-            .background(Palette.paper)
             .navigationTitle(profile == nil ? "New Profile" : "Edit Profile")
             .inlineTitle()
             .toolbar {
@@ -206,6 +286,9 @@ struct ProfileEditorSheet: View {
                 PINSetupSheet { pin in pinChange = .set(pin) }
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 440, idealWidth: 500, minHeight: 440, idealHeight: 540)
+        #endif
     }
 
     private func save() {
@@ -265,64 +348,122 @@ struct ManageProfilesView: View {
     private var permissions: Permissions { Permissions(profiles: profiles, cloud: cloud) }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 28) {
-                SettingsGroup(footer: footer) {
+        Group {
+            #if os(tvOS)
+            ScrollView {
+                VStack(spacing: 28) {
+                    SettingsGroup(footer: footer) {
+                        ForEach(profiles.profiles) { profile in
+                            Button {
+                                editing = .existing(profile)
+                            } label: {
+                                HStack(spacing: 14) {
+                                    ProfileAvatarView(profile: profile, size: 44, isLocked: profile.isLocked)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(profile.name)
+                                            .font(.body.weight(.medium))
+                                        Text(profile.role == .owner ? "Owner" : "Member")
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if profile.id == profiles.activeID {
+                                        Text("Now")
+                                            .font(.footnote.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if permissions.canEdit(profile, profiles: profiles) {
+                                        DisclosureChevron()
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(RowPressStyle())
+                            .disabled(!permissions.canEdit(profile, profiles: profiles))
+                        }
+                        // People who have an invitation but have not opened it yet.
+                        ForEach(cloud.participants.filter { !$0.accepted }) { participant in
+                            SettingsRow(symbol: "person.badge.clock", tint: .gray, title: participant.name, subtitle: "Invited, not joined yet") {
+                                EmptyView()
+                            }
+                        }
+                        if cloud.isActive, permissions.canManageFamily {
+                            SettingsButtonRow(symbol: "person.badge.plus", tint: .blue, title: isPreparingShare ? "Preparing…" : "Invite someone") {
+                                invite()
+                            }
+                            .disabled(isPreparingShare)
+                        }
+                    }
+                    if let problem {
+                        Text(problem)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 12)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 40)
+            }
+            .skyrBackground(player.tint)
+            #else
+            List {
+                Section {
                     ForEach(profiles.profiles) { profile in
                         Button {
                             editing = .existing(profile)
                         } label: {
-                            HStack(spacing: 14) {
+                            HStack {
                                 ProfileAvatarView(profile: profile, size: 44, isLocked: profile.isLocked)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(profile.name)
-                                        .font(.body.weight(.medium))
+                                VStack(alignment: .leading) {
+                                    Text(profile.name).font(.body.weight(.medium))
                                     Text(profile.role == .owner ? "Owner" : "Member")
-                                        .font(.footnote)
+                                        .font(.subheadline)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 if profile.id == profiles.activeID {
-                                    Text("Now")
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(.secondary)
+                                    Text("Current").font(.subheadline).foregroundStyle(.secondary)
                                 }
                                 if permissions.canEdit(profile, profiles: profiles) {
-                                    DisclosureChevron()
+                                    Image(systemName: "pencil")
+                                        .foregroundStyle(.secondary)
+                                        .accessibilityHidden(true)
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 4)
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(RowPressStyle())
+                        .buttonStyle(.plain)
                         .disabled(!permissions.canEdit(profile, profiles: profiles))
+                        .accessibilityHint(permissions.canEdit(profile, profiles: profiles) ? "Edit this profile." : "Only the profile or family owner can edit it.")
                     }
-                    // People who have an invitation but have not opened it yet.
                     ForEach(cloud.participants.filter { !$0.accepted }) { participant in
-                        SettingsRow(symbol: "person.badge.clock", tint: .gray, title: participant.name, subtitle: "Invited, not joined yet") {
-                            EmptyView()
+                        Label {
+                            VStack(alignment: .leading) {
+                                Text(participant.name)
+                                Text("Invited, not joined yet").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "person.badge.clock").foregroundStyle(.secondary)
                         }
                     }
                     if cloud.isActive, permissions.canManageFamily {
-                        SettingsButtonRow(symbol: "person.badge.plus", tint: .blue, title: isPreparingShare ? "Preparing…" : "Invite someone") {
-                            invite()
-                        }
-                        .disabled(isPreparingShare)
+                        Button(isPreparingShare ? "Preparing…" : "Invite someone", systemImage: "person.badge.plus") { invite() }
+                            .disabled(isPreparingShare)
                     }
+                } footer: {
+                    Text(footer)
                 }
                 if let problem {
-                    Text(problem)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 12)
+                    Section { Text(problem).font(.callout).foregroundStyle(.red) }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 40)
+            .groupedList()
+            #endif
         }
-        .skyrBackground(player.tint)
         .navigationTitle("Profiles")
         .inlineTitle()
         .sheet(item: $editing) { target in
@@ -336,7 +477,11 @@ struct ManageProfilesView: View {
     private var footer: String {
         guard permissions.canManageProfiles else { return "You can change your own profile. The family's owner manages the others." }
         let everyone = "Everyone who joins appears here with their own favourites, playlists, history, downloads and settings."
+        #if os(macOS)
+        return cloud.isActive ? "Up to five people can join. " + everyone : "Sign in to iCloud in System Settings to invite your family. " + everyone
+        #else
         return cloud.isActive ? "Up to five people can join. " + everyone : "Sign in to iCloud in the Settings app to invite your family. " + everyone
+        #endif
     }
 
     /// The owner's invitation link, through the system share sheet.

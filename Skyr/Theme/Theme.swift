@@ -34,6 +34,8 @@ private struct SkyrBackground: ViewModifier {
         content
             .background(TintedBackground(tint: tint))
             .toolbarColorScheme(colorScheme, for: .navigationBar)
+        #elseif os(macOS)
+        content.background(Color(nsColor: .windowBackgroundColor))
         #else
         content
             .background(TintedBackground(tint: tint))

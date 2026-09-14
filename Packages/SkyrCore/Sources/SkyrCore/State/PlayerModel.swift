@@ -17,6 +17,8 @@ public final class PlayerModel {
     public private(set) var queue: [Track] = []
     /// The queue as it was handed over, for turning shuffle back off.
     private var orderedQueue: [Track] = []
+    /// Original position of each queued occurrence. The same song may appear more than once.
+    private var queueOrigins: [Int] = []
     public private(set) var index = 0
     /// Shared by app, widget and CarPlay requests so a late server response cannot replace newer intent.
     public private(set) var commandRevision = UUID()
@@ -39,6 +41,7 @@ public final class PlayerModel {
         teardown()
         queue = []
         orderedQueue = []
+        queueOrigins = []
         index = 0
         album = nil
         queueTitle = nil
@@ -139,25 +142,37 @@ public final class PlayerModel {
         queueTitle = title
         let start = min(max(0, index), queue.count - 1)
         if isShuffling {
-            self.queue = [queue[start]] + queue.enumerated().filter { $0.offset != start }.map(\.element).shuffled()
+            queueOrigins = [start] + queue.indices.filter { $0 != start }.shuffled()
+            self.queue = queueOrigins.map { queue[$0] }
             load(index: 0, autoplay: true)
         } else {
+            queueOrigins = Array(queue.indices)
             self.queue = queue
             load(index: start, autoplay: true)
         }
+    }
+
+    /// Starts this occurrence in the existing queue without rebuilding or reshuffling that queue.
+    public func playQueuedTrack(at index: Int) {
+        guard queue.indices.contains(index) else { return }
+        recordPlaybackCommand()
+        load(index: index, autoplay: true)
     }
 
     /// Shuffles what comes after the current song, or restores the original order around it.
     public func toggleShuffle() {
         isShuffling.toggle()
         settingsChanged?(repeatMode, isShuffling)
-        guard let current = track else { return }
+        guard queueOrigins.indices.contains(index) else { return }
+        let currentOrigin = queueOrigins[index]
         if isShuffling {
-            queue = [current] + queue.filter { $0.id != current.id }.shuffled()
+            queueOrigins = [currentOrigin] + queueOrigins.filter { $0 != currentOrigin }.shuffled()
+            queue = queueOrigins.map { orderedQueue[$0] }
             index = 0
         } else if !orderedQueue.isEmpty {
             queue = orderedQueue
-            index = orderedQueue.firstIndex { $0.id == current.id } ?? 0
+            queueOrigins = Array(orderedQueue.indices)
+            index = currentOrigin
         }
     }
 

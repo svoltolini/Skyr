@@ -3,29 +3,14 @@ import CloudKit
 import SkyrCore
 import SwiftUI
 
-/// Silent iCloud pushes, family invitation links, and the space bar for play and pause.
+/// Silent iCloud pushes and family invitation links. Playback keys stay in the library views.
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
     static var cloud: CloudSync?
     static var player: PlayerModel?
-    private var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Silent pushes only; no permission prompt.
         NSApplication.shared.registerForRemoteNotifications()
-        // Space plays and pauses, as in Music, unless something is being typed.
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let isBareSpace = event.keyCode == 49 && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-            guard isBareSpace else { return event }
-            let handled = MainActor.assumeIsolated { Self.toggleFromSpaceBar() }
-            return handled ? nil : event
-        }
-    }
-
-    /// Play or pause for the space bar, unless a text field has it.
-    private static func toggleFromSpaceBar() -> Bool {
-        guard !(NSApp.keyWindow?.firstResponder is NSTextView), let player, player.hasTrack else { return false }
-        player.togglePlayPause()
-        return true
     }
 
     /// Closing the window leaves the music playing; the Dock icon brings the window back.
@@ -124,9 +109,14 @@ struct SkyrMacApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Skyr", id: "main") {
+        Window("Skyr", id: "main") {
             wired(MacRootView().reauthenticationSheet().downloadErrorAlert().profileSaveErrorAlert())
                 .onAppear { MacSetupSnapshots.runIfRequested(model: model) }
+                .onChange(of: MacNavigationScope(profileID: profiles.activeID, sessionID: profiles.sessionID, sourceID: library.catalogue.driveID), initial: true) { _, scope in
+                    navigation.synchronizeScope(profileID: scope.profileID, sessionID: scope.sessionID, sourceID: scope.sourceID)
+                    model.albumToOpen = nil
+                    model.playlistToOpen = nil
+                }
                 .onChange(of: scenePhase) { _, phase in
                     model.scenePhaseChanged(phase)
                     if phase == .active { Task { await cloud.refresh(reason: "foreground") } }
@@ -135,7 +125,7 @@ struct SkyrMacApp: App {
         }
         .defaultSize(width: 1240, height: 800)
         // The window follows its content: fixed while the setup assistant is up, free afterwards.
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
         .commands {
             MacCommands(navigation: navigation, player: player, model: model)
@@ -143,14 +133,13 @@ struct SkyrMacApp: App {
 
         Settings {
             wired(MacSettingsView().profileSaveErrorAlert())
-                .frame(width: 600, height: 760)
+                .frame(minWidth: 760, idealWidth: 820, minHeight: 560, idealHeight: 620)
         }
     }
 
     /// Every scene sees the same stores.
     private func wired<Content: View>(_ content: Content) -> some View {
         content
-            .scrollIndicators(.hidden)
             .environment(model)
             .environment(library)
             .environment(player)

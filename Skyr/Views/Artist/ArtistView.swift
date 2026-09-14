@@ -55,7 +55,7 @@ struct ArtistView: View {
                 .scrollClipDisabled()
                 .padding(.top, 12)
 
-                SectionHeader(title: "Top songs")
+                SectionHeader(title: "Songs")
                     .padding(.top, 26)
                 CardList(data: artist.topTracks, separatorInset: 70) { track in
                     Button {

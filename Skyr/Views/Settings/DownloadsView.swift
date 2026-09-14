@@ -79,31 +79,42 @@ private struct DownloadedAlbumTile: View {
     var body: some View {
         let destination = AlbumDestination(album, source: "downloads")
         let owner = downloads.owner(for: album)
-        let state = downloads.state(for: owner)
-        NavigationLink(value: destination) {
-            DownloadTileLabel(title: album.title, detail: state.detail(complete: album.artist, downloaded: downloads.downloadedCount(for: owner), total: album.tracks.count), state: state) {
-                ArtworkView(album: album, cornerRadius: 12)
-                    .shadow(color: .black.opacity(0.25), radius: 12, y: 8)
-                    .artworkSource(destination, cornerRadius: 12, shadow: .tile)
-            }
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            if state != .downloaded && !state.isDownloading {
-                Button("Retry Missing Songs", systemImage: "arrow.clockwise") {
-                    downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
-                        library.streamURL(for: $0, quality: .original)
-                    }
+        DownloadStateReader(owner: owner) { currentState in
+            let state = currentState ?? .none
+            NavigationLink(value: destination) {
+                DownloadTileLabel(
+                    title: album.title,
+                    detail: currentState == nil
+                        ? "Checking downloads…" : state.detail(complete: album.artist, downloaded: 0, total: album.tracks.count),
+                    state: state
+                ) {
+                    ArtworkView(album: album, cornerRadius: 12)
+                        .shadow(color: .black.opacity(0.25), radius: 12, y: 8)
+                        .artworkSource(destination, cornerRadius: 12, shadow: .tile)
                 }
             }
-            Button("Remove Download", systemImage: "trash", role: .destructive) { isConfirmingRemoval = true }
+            .buttonStyle(.plain)
+            .contextMenu {
+                if currentState != nil {
+                    if state != .downloaded && !state.isDownloading {
+                        Button("Retry Missing Songs", systemImage: "arrow.clockwise") {
+                            downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                                library.streamURL(for: $0, quality: .original)
+                            }
+                        }
+                    }
+                    Button("Remove Download", systemImage: "trash", role: .destructive) { isConfirmingRemoval = true }
+                }
+            }
+            .confirmationDialog(
+                "Remove “\(album.title)” from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible
+            ) {
+                Button("Remove Download", role: .destructive) { downloads.remove(owner) }
+            } message: {
+                Text("The songs stay on your server.")
+            }
+            .accessibilityElement(children: .combine)
         }
-        .confirmationDialog("Remove “\(album.title)” from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
-            Button("Remove Download", role: .destructive) { downloads.remove(owner) }
-        } message: {
-            Text("The songs stay on your server.")
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -117,31 +128,42 @@ private struct DownloadedPlaylistTile: View {
     var body: some View {
         let destination = PlaylistDestination(playlist, source: "downloads")
         let owner = downloads.owner(for: playlist)
-        let state = downloads.state(for: owner)
-        NavigationLink(value: destination) {
-            DownloadTileLabel(title: playlist.name, detail: state.detail(complete: playlist.summary, downloaded: downloads.downloadedCount(for: owner), total: playlist.tracks.count), state: state) {
-                PlaylistCover(playlist: playlist, cornerRadius: 12)
-                    .shadow(color: .black.opacity(0.25), radius: 12, y: 8)
-                    .zoomSource(id: destination.sourceID, shape: .rounded(12), shadow: .tile)
-            }
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            if state != .downloaded && !state.isDownloading {
-                Button("Retry Missing Songs", systemImage: "arrow.clockwise") {
-                    downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
-                        library.streamURL(for: $0, quality: .original)
-                    }
+        DownloadStateReader(owner: owner) { currentState in
+            let state = currentState ?? .none
+            NavigationLink(value: destination) {
+                DownloadTileLabel(
+                    title: playlist.name,
+                    detail: currentState == nil
+                        ? "Checking downloads…" : state.detail(complete: playlist.summary, downloaded: 0, total: playlist.tracks.count),
+                    state: state
+                ) {
+                    PlaylistCover(playlist: playlist, cornerRadius: 12)
+                        .shadow(color: .black.opacity(0.25), radius: 12, y: 8)
+                        .zoomSource(id: destination.sourceID, shape: .rounded(12), shadow: .tile)
                 }
             }
-            Button("Remove Download", systemImage: "trash", role: .destructive) { isConfirmingRemoval = true }
+            .buttonStyle(.plain)
+            .contextMenu {
+                if currentState != nil {
+                    if state != .downloaded && !state.isDownloading {
+                        Button("Retry Missing Songs", systemImage: "arrow.clockwise") {
+                            downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                                library.streamURL(for: $0, quality: .original)
+                            }
+                        }
+                    }
+                    Button("Remove Download", systemImage: "trash", role: .destructive) { isConfirmingRemoval = true }
+                }
+            }
+            .confirmationDialog(
+                "Remove “\(playlist.name)” from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible
+            ) {
+                Button("Remove Download", role: .destructive) { downloads.remove(owner) }
+            } message: {
+                Text("The playlist stays; songs a downloaded album still needs are kept.")
+            }
+            .accessibilityElement(children: .combine)
         }
-        .confirmationDialog("Remove “\(playlist.name)” from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
-            Button("Remove Download", role: .destructive) { downloads.remove(owner) }
-        } message: {
-            Text("The playlist stays; songs a downloaded album still needs are kept.")
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 

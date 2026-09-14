@@ -14,6 +14,327 @@ struct SettingsTabView: View {
     }
 }
 
+/// Categories are shared settings content, with a dedicated sidebar in the Mac Settings window.
+enum SettingsCategory: String, CaseIterable, Identifiable {
+    case general = "General"
+    case library = "Library"
+    case server = "Server"
+    case profiles = "Profiles & Family"
+    case privacy = "Privacy"
+    case about = "About"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .library: "music.note.list"
+        case .server: "externaldrive"
+        case .profiles: "person.2"
+        case .privacy: "hand.raised"
+        case .about: "info.circle"
+        }
+    }
+}
+
+#if !os(tvOS)
+/// Native controls share behavior across platforms; the Mac presents one category at a time.
+struct SettingsView: View {
+    var category: SettingsCategory? = nil
+    @Environment(AppModel.self) private var model
+    @Environment(LibraryStore.self) private var library
+    @Environment(PlayerModel.self) private var player
+    @Environment(DownloadManager.self) private var downloads
+    @Environment(ProfileStore.self) private var profiles
+    @Environment(CloudSync.self) private var cloud
+    @State private var isConfirmingSignOut = false
+    @State private var versionTaps = 0
+    @State private var isShowingDiagnostics = false
+    @State private var hasUnseenNotes = Release.hasUnseenNotes
+    @State private var isRecoveringLegacyLibrary = false
+    @State private var isConfirmingTagRead = false
+    @State private var isShowingRemoteAccessHelp = false
+
+    private var permissions: Permissions { Permissions(profiles: profiles, cloud: cloud) }
+    private func shows(_ category: SettingsCategory) -> Bool { self.category == nil || self.category == category }
+
+    var body: some View {
+        Form {
+            if shows(.profiles) {
+                profileSection
+                familySection
+            }
+            if shows(.server) {
+                serverSection
+                recoverySection
+            }
+            if shows(.library) { librarySections }
+            if shows(.privacy) { privacySection }
+            if shows(.general) { generalSections }
+            if shows(.about) { aboutSection }
+            if shows(.server), permissions.canLeave { signOutSection }
+        }
+        .groupedForm()
+        .navigationTitle(category?.rawValue ?? "Settings")
+        .largeTitle()
+        .navigationDestination(isPresented: $isShowingDiagnostics) { DiagnosticsView() }
+        .sheet(isPresented: $isRecoveringLegacyLibrary) { LegacyLibraryRecoverySheet() }
+        #if os(tvOS)
+        .fullScreenCover(isPresented: $isShowingRemoteAccessHelp) { RemoteAccessGuide() }
+        #else
+        .sheet(isPresented: $isShowingRemoteAccessHelp) { RemoteAccessGuide() }
+        #endif
+        .confirmationDialog("Read song tags again?", isPresented: $isConfirmingTagRead, titleVisibility: .visible) {
+            Button("Read Song Tags Again") { model.rereadMetadata() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Skyr will read every song's tags from the NAS again. This may take a while for a large library. Your favourites and playlists stay in place.")
+        }
+        .onAppear { hasUnseenNotes = Release.hasUnseenNotes }
+        .confirmationDialog(library.isDemo ? "Leave the sample library?" : "Sign out of \(model.serverTitle)?", isPresented: $isConfirmingSignOut, titleVisibility: .visible) {
+            Button(library.isDemo ? "Leave" : "Sign out", role: .destructive) {
+                player.pause()
+                Task { await model.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var profileSection: some View {
+        Section {
+            NavigationLink {
+                ManageProfilesView()
+            } label: {
+                HStack {
+                    if let profile = profiles.active {
+                        ProfileAvatarView(profile: profile, size: 44, isLocked: profile.isLocked)
+                        VStack(alignment: .leading) {
+                            Text(profile.name).font(.headline)
+                            Text(profile.role == .owner ? "Owner" : "Member")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Label("Manage Profiles", systemImage: "person.crop.circle")
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .accessibilityHint("Manage profiles and family invitations.")
+            Button("Switch Profile", systemImage: "person.2") {
+                profiles.lock()
+            }
+        } header: {
+            Text("Profile")
+        }
+    }
+
+    private var familySection: some View {
+        Section("iCloud") {
+            NavigationLink {
+                FamilyView()
+            } label: {
+                LabeledContent {
+                    Text(cloud.status.text).foregroundStyle(.secondary)
+                } label: {
+                    NativeSettingsLabel("Family", symbol: "person.2.fill", tint: .blue)
+                }
+            }
+            if cloud.isActive, !cloud.participants.isEmpty {
+                LabeledContent("Participants", value: cloud.participants.count.formatted())
+            }
+        }
+    }
+
+    private var serverSection: some View {
+        Section("Server") {
+            LabeledContent(model.serverTitle, value: model.isConnected ? "Connected" : "Offline")
+            Button("Remote Access Help", systemImage: "network") { isShowingRemoteAccessHelp = true }
+            if model.connection != nil, permissions.canManageServer {
+                NavigationLink {
+                    FolderPickerView(mode: .settings)
+                } label: {
+                    LabeledContent {
+                        Text(model.musicFolderLabel).foregroundStyle(.secondary)
+                    } label: {
+                        NativeSettingsLabel("Music folder", symbol: "folder.fill", tint: .orange)
+                    }
+                }
+                Button(model.isReconnecting ? "Reconnecting…" : "Reconnect", systemImage: "arrow.clockwise") {
+                    Task { await model.reconnect() }
+                }
+                .disabled(model.isReconnecting)
+                if let error = model.signInError, !model.isReconnecting {
+                    Text(error).font(.callout).foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recoverySection: some View {
+        if !model.legacyLibraryRecoveries.isEmpty {
+            Section {
+                Button("Recover saved library", systemImage: "clock.arrow.circlepath") { isRecoveringLegacyLibrary = true }
+            } header: {
+                Text("Saved library")
+            } footer: {
+                Text("An earlier version kept favourites, playlists and history under the server name. Recover them into this connection after confirming the old server. Current edits are kept; older downloads need downloading again.")
+            }
+        }
+    }
+
+    private var librarySections: some View {
+        @Bindable var model = model
+        @Bindable var library = library
+        return Group {
+            Section {
+                LabeledContent("Last scan", value: model.lastScanText)
+                LabeledContent("Library", value: library.catalogue.summary)
+                if model.indexer.isEnriching {
+                    LabeledContent("Album details", value: "\(model.indexer.enrichedCount.formatted()) of \(model.indexer.enrichTotal.formatted())")
+                }
+                Toggle("Watch for changes", isOn: $model.watchFolder)
+                #if os(iOS)
+                Toggle("Stay awake to scan", isOn: $model.keepsScreenOnWhileScanning)
+                #endif
+                Button(model.isScanning ? "Scanning…" : "Scan now", systemImage: "arrow.triangle.2.circlepath") { model.rescan() }
+                    .disabled(model.isScanning)
+                Button("Read Song Tags Again", systemImage: "arrow.clockwise") { isConfirmingTagRead = true }
+                    .disabled(model.isScanning || !model.isConnected || model.isDemo)
+            } header: {
+                Text("Library")
+            } footer: {
+                Text(model.watchFolder
+                     ? "New music is picked up when you come back to the app and about once an hour while it's open."
+                     : "The library only updates when you scan.")
+                Text(SettingsHelp.tagRefresh)
+            }
+            Section("Names") {
+                Toggle("Clean album names", isOn: $library.hidesBracketedTitleParts)
+                NavigationLink {
+                    GenreNamesView()
+                } label: {
+                    LabeledContent("Genre names", value: library.genreRenames.isEmpty ? "None" : library.genreRenames.count.formatted())
+                }
+            }
+            Section("Downloads") {
+                NavigationLink(value: LibraryRoute.downloads) {
+                    LabeledContent {
+                        Text(ByteText.format(downloads.totalBytes)).foregroundStyle(.secondary)
+                    } label: {
+                        NativeSettingsLabel("On this \(Device.noun)", symbol: "arrow.down.circle.fill", tint: .green)
+                    }
+                }
+            }
+        }
+    }
+
+    private var privacySection: some View {
+        Section {
+            Toggle("Look up artwork with Apple", isOn: Binding(
+                get: { model.artworkLookup.isEnabled },
+                set: { model.artworkLookup.setEnabled($0) }
+            ))
+            .accessibilityHint("Optional. Sends artist and album names to Apple from this device.")
+            if let error = model.artworkLookup.preferenceError {
+                Text(error).font(.callout).foregroundStyle(.red)
+            }
+            NavigationLink { PrivacyDetailsView() } label: {
+                Label("Privacy Details", systemImage: "hand.raised")
+            }
+        } header: {
+            Text("Privacy")
+        } footer: {
+            Text(ArtworkLookup.disclosure)
+        }
+    }
+
+    private var generalSections: some View {
+        @Bindable var model = model
+        return Group {
+            Section("Appearance") {
+                Picker("Appearance", selection: $model.appearance) {
+                    ForEach(Appearance.allCases) { appearance in
+                        Text(appearance == .auto ? "Automatic" : appearance.rawValue).tag(appearance)
+                    }
+                }
+            }
+        }
+    }
+
+    private var aboutSection: some View {
+        Section("About") {
+            NavigationLink {
+                ReleaseNotesView()
+            } label: {
+                LabeledContent {
+                    if hasUnseenNotes { Text("New").foregroundStyle(.secondary) }
+                } label: {
+                    NativeSettingsLabel("What's New", symbol: "sparkles", tint: .purple)
+                }
+            }
+            LabeledContent("Version", value: Self.versionText)
+                .onTapGesture {
+                    versionTaps += 1
+                    if versionTaps >= 5 {
+                        versionTaps = 0
+                        isShowingDiagnostics = true
+                    }
+                }
+            NavigationLink { DiagnosticsView() } label: {
+                Label("Diagnostics", systemImage: "stethoscope")
+            }
+        }
+    }
+
+    private var signOutSection: some View {
+        Section {
+            Button(library.isDemo ? "Leave sample library" : "Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { isConfirmingSignOut = true }
+        } footer: {
+            if let connection = model.connection {
+                Text("Signed in as \(connection.account). Signing out forgets the saved password and clears the cached library.")
+            }
+        }
+    }
+
+    private static var versionText: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+}
+
+/// iOS Settings-style symbol tiles; Mac uses the system's compact label layout.
+private struct NativeSettingsLabel: View {
+    let title: String
+    let symbol: String
+    let tint: Color
+
+    init(_ title: String, symbol: String, tint: Color) {
+        self.title = title
+        self.symbol = symbol
+        self.tint = tint
+    }
+
+    var body: some View {
+        #if os(macOS)
+        Text(title)
+        #else
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: symbol)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.white)
+                .padding(5)
+                .frame(width: 28, height: 28)
+                .background(tint, in: RoundedRectangle(cornerRadius: 6))
+                .accessibilityHidden(true)
+        }
+        #endif
+    }
+}
+#else
 /// Profile, server, library, playback, downloads and appearance, as airy groups on the paper.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
@@ -27,6 +348,8 @@ struct SettingsView: View {
     @State private var isShowingDiagnostics = false
     @State private var hasUnseenNotes = Release.hasUnseenNotes
     @State private var isRecoveringLegacyLibrary = false
+    @State private var isConfirmingTagRead = false
+    @State private var isShowingRemoteAccessHelp = false
 
     private var permissions: Permissions { Permissions(profiles: profiles, cloud: cloud) }
 
@@ -58,6 +381,7 @@ struct SettingsView: View {
                             .frame(width: 8, height: 8)
                             .accessibilityLabel(model.isConnected ? "Connected" : "Offline")
                     }
+                    SettingsButtonRow(symbol: "network", tint: .blue, title: "Remote Access Help") { isShowingRemoteAccessHelp = true }
                     if model.connection != nil, permissions.canManageServer {
                         NavigationLink {
                             FolderPickerView(mode: .settings)
@@ -90,14 +414,14 @@ struct SettingsView: View {
                     }
                 }
 
-                SettingsGroup(title: "Library", footer: model.watchFolder
+                SettingsGroup(title: "Library", footer: (model.watchFolder
                     ? "New music is picked up when you come back to the app and about once an hour while it's open."
-                    : "The library only updates when you scan.") {
+                    : "The library only updates when you scan.") + "\n\n" + SettingsHelp.tagRefresh) {
                     SettingsRow(symbol: "clock.arrow.circlepath", tint: .gray, title: "Last scan") {
                         SettingsValue(model.lastScanText)
                     }
                     SettingsRow(symbol: "square.stack.fill", tint: .purple, title: "Library") {
-                        SettingsValue(library.isDemo ? "3,412 albums · 1.9 TB" : library.catalogue.summary)
+                        SettingsValue(library.catalogue.summary)
                     }
                     if model.indexer.isEnriching {
                         SettingsRow(symbol: "text.magnifyingglass", tint: .gray, title: "Album details") {
@@ -117,6 +441,8 @@ struct SettingsView: View {
                         model.rescan()
                     }
                     .disabled(model.isScanning)
+                    SettingsButtonRow(symbol: "arrow.clockwise", tint: .blue, title: "Read Song Tags Again") { isConfirmingTagRead = true }
+                        .disabled(model.isScanning || !model.isConnected || model.isDemo)
                     SettingsRow(symbol: "parentheses", tint: .brown, title: "Clean album names") {
                         Toggle("Clean album names", isOn: $library.hidesBracketedTitleParts).labelsHidden()
                     }
@@ -134,12 +460,6 @@ struct SettingsView: View {
                 SettingsGroup(title: "Privacy", footer: ArtworkLookup.disclosure) {
                     ArtworkPrivacyControl()
                         .padding(16)
-                }
-
-                SettingsGroup(title: "Playback") {
-                    SettingsRow(symbol: "waveform", tint: .mint, title: "Gapless playback") {
-                        Toggle("Gapless playback", isOn: $model.gapless).labelsHidden()
-                    }
                 }
 
                 #if !os(tvOS)
@@ -218,6 +538,17 @@ struct SettingsView: View {
         .largeTitle()
         .navigationDestination(isPresented: $isShowingDiagnostics) { DiagnosticsView() }
         .sheet(isPresented: $isRecoveringLegacyLibrary) { LegacyLibraryRecoverySheet() }
+        #if os(tvOS)
+        .fullScreenCover(isPresented: $isShowingRemoteAccessHelp) { RemoteAccessGuide() }
+        #else
+        .sheet(isPresented: $isShowingRemoteAccessHelp) { RemoteAccessGuide() }
+        #endif
+        .confirmationDialog("Read song tags again?", isPresented: $isConfirmingTagRead, titleVisibility: .visible) {
+            Button("Read Song Tags Again") { model.rereadMetadata() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Skyr will read every song's tags from the NAS again. This may take a while for a large library. Your favourites and playlists stay in place.")
+        }
         .onAppear { hasUnseenNotes = Release.hasUnseenNotes }
         .animation(.default, value: model.isScanning)
         .animation(.default, value: model.indexer.isEnriching)
@@ -282,6 +613,12 @@ struct SettingsView: View {
     }
 }
 
+#endif
+
+private enum SettingsHelp {
+    static let tagRefresh = "Scans reuse tags when file size and modification time match. If your server doesn't provide modification times, use Read Song Tags Again after editing tags."
+}
+
 /// Shared by iPhone, iPad, Mac and TV. Only listening data is copied after a named-source confirmation.
 private struct LegacyLibraryRecoverySheet: View {
     @Environment(AppModel.self) private var model
@@ -344,6 +681,9 @@ private struct LegacyLibraryRecoverySheet: View {
             }
         }
         .sheetDetents([.medium, .large])
+        #if os(macOS)
+        .frame(minWidth: 440, idealWidth: 520, minHeight: 440, idealHeight: 560)
+        #endif
     }
 }
 

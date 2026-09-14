@@ -280,12 +280,12 @@ public final class AppModel {
     public var isScanning: Bool { isDemo ? demoScanning : indexer.isRunning }
     private var demoScanning = false
 
-    private func startIndexing(showsProgress: Bool) {
+    private func startIndexing(showsProgress: Bool, forceMetadataReread: Bool = false) {
         guard let drive = library.drive, let connection, let path = connection.musicPath else { return }
         if showsProgress { stage = .indexing }
         let existing = library.catalogue.isEmpty ? nil : library.catalogue
         let generation = connectionGeneration
-        indexer.start(drive: drive, rootPath: path, serverName: connection.name, existing: existing) { [weak self] catalogue in
+        indexer.start(drive: drive, rootPath: path, serverName: connection.name, existing: existing, forceMetadataReread: forceMetadataReread) { [weak self] catalogue in
             guard let self, generation == connectionGeneration,
                   self.connection == connection, library.drive?.id == drive.id else { return }
             library.replace(with: catalogue, drive: drive)
@@ -364,6 +364,13 @@ public final class AppModel {
         }
     }
 
+    /// Reads every song's tags again, including files whose server revision has not changed.
+    /// The complete existing catalogue remains available if the folder listing fails.
+    public func rereadMetadata() {
+        guard isConnected, !isDemo, !isScanning else { return }
+        startIndexing(showsProgress: false, forceMetadataReread: true)
+    }
+
     public func signOut() async {
         beginConnectionChange()
         pendingServer = nil
@@ -387,7 +394,7 @@ public final class AppModel {
         if let oldSession { await services.logout(oldSession) }
     }
 
-    /// Demo mode counts up to the design's library size before opening.
+    /// Demo mode counts up to the sample catalogue's size before opening.
     private func startDemoIndexing() {
         demoTask?.cancel()
         demoCount = 0
@@ -502,11 +509,15 @@ public final class AppModel {
     public func showAlbum(_ album: Album) {
         albumNavigationRequest += 1
         selectedTab = .library
+        #if os(macOS)
+        albumToOpen = album
+        #else
         Task { [weak self] in
             // Let the sheet finish dismissing before the page pushes underneath it.
             try? await Task.sleep(for: .milliseconds(350))
             self?.albumToOpen = album
         }
+        #endif
     }
 
     public var playlistToOpen: Playlist?
@@ -514,10 +525,14 @@ public final class AppModel {
     /// Switches to the Playlists tab and opens the playlist there.
     public func showPlaylist(_ playlist: Playlist) {
         selectedTab = .playlists
+        #if os(macOS)
+        playlistToOpen = playlist
+        #else
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
             self?.playlistToOpen = playlist
         }
+        #endif
     }
 
     /// A tab by the name a widget link carries.

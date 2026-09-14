@@ -21,46 +21,72 @@ struct JoinWithLinkSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 28) {
-                    SettingsGroup(title: "Invitation", footer: "The link starts with icloud.com/share. It works with any Apple Account, in any country; you don't need to be in the owner's Family Sharing group. If the link opened in your browser and said it wasn't valid, paste it here instead.") {
-                        HStack(spacing: 14) {
-                            SettingsIcon(symbol: "link", tint: .blue)
-                            TextField("Paste the invitation link", text: $link)
-                                .noAutocapitalization()
-                                .autocorrectionDisabled()
-                                .disabled(isJoining)
-                            #if !os(tvOS)
-                            PasteButton(payloadType: String.self) { strings in
-                                link = strings.first ?? ""
+            Group {
+                #if os(tvOS)
+                ScrollView {
+                    VStack(spacing: 28) {
+                        SettingsGroup(title: "Invitation", footer: "The link starts with icloud.com/share. It works with any Apple Account, in any country; you don't need to be in the owner's Family Sharing group. If the link opened in your browser and said it wasn't valid, paste it here instead.") {
+                            HStack(spacing: 14) {
+                                SettingsIcon(symbol: "link", tint: .blue)
+                                TextField("Paste the invitation link", text: $link)
+                                    .noAutocapitalization()
+                                    .autocorrectionDisabled()
+                                    .disabled(isJoining)
+                                #if !os(tvOS)
+                                PasteButton(payloadType: String.self) { strings in
+                                    link = strings.first ?? ""
+                                }
+                                .labelStyle(.iconOnly)
+                                .buttonBorderShape(.capsule)
+                                #endif
                             }
-                            .labelStyle(.iconOnly)
-                            .buttonBorderShape(.capsule)
-                            #endif
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        if let problem {
+                            Text(problem)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                                .padding(.horizontal, 12)
+                        }
+                        if isJoining {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Joining the family…")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 40)
+                }
+                .background(Palette.paper)
+                #else
+                Form {
+                    Section {
+                        TextField("Invitation link", text: $link)
+                            .noAutocapitalization()
+                            .autocorrectionDisabled()
+                            .disabled(isJoining)
+                        PasteButton(payloadType: String.self) { strings in link = strings.first ?? "" }
+                            .disabled(isJoining)
+                    } header: {
+                        Text("Invitation")
+                    } footer: {
+                        Text("The link starts with icloud.com/share. It works with any Apple Account, in any country; you don't need to be in the owner's Family Sharing group. If the link opened in your browser and said it wasn't valid, paste it here instead.")
                     }
                     if let problem {
-                        Text(problem)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, 12)
+                        Section { Text(problem).font(.callout).foregroundStyle(.red) }
                     }
                     if isJoining {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            Text("Joining the family…")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+                        Section { ProgressView("Joining the family…") }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 40)
+                .groupedForm()
+                #endif
             }
-            .background(Palette.paper)
             .navigationTitle("Join a Family")
             .inlineTitle()
             .toolbar {
@@ -75,7 +101,7 @@ struct JoinWithLinkSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 480, minHeight: 300)
+        .frame(minWidth: 440, idealWidth: 500, minHeight: 340, idealHeight: 440)
         #endif
     }
 

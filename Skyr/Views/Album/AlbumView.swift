@@ -32,7 +32,7 @@ struct AlbumView: View {
                     }
                     .sensoryFeedback(.impact(weight: .light), trigger: isFlipped)
                     .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel(isFlipped ? "Album details, tap to show the cover" : "Album cover, tap for details")
+                    .accessibilityLabel(isFlipped ? "Album details. Show cover" : "Album cover. Show details")
                 } titles: {
                     Text(album.title)
                         .font(Fonts.pageTitle)
@@ -118,24 +118,36 @@ struct AlbumView: View {
 
     private func downloadButton(for album: Album) -> some View {
         let owner = downloads.owner(for: album)
-        return DownloadButton(state: downloads.state(for: owner)) {
-            switch downloads.state(for: owner) {
-        case .none, .failed, .partial, .cancelled:
-                downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) { track in
-                    library.streamURL(for: track, quality: .original)
+        return DownloadStateReader(owner: owner) { state in
+            if let state {
+                DownloadButton(state: state) {
+                    switch state {
+                    case .none, .failed, .partial, .cancelled:
+                        downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                            track in
+                            library.streamURL(for: track, quality: .original)
+                        }
+                    case .downloading:
+                        downloads.cancel(owner)
+                    case .downloaded:
+                        isConfirmingRemoval = true
+                    }
                 }
-            case .downloading:
-                downloads.cancel(owner)
-            case .downloaded:
-                isConfirmingRemoval = true
+            } else {
+                ProgressView().frame(width: 50, height: 50).accessibilityLabel("Checking downloads")
             }
         }
-        .confirmationDialog("Remove this album from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
+        .confirmationDialog(
+            "Remove this album from your \(Device.noun)?", isPresented: $isConfirmingRemoval,
+            titleVisibility: .visible
+        ) {
             Button("Remove Download", role: .destructive) { downloads.remove(owner) }
         } message: {
             Text("The songs stay on your server; copies a downloaded playlist still needs are kept.")
         }
     }
+
+
 }
 
 /// The back of the cover: the album's colours with its year, genre and quality.

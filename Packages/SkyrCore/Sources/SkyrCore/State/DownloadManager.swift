@@ -167,7 +167,10 @@ public final class DownloadManager {
     /// Set by the app delegate when the system relaunches the app for session events.
     public static var backgroundCompletionHandler: (() -> Void)?
 
-    public private(set) var records: [String: DownloadRecord] = [:]
+    public private(set) var records: [String: DownloadRecord] = [:] { didSet { stateRevision &+= 1 } }
+    /// Changes to download intent or saved-file metadata invalidate display reads.
+    /// Byte progress is sampled by readers without cancelling an in-flight filesystem scan.
+    public private(set) var stateRevision: UInt64 = 0
     /// Read from the current catalogue, including when its server is offline.
     public var driveIDProvider: () -> String = { "" }
     /// The profile whose downloads the screens show and new downloads belong to.
@@ -180,7 +183,7 @@ public final class DownloadManager {
     }
     private var progressByKey: [String: Double] = [:]
     /// Albums and playlists with a download in flight and the track ids each still waits for.
-    public private(set) var pendingByOwner: [String: Set<String>] = [:]
+    public private(set) var pendingByOwner: [String: Set<String>] = [:] { didSet { stateRevision &+= 1 } }
     public private(set) var lastError: String?
     public func clearError() { lastError = nil }
 
@@ -189,7 +192,7 @@ public final class DownloadManager {
     private var jobs: [String: DownloadJob] = [:]
     private var tasks: [String: URLSessionDownloadTask] = [:]
     private var simulations: [String: Task<Void, Never>] = [:]
-    private var simulatedKeys: Set<String> = []
+    private var simulatedKeys: Set<String> = [] { didSet { stateRevision &+= 1 } }
     private let cacheDirectory: URL
     private let log: (String) -> Void
     private let resumeTask: (URLSessionDownloadTask) -> Void
@@ -197,7 +200,7 @@ public final class DownloadManager {
     private var isStartingTask = false
     private var expectedAttempts: [String: String] = [:]
     private var retiredAttempts: Set<String> = []
-    private var requests: [String: OwnerRequest] = [:]
+    private var requests: [String: OwnerRequest] = [:] { didSet { stateRevision &+= 1 } }
     private var hasVersionedIntent = false
     private var initialJobs: [String: DownloadJob] = [:]
     private var hasSavedPendingOwners = false
@@ -346,7 +349,17 @@ public final class DownloadManager {
     public nonisolated static func cacheKey(trackID: String, driveID: String) -> String {
         // Length-delimited JSON avoids ambiguity when ids contain ordinary separator characters.
         let data = (try? JSONEncoder().encode([driveID, trackID])) ?? Data()
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        // This is also a hot read path for playlist download status. Construct the same lowercase
+        // hexadecimal bytes without invoking Foundation's format parser 32 times per song.
+        let alphabet = Array("0123456789abcdef".utf8)
+        let digest = SHA256.hash(data: data)
+        var hex: [UInt8] = []
+        hex.reserveCapacity(64)
+        for byte in digest {
+            hex.append(alphabet[Int(byte >> 4)])
+            hex.append(alphabet[Int(byte & 0x0f)])
+        }
+        return String(decoding: hex, as: UTF8.self)
     }
 
     public nonisolated static func fileName(for track: Track, driveID: String) -> String {
@@ -363,6 +376,7 @@ public final class DownloadManager {
     private func key(for track: Track) -> String { Self.cacheKey(trackID: track.id, driveID: driveIDProvider()) }
 
     private func record(for track: Track) -> DownloadRecord? {
+        guard !records.isEmpty else { return nil }
         guard let record = records[key(for: track)] else { return nil }
         if record.fileName.isEmpty { return simulatedKeys.contains(key(for: track)) ? record : nil }
         return FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path) ? record : nil
@@ -410,7 +424,8 @@ public final class DownloadManager {
 
     /// Songs of the album or playlist that it has on the device.
     public func downloadedCount(for owner: DownloadOwner) -> Int {
-        owner.tracks.filter { record(for: $0)?.owners.contains(owner.id) == true }.count
+        guard !records.isEmpty else { return 0 }
+        return owner.tracks.filter { record(for: $0)?.owners.contains(owner.id) == true }.count
     }
 
     public func state(for owner: DownloadOwner) -> DownloadState {
@@ -419,7 +434,7 @@ public final class DownloadManager {
         let done = downloadedCount(for: owner)
         if done == tracks.count { return .downloaded }
         let pending = pendingByOwner[owner.id] ?? []
-        if tracks.contains(where: { pending.contains(key(for: $0)) }) {
+        if !pending.isEmpty, tracks.contains(where: { pending.contains(key(for: $0)) }) {
             let inFlight = tracks.filter { pending.contains(key(for: $0)) }.reduce(0.0) { $0 + (progressByKey[key(for: $1)] ?? 0) }
             return .downloading(fraction: (Double(done) + inFlight) / Double(tracks.count), done: done, total: tracks.count)
         }
@@ -429,6 +444,40 @@ public final class DownloadManager {
         if done > 0 { return .partial(done: done, total: tracks.count, message: error) }
         if let error { return .failed(message: error) }
         return .none
+    }
+
+    /// A fresh display read. Hashing and checking files happen off the main actor; playback still
+    /// uses localURL(for:) so a previously displayed result never authorizes a missing file.
+    public func readState(for owner: DownloadOwner) async throws -> DownloadState {
+        try await readState(for: owner, fileExists: { FileManager.default.fileExists(atPath: $0.path) })
+    }
+
+    // The injected checker lets tests pause real snapshot work and verify source/cancellation guards.
+    func readState(for owner: DownloadOwner, fileExists: @escaping @Sendable (URL) -> Bool) async throws -> DownloadState {
+        try Task.checkCancellation()
+        let driveID = driveIDProvider()
+        let profileID = activeProfileID
+        let revision = stateRevision
+        guard owner.id.hasPrefix(DownloadOwner.scope(profileID)) else { throw CancellationError() }
+        let request = requests[requestKey(ownerID: owner.id, driveID: driveID)]
+        let snapshot = DownloadStateSnapshot(owner: owner, driveID: driveID, records: records,
+                                             simulatedKeys: simulatedKeys, pending: pendingByOwner[owner.id] ?? [],
+                                             progress: progressByKey, cancelled: request?.cancelled == true,
+                                             errors: request?.errors ?? [:],
+                                             directory: cacheDirectory)
+        let worker = Task.detached(priority: .userInitiated) {
+            try snapshot.read(fileExists: fileExists)
+        }
+        let state = try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        try Task.checkCancellation()
+        guard driveIDProvider() == driveID, activeProfileID == profileID, stateRevision == revision else {
+            throw CancellationError()
+        }
+        return state
     }
 
     public var totalBytes: Int64 { records.values.reduce(0) { $0 + $1.bytes } }

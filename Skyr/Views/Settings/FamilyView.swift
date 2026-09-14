@@ -2,6 +2,7 @@ import SkyrCore
 import CloudKit
 import SwiftUI
 
+#if os(tvOS)
 /// The family's plumbing: iCloud sync, the NAS account members connect with, and leaving. Who is
 /// in the family, and inviting, live on the Profiles screen, since everyone who joins is a profile.
 struct FamilyView: View {
@@ -113,7 +114,7 @@ struct FamilyView: View {
     /// The read-only NAS account members connect with, made by the app or entered by hand.
     private var familyAccessGroup: some View {
         SettingsGroup(title: "Family access", footer: model.familyAccess == nil
-            ? "One read-only account on the NAS is shared by everyone in the family, however many people join. Nobody sees your password, and nobody types anything. The app can make it for you on a NAS that allows it; otherwise add it yourself in a minute."
+            ? "Use a separate read-only NAS account for the family. Skyr can create one on a NAS that allows it, or you can enter an existing account. Its credentials are shared through iCloud with people who join using your invitation link."
             : "Everyone in the family connects with this one account, on every device, without signing in. Rotate the password if a device should stop working.") {
             if let access = model.familyAccess {
                 SettingsRow(symbol: "key.fill", tint: .green, title: "Family access") {
@@ -165,6 +166,154 @@ struct FamilyView: View {
     }
 }
 
+#else
+/// Native preferences for iCloud, the shared NAS account, and membership.
+struct FamilyView: View {
+    @Environment(CloudSync.self) private var cloud
+    @Environment(ProfileStore.self) private var profiles
+    @Environment(AppModel.self) private var model
+    @State private var isWorkingOnAccess = false
+    @State private var isEnteringAccount = false
+    @State private var isConfirmingRemoveAccess = false
+    @State private var isConfirmingStop = false
+    @State private var isJoiningWithLink = false
+    @State private var problem: String?
+
+    private var permissions: Permissions { Permissions(profiles: profiles, cloud: cloud) }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Sync", value: cloud.status.text)
+            } header: {
+                Text("iCloud")
+            } footer: {
+                Text(footer)
+            }
+            if permissions.canManageFamily, model.connection?.isHomeOnly == true {
+                Section {
+                    Label("Home network only", systemImage: "house")
+                } header: {
+                    Text("Reaching the server")
+                } footer: {
+                    Text("Members need a route to this NAS. Tailscale is an optional way to connect remotely. When you change the server address or owner account, verify family access again for that connection.")
+                }
+            }
+            if cloud.isActive, permissions.canManageFamily, !model.isDemo { familyAccessSection }
+            if (cloud.isActive && cloud.isOwner && !cloud.isShared) || cloud.needsFamilyInvitation {
+                Section {
+                    Button("Join with an invitation link", systemImage: "link") { isJoiningWithLink = true }
+                } header: {
+                    Text(cloud.needsFamilyInvitation ? "Reconnect with your family" : "Joining someone else's family")
+                } footer: {
+                    Text("Invitations are icloud.com/share links made in Skyr. Opening one on this device normally joins straight away; if it opened in a browser instead, paste it here. Any Apple Account can join, wherever it lives; Family Sharing is not needed.")
+                }
+            }
+            if cloud.isActive || (model.familyRevocationPending && cloud.currentUserRecordName != nil) {
+                if (cloud.isOwner && (cloud.isShared || model.familyRevocationPending) && permissions.canManageFamily) || (!cloud.isOwner && permissions.canLeave) {
+                    Section {
+                        Button(model.familyRevocationPending ? "Finish stopping sharing" : (cloud.isOwner ? "Stop sharing" : "Leave family"), role: .destructive) { isConfirmingStop = true }
+                            .disabled(isWorkingOnAccess)
+                    } footer: {
+                        Text(cloud.isOwner ? "Everyone who joined loses access to the family's profiles." : "Your profile stays on this device; the family's profiles go.")
+                    }
+                }
+            }
+            if let problem {
+                Section { Text(problem).font(.callout).foregroundStyle(.red) }
+            }
+        }
+        .groupedForm()
+        .navigationTitle("Family")
+        .inlineTitle()
+        .pullToRefresh { await cloud.refresh(reason: "pull") }
+        .toolbar {
+            #if os(macOS)
+            ToolbarItem(placement: .primaryAction) {
+                Button("Refresh", systemImage: "arrow.clockwise") { Task { await cloud.refresh(reason: "toolbar") } }
+            }
+            #endif
+        }
+        .confirmationDialog(cloud.isOwner ? "Stop sharing the family?" : "Leave the family?", isPresented: $isConfirmingStop, titleVisibility: .visible) {
+            Button(cloud.isOwner ? "Stop sharing" : "Leave", role: .destructive) {
+                Task {
+                    isWorkingOnAccess = true
+                    problem = await model.stopFamilySharing(using: cloud)
+                    isWorkingOnAccess = false
+                }
+            }
+        }
+        .confirmationDialog("Remove family access?", isPresented: $isConfirmingRemoveAccess, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                Task {
+                    isWorkingOnAccess = true
+                    problem = await model.removeFamilyAccess()
+                    isWorkingOnAccess = false
+                }
+            }
+        } message: {
+            Text("Skyr will ask the NAS to remove the family account. Access remains until the NAS confirms removal. Existing sessions and files already downloaded may remain available.")
+        }
+        .sheet(isPresented: $isEnteringAccount) { FamilyAccountSheet() }
+        .sheet(isPresented: $isJoiningWithLink) { JoinWithLinkSheet() }
+    }
+
+    private var familyAccessSection: some View {
+        Section {
+            if let access = model.familyAccess {
+                LabeledContent("Account", value: access.account)
+                LabeledContent("Status", value: "Ready")
+                Button(isWorkingOnAccess ? "Working…" : "Rotate password", systemImage: "arrow.triangle.2.circlepath") {
+                    Task {
+                        isWorkingOnAccess = true
+                        problem = await model.rotateFamilyAccess()
+                        isWorkingOnAccess = false
+                    }
+                }
+                .disabled(isWorkingOnAccess)
+                Button("Remove family access", role: .destructive) { isConfirmingRemoveAccess = true }
+                    .disabled(isWorkingOnAccess)
+            } else {
+                if model.familyAccessNeedsVerification {
+                    Text("An earlier family account needs verification for this connection. Use its existing name and password below. Your previous setup is still kept.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Button(isWorkingOnAccess ? "Setting up…" : "Set up family access", systemImage: "key") {
+                    Task {
+                        isWorkingOnAccess = true
+                        problem = await model.setUpFamilyAccess()
+                        isWorkingOnAccess = false
+                    }
+                }
+                .disabled(isWorkingOnAccess || model.familyRevocationPending)
+                Button("Use an existing account", systemImage: "person.text.rectangle") { isEnteringAccount = true }
+            }
+        } header: {
+            Text("Family access")
+        } footer: {
+            Text(model.familyAccess == nil
+                 ? "Use a separate read-only NAS account for the family. Skyr can create one on a NAS that allows it, or you can enter an existing account. Its credentials are shared through iCloud with people who join using your invitation link."
+                 : "Everyone in the family connects with this one account, on every device, without signing in. Rotate the password if a device should stop working.")
+        }
+    }
+
+    private var footer: String {
+        switch cloud.status {
+        case .noAccount:
+            #if os(macOS)
+            "Sign in to iCloud in System Settings to sync profiles across your devices and share them with your family."
+            #else
+            "Sign in to iCloud in the Settings app to sync profiles across your devices and share them with your family."
+            #endif
+        case .failed: Hints.familyRetry
+        default: "Profiles, favourites, playlists and settings follow you to every device signed in with your Apple Account."
+        }
+    }
+}
+
+#endif
+
 struct ShareItem: Identifiable {
     let id = UUID()
     let share: CKShare
@@ -192,6 +341,7 @@ struct InstructionRow: View {
     }
 }
 
+#if os(tvOS)
 /// An account the owner made in DSM by hand, checked with a sign-in before it is kept.
 private struct FamilyAccountSheet: View {
     @Environment(AppModel.self) private var model
@@ -260,3 +410,77 @@ private struct FamilyAccountSheet: View {
         }
     }
 }
+
+#else
+/// A separate NAS account, verified before Skyr stores or shares its credentials.
+private struct FamilyAccountSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var account = ""
+    @State private var password = ""
+    @State private var isChecking = false
+    @State private var problem: String?
+
+    private let instructions = [
+        "Go to Control Panel, then User & Group, and select Create.",
+        "Name it skyr-family and give it a password. This one account is for everyone, not one per person.",
+        "On the permissions step, give it Read only on your music folder and no access to everything else.",
+        "On the applications step, allow File Station and deny the rest.",
+        "Finish, then enter the name and password below."
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(Array(instructions.enumerated()), id: \.offset) { index, instruction in
+                        HStack(alignment: .top) {
+                            Text("\(index + 1).")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            Text(instruction).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                } header: {
+                    Text("In DSM")
+                } footer: {
+                    Text("If you already have a family account, verify its read-only permissions and enter it below. To create one, open DSM on your Mac or PC and follow these steps.")
+                }
+                Section {
+                    TextField("Account", text: $account)
+                        .noAutocapitalization()
+                        .autocorrectionDisabled()
+                    SecureField("Password", text: $password)
+                } header: {
+                    Text("NAS account")
+                } footer: {
+                    Text("Skyr checks the account by signing in once, then shares the chosen credentials with your family through iCloud. The password is stored in an encrypted CloudKit field.")
+                }
+                if let problem {
+                    Section { Text(problem).font(.callout).foregroundStyle(.red) }
+                }
+            }
+            .groupedForm()
+            .navigationTitle("Family Account")
+            .inlineTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isChecking ? "Checking…" : "Use") {
+                        Task {
+                            isChecking = true
+                            problem = await model.useFamilyAccess(account: account.trimmingCharacters(in: .whitespaces), password: password)
+                            isChecking = false
+                            if problem == nil { dismiss() }
+                        }
+                    }
+                    .disabled(account.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || isChecking)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 440, idealWidth: 500, minHeight: 480, idealHeight: 580)
+        #endif
+    }
+}
+#endif

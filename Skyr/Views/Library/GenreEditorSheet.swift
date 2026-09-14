@@ -5,13 +5,16 @@ import SwiftUI
 /// name of an existing genre merges the two, which fixes tags that came in another language.
 struct GenreEditorSheet: View {
     let genre: Genre
+    private let isContextCurrent: () -> Bool
     @Environment(LibraryStore.self) private var library
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var name: String
     @FocusState private var isEditingName: Bool
 
-    init(genre: Genre) {
+    init(genre: Genre, isContextCurrent: @escaping () -> Bool = { true }) {
         self.genre = genre
+        self.isContextCurrent = isContextCurrent
         _name = State(initialValue: genre.name)
     }
 
@@ -19,20 +22,34 @@ struct GenreEditorSheet: View {
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// An existing genre whose name matches what was typed, so "religious" merges into "Religious".
     private var mergeTarget: Genre? { others.first { $0.name.localizedCaseInsensitiveCompare(trimmedName) == .orderedSame } }
-    private var canSave: Bool { !trimmedName.isEmpty && trimmedName != genre.name }
+    private var canSave: Bool { isContextCurrent() && !trimmedName.isEmpty && trimmedName != genre.name }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     TextField("Name", text: $name)
+                        #if os(macOS)
+                        .textFieldStyle(.roundedBorder)
+                        #endif
                         .focused($isEditingName)
                         .submitLabel(.done)
                         .onSubmit { if canSave { save() } }
+                    #if os(macOS)
+                    Text(footer)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    #endif
                 } header: {
                     Text("Name")
                 } footer: {
+                    #if !os(macOS)
                     Text(footer)
+                        .fixedSize(horizontal: false, vertical: true)
+                    #endif
                 }
                 if !others.isEmpty {
                     Section {
@@ -56,7 +73,7 @@ struct GenreEditorSheet: View {
                                         Image(systemName: "checkmark")
                                             .font(.body.weight(.semibold))
                                             .foregroundStyle(Palette.ink)
-                                            .transition(.scale.combined(with: .opacity))
+                                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                                     }
                                 }
                                 .contentShape(Rectangle())
@@ -68,7 +85,7 @@ struct GenreEditorSheet: View {
                     }
                 }
             }
-            .animation(.snappy(duration: 0.25), value: mergeTarget?.id)
+            .animation(reduceMotion ? .easeInOut(duration: 0.15) : .snappy(duration: 0.25), value: mergeTarget?.id)
             .navigationTitle("Edit Genre")
             .inlineTitle()
             .toolbar {
@@ -83,6 +100,7 @@ struct GenreEditorSheet: View {
         }
         .sheetDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onAppear { isEditingName = true }
     }
 
     private var footer: String {
@@ -93,14 +111,19 @@ struct GenreEditorSheet: View {
     }
 
     private func save() {
+        guard canSave else { return }
         let name = genre.name
         let target = mergeTarget?.name ?? trimmedName
         dismiss()
         // The sheet starts closing first; the library changes behind it.
-        Task { @MainActor in library.renameGenre(name, to: target) }
+        Task { @MainActor in
+            guard isContextCurrent() else { return }
+            library.renameGenre(name, to: target)
+        }
     }
 }
 
+#if os(tvOS)
 /// Settings page listing every renamed genre, with a way to undo each one.
 struct GenreNamesView: View {
     @Environment(LibraryStore.self) private var library
@@ -145,7 +168,7 @@ struct GenreNamesView: View {
                     }
                 }
             } footer: {
-                Text("Swipe a row to show that genre under its original name again.")
+                Text("Use Reset All to restore the original genre names.")
             }
             Section {
                 Button("Reset All", role: .destructive) { library.resetGenreNames() }
@@ -154,3 +177,57 @@ struct GenreNamesView: View {
         .hiddenScrollBackground()
     }
 }
+
+#else
+/// Renamed genres use the same native list and reset actions as the other preferences.
+struct GenreNamesView: View {
+    @Environment(LibraryStore.self) private var library
+    @State private var isConfirmingReset = false
+
+    var body: some View {
+        List {
+            if library.genreRenames.isEmpty {
+                ContentUnavailableView("No Renamed Genres", systemImage: "tag", description: Text(Hints.renameGenre))
+                    .listRowBackground(Color.clear)
+            } else {
+                Section {
+                    ForEach(library.genreRenames, id: \.tag) { rename in
+                        HStack {
+                            LabeledContent(rename.tag, value: rename.name)
+                            #if os(macOS)
+                            Button("Reset") { library.resetGenre(tag: rename.tag) }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Reset \(rename.name) to \(rename.tag)")
+                            #endif
+                        }
+                    }
+                    .onDelete { offsets in
+                        let tags = offsets.map { library.genreRenames[$0].tag }
+                        for tag in tags { library.resetGenre(tag: tag) }
+                    }
+                } header: {
+                    Text("Custom names")
+                } footer: {
+                    #if os(macOS)
+                    Text("Reset a genre to show its original name again. Your music files stay unchanged.")
+                    #else
+                    Text("Swipe a row to show that genre under its original name again. Your music files stay unchanged.")
+                    #endif
+                }
+                Section {
+                    Button("Reset All", role: .destructive) { isConfirmingReset = true }
+                }
+            }
+        }
+        .groupedList()
+        .navigationTitle("Genre Names")
+        .inlineTitle()
+        .confirmationDialog("Reset all genre names?", isPresented: $isConfirmingReset, titleVisibility: .visible) {
+            Button("Reset All", role: .destructive) { library.resetGenreNames() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every genre will use its original tag. This does not change the music files on your NAS.")
+        }
+    }
+}
+#endif

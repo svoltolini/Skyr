@@ -5,26 +5,27 @@ import SwiftUI
 /// The transport across the bottom of the window: what is playing on the left, controls and the
 /// scrubber in the middle, volume and AirPlay on the right.
 struct MacPlayerBar: View {
-    static let height: CGFloat = 84
+    static let height: CGFloat = 76
     let openNowPlaying: () -> Void
     @Environment(PlayerModel.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scrubbing = false
     @State private var scrubValue = 0.0
+    @State private var showsVolume = false
 
     var body: some View {
         @Bindable var player = player
+        GeometryReader { geometry in
         HStack(spacing: 16) {
             nowPlaying
-                .frame(width: 320, alignment: .leading)
-            Spacer(minLength: 8)
+                .frame(width: min(260, max(150, geometry.size.width * 0.26)), alignment: .leading)
             VStack(spacing: 4) {
                 transport
                 scrubber
             }
-            .frame(maxWidth: 560)
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity)
             HStack(spacing: 10) {
+                if geometry.size.width >= 850 {
                 Image(systemName: "speaker.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -38,14 +39,21 @@ struct MacPlayerBar: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
+                } else {
+                    Button("Volume", systemImage: "speaker.wave.2.fill") { showsVolume.toggle() }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .popover(isPresented: $showsVolume) { MacVolumeSlider().frame(width: 180).padding() }
+                }
                 MacRoutePicker()
                     .frame(width: 26, height: 26)
                     .padding(.leading, 4)
             }
-            .frame(width: 320, alignment: .trailing)
+            .frame(width: geometry.size.width >= 850 ? 185 : 72, alignment: .trailing)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .frame(height: Self.height)
+        }
         .frame(height: Self.height)
         .background(.bar)
         .overlay(alignment: .top) { Divider() }
@@ -68,6 +76,7 @@ struct MacPlayerBar: View {
                 }
                 .buttonStyle(.plain)
                 .help("Now Playing")
+                .accessibilityLabel("Show Now Playing")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
                         .font(.system(size: 13, weight: .semibold))
@@ -104,6 +113,8 @@ struct MacPlayerBar: View {
             }
             .buttonStyle(.plain)
             .help("Shuffle")
+            .accessibilityLabel("Shuffle")
+            .accessibilityValue(player.isShuffling ? "On" : "Off")
             Button { player.previous() } label: {
                 Image(systemName: "backward.fill")
                     .font(.system(size: 17, weight: .semibold))
@@ -111,6 +122,7 @@ struct MacPlayerBar: View {
             .buttonStyle(.plain)
             .disabled(!player.hasTrack)
             .help("Previous")
+            .accessibilityLabel("Previous Song")
             Button { player.togglePlayPause() } label: {
                 PlayPauseGlyph(isPlaying: player.isPlaying, size: 24)
                     .frame(width: 36, height: 36)
@@ -119,6 +131,7 @@ struct MacPlayerBar: View {
             .buttonStyle(.plain)
             .disabled(!player.hasTrack)
             .help(player.isPlaying ? "Pause" : "Play")
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
             Button { player.next() } label: {
                 Image(systemName: "forward.fill")
                     .font(.system(size: 17, weight: .semibold))
@@ -126,6 +139,7 @@ struct MacPlayerBar: View {
             .buttonStyle(.plain)
             .disabled(!player.hasTrack)
             .help("Next")
+            .accessibilityLabel("Next Song")
             Button { player.cycleRepeat() } label: {
                 Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
                     .font(.system(size: 13, weight: .semibold))
@@ -133,6 +147,8 @@ struct MacPlayerBar: View {
             }
             .buttonStyle(.plain)
             .help("Repeat")
+            .accessibilityLabel("Repeat")
+            .accessibilityValue(player.repeatMode == .off ? "Off" : player.repeatMode == .one ? "One Song" : "All Songs")
         }
         .foregroundStyle(.primary)
     }

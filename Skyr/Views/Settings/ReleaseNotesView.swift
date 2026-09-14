@@ -14,19 +14,38 @@ struct Release: Identifiable {
         Release(
             version: "1.0",
             date: "September 2026",
-            highlights: [
-                "Your whole music library, streamed straight from your Synology NAS.",
-                "Profiles for everyone in the family, each with their own favourites, playlists, history and settings, protected by a PIN or Face ID.",
-                "Family sharing through iCloud: invite up to five people and everything follows them to their devices.",
-                "Downloads per profile, one song at a time, with progress in the Dynamic Island.",
-                "Home Screen widgets: Now Playing, Rediscover, Downloads and Playlists, with play buttons.",
-                "Made for you playlists: Favourites, Favourites mix, Recently played and Library shuffle.",
-                "Lock screen, Control Center and AirPlay controls, shuffle and repeat.",
-                "Genre clean-up: rename or merge genres tagged in different languages.",
-            ],
+            highlights: platformHighlights,
             fixes: []
         ),
     ]
+
+    /// Only describe features available on the device showing these notes.
+    private static var platformHighlights: [String] {
+        var items = ["Your whole music library, streamed straight from your Synology NAS."]
+        #if os(tvOS)
+        items.append("Profiles for everyone in the family, each with their own favourites, playlists, history and settings, protected by a PIN.")
+        items.append("Shared family profiles and listening preferences through iCloud.")
+        #elseif os(macOS)
+        items.append("Profiles for everyone in the family, each with their own favourites, playlists, history and settings, protected by a PIN or Touch ID on supported Macs.")
+        items.append("Family sharing through iCloud: invite up to five people and everything follows them to their devices.")
+        items.append("Downloads per profile for offline listening on your Mac.")
+        #else
+        items.append("Profiles for everyone in the family, each with their own favourites, playlists, history and settings, protected by a PIN, Face ID or Touch ID on supported devices.")
+        items.append("Family sharing through iCloud: invite up to five people and everything follows them to their devices.")
+        items.append("Downloads per profile, with progress in the Dynamic Island on supported iPhones.")
+        items.append("Home Screen widgets: Now Playing, Rediscover, Downloads and Playlists, with play buttons.")
+        #endif
+        items.append("Made for you playlists: Favourites, Favourites mix, Recently played and Library shuffle.")
+        #if os(iOS)
+        items.append("Lock screen, Control Center and AirPlay controls, shuffle and repeat.")
+        #elseif os(macOS)
+        items.append("Now Playing and AirPlay controls, shuffle and repeat.")
+        #else
+        items.append("Now Playing controls, shuffle and repeat.")
+        #endif
+        items.append("Genre clean-up: rename or merge genres tagged in different languages.")
+        return items
+    }
 
     static var current: Release? {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
@@ -48,6 +67,7 @@ struct Release: Identifiable {
 struct ReleaseNotesView: View {
     @Environment(PlayerModel.self) private var player
 
+    #if os(tvOS)
     var body: some View {
         ScrollView {
             VStack(spacing: 28) {
@@ -74,6 +94,34 @@ struct ReleaseNotesView: View {
         .inlineTitle()
         .onAppear { Release.markSeen() }
     }
+    #else
+    var body: some View {
+        List {
+            ForEach(Release.all) { release in
+                if !release.highlights.isEmpty {
+                    Section {
+                        ForEach(release.highlights, id: \.self) { item in
+                            Text(item).fixedSize(horizontal: false, vertical: true)
+                        }
+                    } header: {
+                        Text("Version \(release.version) · \(release.date)")
+                    }
+                }
+                if !release.fixes.isEmpty {
+                    Section(release.highlights.isEmpty ? "Version \(release.version) · \(release.date)" : "Fixes") {
+                        ForEach(release.fixes, id: \.self) { item in
+                            Text(item).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+        .groupedList()
+        .navigationTitle("What's New")
+        .inlineTitle()
+        .onAppear { Release.markSeen() }
+    }
+    #endif
 
     private func notes(title: String, symbol: String, items: [String]) -> some View {
         VStack(alignment: .leading, spacing: 10) {

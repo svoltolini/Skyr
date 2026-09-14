@@ -130,7 +130,7 @@ enum Hints {
 
     static let songMenu: String = {
         #if os(macOS)
-        "Click the ⋯"
+        "Open the context menu"
         #elseif os(tvOS)
         "Select the ⋯"
         #else
