@@ -12,10 +12,10 @@ public nonisolated final class SynologyDrive: RemoteDrive {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 40
         configuration.httpMaximumConnectionsPerHost = 6
-        urlSession = URLSession(configuration: configuration)
+        urlSession = URLSession(configuration: configuration, delegate: NASRedirectDelegate.shared, delegateQueue: nil)
     }
 
-    public var id: String { session.baseURL.host() ?? session.baseURL.absoluteString }
+    public var id: String { NASSource.identifier(baseURL: session.baseURL, account: session.account ?? "") }
 
     public func roots() async throws -> [RemoteEntry] {
         guard let url = session.url(api: "SYNO.FileStation.List", version: 2, method: "list_share", params: [

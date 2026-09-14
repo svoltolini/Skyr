@@ -35,6 +35,19 @@ public final class ProfileStore {
     private let defaults: UserDefaults
     private let log: (String) -> Void
     private var authenticationGeneration = UUID()
+    private var unreadableStateIDs: Set<String> = []
+    @ObservationIgnored private lazy var stateReplicaID: String = {
+        var url = storageDirectory.appending(path: "sync-replica-id")
+        if let id = try? String(contentsOf: url, encoding: .utf8), UUID(uuidString: id) != nil { return id }
+        let id = UUID().uuidString
+        do {
+            try Data(id.utf8).write(to: url, options: .atomic)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try url.setResourceValues(values)
+        } catch { log("A new local sync replica will be used for this session.") }
+        return id
+    }()
 
     public var active: Profile? { profiles.first { $0.id == activeID } }
     public var isLocked: Bool { active == nil || sessionID == nil }
@@ -90,13 +103,14 @@ public final class ProfileStore {
         if let record = current.pin {
             guard let pin, record.matches(pin) else { return false }
         }
-        openAuthenticated(current)
-        return true
+        return openAuthenticated(current)
     }
 
-    private func openAuthenticated(_ profile: Profile) {
+    private func openAuthenticated(_ profile: Profile) -> Bool {
+        let saved = loadState(id: profile.id)
+        guard !unreadableStateIDs.contains(profile.id) else { return false }
         if activeID != nil { lock() }
-        state = loadState(id: profile.id)
+        state = saved
         activeID = profile.id
         sessionID = UUID()
         authenticationGeneration = UUID()
@@ -104,6 +118,7 @@ public final class ProfileStore {
         defaults.set(profile.id, forKey: "profiles.active")
         log("Profile “\(profile.name)” opened")
         onActivate?(profile)
+        return true
     }
 
     /// Back to "Who's listening?": playback stops and the next person picks themselves.
@@ -319,15 +334,16 @@ public final class ProfileStore {
     /// A profile's document as another device has it.
     @discardableResult
     public func applyRemote(_ remote: ProfileState, id: String) -> Bool {
+        let local = storedState(id: id)
+        let merged = local.merged(with: remote)
+        guard merged != local else { return true }
+        guard writeState(merged, id: id) else { return false }
         if id == activeID {
-            guard remote.updatedAt > state.updatedAt else { return true }
-            guard writeState(remote, id: id) else { return false }
             saveTask?.cancel()
-            state = remote
+            state = merged
+            isApplyingRemote = true
+            defer { isApplyingRemote = false }
             onRemoteState?()
-        } else {
-            guard remote.updatedAt > loadState(id: id).updatedAt else { return true }
-            guard writeState(remote, id: id) else { return false }
         }
         return true
     }
@@ -386,6 +402,11 @@ public final class ProfileStore {
         id == activeID ? state : loadState(id: id)
     }
 
+    func storedStateIsPristine(id: String) -> Bool {
+        let saved = storedState(id: id)
+        return !unreadableStateIDs.contains(id) && saved.isPristine
+    }
+
     public func verify(pin: String, for profile: Profile) -> Bool {
         guard let current = profiles.first(where: { $0.id == profile.id }) else { return false }
         return current.pin?.matches(pin) ?? true
@@ -434,8 +455,7 @@ public final class ProfileStore {
             guard accepted, authenticationGeneration == generation,
                   let stored = profiles.first(where: { $0.id == current.id }), stored.pin == current.pin,
                   biometricsEnabled(for: stored) else { return false }
-            openAuthenticated(stored)
-            return true
+            return openAuthenticated(stored)
         } catch {
             return false
         }
@@ -452,11 +472,32 @@ public final class ProfileStore {
         state.libraries[driveID] ?? LibraryState()
     }
 
-    public func updateLibrary(_ driveID: String, _ change: (inout LibraryState) -> Void) {
+    public func hasRecoveredLibrary(from source: String, to destination: String) -> Bool {
+        state.hasRecoveredLibrary(from: source, to: destination)
+    }
+
+    @discardableResult
+    public func recoverLibrary(from source: String, to destination: String) -> Bool {
+        guard let activeID, !isLocked else { return false }
+        if hasRecoveredLibrary(from: source, to: destination) { return true }
+        guard let recovered = state.recoveringLibrary(from: source, to: destination), writeState(recovered, id: activeID) else { return false }
+        saveTask?.cancel()
+        state = recovered
+        isApplyingRemote = true
+        onRemoteState?()
+        isApplyingRemote = false
+        sync?.stateChanged(state, id: activeID)
+        return true
+    }
+
+    public func updateLibrary(_ driveID: String, recordingHistory: ProfileHistory? = nil, _ change: (inout LibraryState) -> Void) {
         guard activeID != nil else { return }
+        let previous = state
         var library = state.libraries[driveID] ?? LibraryState()
         change(&library)
+        guard library != (state.libraries[driveID] ?? LibraryState()) || recordingHistory != nil else { return }
         state.libraries[driveID] = library
+        state.recordChanges(from: previous, operationID: stateReplicaID, recordingHistory: recordingHistory.map { (driveID, $0) })
         touch()
     }
 
@@ -465,12 +506,15 @@ public final class ProfileStore {
         var settings = state.settings
         change(&settings)
         guard settings != state.settings else { return }
+        let previous = state
         state.settings = settings
+        state.recordChanges(from: previous, operationID: stateReplicaID)
         touch()
     }
 
     private func touch() {
-        state.updatedAt = .now
+        // Persist the values and their deletion/revision metadata together before queuing a push.
+        guard let activeID, writeState(state, id: activeID) else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
@@ -483,7 +527,7 @@ public final class ProfileStore {
     public func flushSave() {
         saveTask?.cancel()
         guard let activeID else { return }
-        writeState(state, id: activeID)
+        guard writeState(state, id: activeID) else { return }
         if !isApplyingRemote { sync?.stateChanged(state, id: activeID) }
     }
 
@@ -528,14 +572,24 @@ public final class ProfileStore {
     }
 
     private func loadState(id: String) -> ProfileState {
-        guard let data = try? Data(contentsOf: stateURL(id: id)) else { return ProfileState() }
-        return (try? Self.decoder.decode(ProfileState.self, from: data)) ?? ProfileState()
+        let url = stateURL(id: id)
+        guard FileManager.default.fileExists(atPath: url.path) else { return ProfileState() }
+        do {
+            let saved = try Self.decoder.decode(ProfileState.self, from: Data(contentsOf: url))
+            unreadableStateIDs.remove(id)
+            return saved
+        } catch {
+            unreadableStateIDs.insert(id)
+            log("The profile's saved data could not be read. The original file has been preserved.")
+            return ProfileState()
+        }
     }
 
     @discardableResult
     private func writeState(_ state: ProfileState, id: String) -> Bool {
+        guard !unreadableStateIDs.contains(id) else { return false }
         do {
-            try Self.encoder.encode(state).write(to: stateURL(id: id), options: .atomic)
+            try Self.encoder.encode(state.normalizedForSync()).write(to: stateURL(id: id), options: .atomic)
             return true
         } catch {
             log("The profile's library and settings could not be saved on this device.")

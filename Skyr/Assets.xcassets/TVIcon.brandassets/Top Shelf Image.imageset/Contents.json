@@ -1,9 +1,9 @@
 {
   "images": [
     {
-      "filename": "shelf-1920x720.png",
       "idiom": "tv",
-      "scale": "1x"
+      "scale": "1x",
+      "filename": "shelf-1920x720.png"
     },
     {
       "filename": "shelf-3840x1440.png",

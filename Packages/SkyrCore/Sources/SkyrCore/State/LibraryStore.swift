@@ -322,7 +322,7 @@ public final class LibraryStore {
         playedTrackIDs.removeAll { $0 == track.id }
         playedTrackIDs.insert(track.id, at: 0)
         playedTrackIDs = Array(playedTrackIDs.prefix(100))
-        profiles?.updateLibrary(catalogue.driveID) { $0.played = playedTrackIDs }
+        profiles?.updateLibrary(catalogue.driveID, recordingHistory: .played) { $0.played = playedTrackIDs }
         recentlyPlayedPlaylist = smartPlaylist(id: Playlist.recentlyPlayedID, name: "Recently played", tracks: recentlyPlayedTracks)
     }
 
@@ -351,7 +351,7 @@ public final class LibraryStore {
         recentlyPlayedIDs.removeAll { $0 == album.id }
         recentlyPlayedIDs.insert(album.id, at: 0)
         recentlyPlayedIDs = Array(recentlyPlayedIDs.prefix(30))
-        profiles?.updateLibrary(catalogue.driveID) { $0.recentAlbums = recentlyPlayedIDs }
+        profiles?.updateLibrary(catalogue.driveID, recordingHistory: .recentAlbums) { $0.recentAlbums = recentlyPlayedIDs }
     }
 
     // MARK: Media
@@ -439,7 +439,7 @@ public final class LibraryStore {
         recentSearches.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
         recentSearches.insert(trimmed, at: 0)
         recentSearches = Array(recentSearches.prefix(8))
-        profiles?.updateLibrary(catalogue.driveID) { $0.searches = recentSearches }
+        profiles?.updateLibrary(catalogue.driveID, recordingHistory: .searches) { $0.searches = recentSearches }
     }
 
     public var browseEntries: [BrowseEntry] {

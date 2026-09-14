@@ -82,10 +82,12 @@ public nonisolated struct FamilyInfo: Codable, Sendable, Equatable {
 public nonisolated struct FamilyAccess: Sendable, Equatable {
     public var account: String
     public var password: String
+    public var sourceID: String
 
-    public init(account: String, password: String) {
+    public init(account: String, password: String, sourceID: String) {
         self.account = account
         self.password = password
+        self.sourceID = sourceID
     }
 }
 
@@ -191,12 +193,15 @@ public nonisolated struct ProfileSettings: Codable, Sendable, Equatable {
     }
 }
 
-/// Everything a profile saves, as one document: last write wins by `updatedAt` once it syncs.
-public nonisolated struct ProfileState: Codable, Sendable {
+/// Everything a profile saves. Per-field revisions merge independent edits within the document.
+public nonisolated struct ProfileState: Codable, Sendable, Equatable {
+    private enum CodingKeys: String, CodingKey { case libraries, settings, updatedAt, sync, syncData }
     /// Keyed by drive id; the sample library uses "".
     public var libraries: [String: LibraryState] = [:]
     public var settings = ProfileSettings()
     public var updatedAt = Date.distantPast
+    /// Optional so existing v1.0 documents can be migrated without resetting their saved data.
+    var sync: ProfileStateSync?
 
     public init() {}
 
@@ -205,5 +210,18 @@ public nonisolated struct ProfileState: Codable, Sendable {
         libraries = try container.decodeIfPresent([String: LibraryState].self, forKey: .libraries) ?? [:]
         settings = try container.decodeIfPresent(ProfileSettings.self, forKey: .settings) ?? ProfileSettings()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
+        if let compressed = try container.decodeIfPresent(Data.self, forKey: .syncData) {
+            sync = try ProfileStateSyncCodec.decode(compressed)
+        } else {
+            sync = try container.decodeIfPresent(ProfileStateSync.self, forKey: .sync)
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(libraries, forKey: .libraries)
+        try container.encode(settings, forKey: .settings)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        if let sync { try container.encode(ProfileStateSyncCodec.encode(sync), forKey: .syncData) }
     }
 }

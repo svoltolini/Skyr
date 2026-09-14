@@ -58,6 +58,7 @@ public final class CloudSync {
     private var systemFields: [String: Data]
     /// `updatedAt` of every record as last seen in the cloud, so only newer local data is pushed.
     private var remoteStamps: [String: Date]
+    private var remoteStateDigests: [String: String] = [:]
     private var uploads: [String: Task<Void, Never>] = [:]
     private var isStarted = false
     private var isRefreshing = false
@@ -125,6 +126,7 @@ public final class CloudSync {
         systemFields = [:]
         remoteStamps = [:]
         family = nil
+        remoteStateDigests = [:]
         participants = []
         isShared = false
         needsFamilyInvitation = false
@@ -186,6 +188,7 @@ public final class CloudSync {
         changeToken = zone.changeToken
         systemFields = zone.systemFields
         remoteStamps = zone.remoteStamps
+        remoteStateDigests = zone.remoteStateDigests ?? [:]
         family = nil
         participants = []
         isShared = membership == .member
@@ -376,12 +379,13 @@ public final class CloudSync {
             remoteStamps[record.recordID.recordName] = profile.updatedAt
             accountState?.profileIDs.insert(profile.id)
         case "ProfileState":
-            guard let data = record["document"] as? Data, let state = try? Self.decoder.decode(ProfileState.self, from: data),
+            guard let data = record["document"] as? Data, let state = try? ProfileCloudDocument.decode(data),
                   let profileID = record["profileID"] as? String,
                   record.recordID.recordName == "state-\(profileID)" else { throw SyncFailure.message("A profile's iCloud document is incomplete.") }
             if isTombstoned(profileID) { try retainDeletionForReturnedRecord(profileID); return }
             guard let profiles, profiles.applyRemote(state, id: profileID) else { throw SyncFailure.message("A profile's iCloud document could not be saved on this device.") }
             remoteStamps[record.recordID.recordName] = state.updatedAt
+            remoteStateDigests[record.recordID.recordName] = state.syncDigest
         case "Family":
             let info = FamilyInfo(
                 name: record["name"] as? String ?? "Family",
@@ -420,6 +424,7 @@ public final class CloudSync {
         }
         systemFields[recordID.recordName] = nil
         remoteStamps[recordID.recordName] = nil
+        remoteStateDigests[recordID.recordName] = nil
     }
 
     private func update(_ share: CKShare) {
@@ -450,7 +455,7 @@ public final class CloudSync {
             profile.userRecordName == nil && profile.pin == nil && profile.avatar.photoVersion == nil
                 && profile.localOrigin != .created
                 && abs(profile.updatedAt.timeIntervalSince(profile.createdAt)) < 2
-                && profiles.storedState(id: profile.id).isPristine
+                && profiles.storedStateIsPristine(id: profile.id)
         }
         for standIn in standIns where profiles.profiles.count > 1 {
             services.log("Removing the stand-in profile “\(standIn.name)”: this iCloud account already has a profile")
@@ -477,9 +482,8 @@ public final class CloudSync {
                 toSave.append(record(for: profile))
             }
             let state = profiles.storedState(id: profile.id)
-            let stateStamp = remoteStamps["state-\(profile.id)"]
-            if state.updatedAt > .distantPast, stateStamp == nil || state.updatedAt > stateStamp! {
-                if let record = record(for: state, profileID: profile.id) { toSave.append(record) }
+            if state.updatedAt > .distantPast, remoteStateDigests["state-\(profile.id)"] != state.syncDigest {
+                toSave.append(try record(for: state, profileID: profile.id))
             }
         }
         if membership == .owner, let active = profiles.active, accountState?.profileIDs.contains(active.id) == true,
@@ -570,6 +574,7 @@ public final class CloudSync {
             zone.changeToken = changeToken
             zone.systemFields = systemFields
             zone.remoteStamps = remoteStamps
+            zone.remoteStateDigests = remoteStateDigests
         }
         zone.deletions[id] = [id, "state-\(id)"]
         snapshot.zones[owner] = zone
@@ -621,6 +626,7 @@ public final class CloudSync {
                 for profileID in deletions.keys { accountState?.zones[zoneOwnerName]?.deletions[profileID]?.remove(id.recordName) }
                 systemFields[id.recordName] = nil
                 remoteStamps[id.recordName] = nil
+                remoteStateDigests[id.recordName] = nil
             }
         }
         try persistState()
@@ -660,7 +666,8 @@ public final class CloudSync {
     public func stateChanged(_ state: ProfileState, id: String) {
         guard accountState?.profileIDs.contains(id) == true, !isTombstoned(id) else { return }
         schedule(key: "state-\(id)") { [weak self] in
-            guard let self, let record = record(for: state, profileID: id) else { return }
+            guard let self, let profiles, containsProfileInCurrentAccount(id) else { return }
+            let record = try record(for: profiles.storedState(id: id), profileID: id)
             try await save([record])
         }
     }
@@ -685,10 +692,10 @@ public final class CloudSync {
         }
     }
 
-    /// Saves records, taking the server's copy when it moved on and ours is older. One bad record
+    /// Reconciles profile-state fields with the server before retrying a changed record. One bad record
     /// makes CloudKit report "Atomic failure" for the others in the batch; those are retried on their
     /// own so the real problem, not its side effect, is what gets logged and shown.
-    private func save(_ records: [CKRecord]) async throws {
+    private func save(_ records: [CKRecord], conflictAttempt: Int = 0) async throws {
         let expected = generation
         let activeScope = try scope(expected)
         guard records.allSatisfy({ $0.recordID.zoneID == activeScope.zoneID }) else { throw CancellationError() }
@@ -717,11 +724,32 @@ public final class CloudSync {
             case .success(let saved):
                 remember(saved)
                 if let stamp = saved["updatedAt"] as? Date { remoteStamps[id.recordName] = stamp }
+                if saved.recordType == "ProfileState", let data = saved["document"] as? Data,
+                   let state = try? ProfileCloudDocument.decode(data) {
+                    remoteStateDigests[id.recordName] = state.syncDigest
+                }
             case .failure(let error):
                 guard let ours = records.first(where: { $0.recordID == id }) else { throw error }
                 let ckError = error as? CKError
                 if ckError?.code == .serverRecordChanged, let server = ckError?.serverRecord {
                     remember(server)
+                    if ours.recordType == "ProfileState" {
+                        // Applying merges into the newest durable local state, including edits made
+                        // while this request was suspended. Retry with the server's current tag.
+                        try apply(server)
+                        guard let profileID = ours["profileID"] as? String, let profiles else {
+                            throw SyncFailure.message("The profile is unavailable for iCloud reconciliation.")
+                        }
+                        let latest = profiles.storedState(id: profileID)
+                        if latest.syncDigest != remoteStateDigests[id.recordName] {
+                            if conflictAttempt >= 3 {
+                                problem = SyncFailure.message("iCloud changes are still arriving. Saved changes will be reconciled on the next sync.")
+                            } else {
+                                retry.append(try self.record(for: latest, profileID: profileID))
+                            }
+                        }
+                        continue
+                    }
                     let serverStamp = server["updatedAt"] as? Date ?? .distantPast
                     let ourStamp = ours["updatedAt"] as? Date ?? .distantPast
                     if ourStamp > serverStamp {
@@ -739,7 +767,7 @@ public final class CloudSync {
             }
         }
         try persistState()
-        if !retry.isEmpty { try await save(retry) }
+        if !retry.isEmpty { try await save(retry, conflictAttempt: conflictAttempt + 1) }
         if let problem { throw problem }
         // Only side effects came back: the record that caused them is found by saving each alone.
         for record in heldBack { try await save([record]) }
@@ -792,8 +820,8 @@ public final class CloudSync {
         return record
     }
 
-    private func record(for state: ProfileState, profileID: String) -> CKRecord? {
-        guard let data = try? Self.encoder.encode(state) else { return nil }
+    private func record(for state: ProfileState, profileID: String) throws -> CKRecord {
+        let data = try ProfileCloudDocument.encode(state)
         let record = baseRecord(named: "state-\(profileID)", type: "ProfileState")
         record["document"] = data
         record["profileID"] = profileID
@@ -950,15 +978,30 @@ public final class CloudSync {
         return describe(error)
     }
 
-    /// Owner: nobody else can reach the family zone any more. Member: this person steps out of it.
-    public func stopSharing() async {
-        var expected = generation
+    /// A retry must stay attached to the Apple Account and family that requested it.
+    public var sharingScopeIdentifier: String? {
+        guard let account = currentUserRecordName else { return nil }
+        return "\(account.utf8.count):\(account)\(zoneOwnerName.utf8.count):\(zoneOwnerName)"
+    }
+
+    /// Returns only after CloudKit acknowledges removal; callers must surface failures.
+    public func stopSharing() async throws {
+        let expected = generation
+        guard let requestedScope = sharingScopeIdentifier else { throw CKError(.notAuthenticated) }
         do {
             try await verifyIdentity(expected)
-            expected = generation
-            _ = try scope(expected)
-            try await database.deleteRecord(withID: shareRecordID)
             try check(expected)
+            guard sharingScopeIdentifier == requestedScope else { throw CancellationError() }
+            let context = try scope(expected)
+            let id = shareRecordID
+            let result = try await services.modify(context, [], [id])
+            try check(expected)
+            guard let acknowledgement = result.deleted[id] else { throw CKError(.internalError) }
+            switch acknowledgement {
+            case .success: break
+            case .failure(let error):
+                if (error as? CKError)?.code != .unknownItem { throw error }
+            }
             participants = []
             isShared = false
             if membership == .member {
@@ -980,8 +1023,11 @@ public final class CloudSync {
                 services.log("Stopped sharing the family")
             }
         } catch {
-            guard generation == expected, !(error is CancellationError) else { return }
-            services.log("Could not change the family share: \(Self.describe(error))")
+            if generation == expected, !(error is CancellationError) {
+                services.log("Could not change the family share: \(Self.describe(error))")
+                status = .failed(Self.describe(error))
+            }
+            throw error
         }
     }
 
@@ -995,6 +1041,7 @@ public final class CloudSync {
         zone.changeToken = changeToken
         zone.systemFields = systemFields
         zone.remoteStamps = remoteStamps
+        zone.remoteStateDigests = remoteStateDigests
         snapshot.zones[zoneOwnerName] = zone
         try persistence.save(snapshot)
         accountState = snapshot
@@ -1050,6 +1097,9 @@ public final class CloudSync {
 extension ProfileState {
     /// Nothing favourited, played or made: the profile was never used.
     var isPristine: Bool {
-        libraries.values.allSatisfy { $0.favourites.isEmpty && $0.playlists.isEmpty && $0.played.isEmpty }
+        settings == ProfileSettings() && (sync?.libraries.isEmpty ?? true)
+            && libraries.values.allSatisfy {
+                $0.favourites.isEmpty && $0.playlists.isEmpty && $0.played.isEmpty && $0.recentAlbums.isEmpty && $0.searches.isEmpty
+            }
     }
 }

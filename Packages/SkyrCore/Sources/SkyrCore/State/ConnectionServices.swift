@@ -13,12 +13,23 @@ struct ConnectionServices {
     var loadCatalogue: () -> Catalogue? = { LibraryStore.loadCachedCatalogue() }
     var deleteCatalogue: () -> Void = { LibraryStore.deleteCache() }
     var log: (String) -> Void = { DiagnosticsLog.shared.record($0) }
+    var canManageUsers: (DSMSession) async -> Bool? = { await SynologyClient.canManageUsers($0) }
+    var confirmPassword: (DSMSession, String) async -> String? = { await SynologyClient.confirmToken($0, password: $1) }
+    var createFamilyUser: (DSMSession, String, String, String, String?) async throws -> Void = {
+        try await SynologyClient.createFamilyUser($0, name: $1, password: $2, shareName: $3, confirm: $4)
+    }
+    var setFamilyPassword: (DSMSession, String, String, String?) async throws -> Void = {
+        try await SynologyClient.setPassword($0, user: $1, password: $2, confirm: $3)
+    }
+    var deleteFamilyUser: (DSMSession, String, String?) async throws -> Void = {
+        try await SynologyClient.deleteUser($0, name: $1, confirm: $2)
+    }
 }
 
 extension Catalogue {
     /// A saved library is usable only for the same server and selected folder.
     func belongs(to connection: ServerConnection) -> Bool {
         guard let path = connection.musicPath else { return false }
-        return driveID == connection.host && rootPath == path
+        return driveID == connection.sourceID && rootPath == path
     }
 }

@@ -180,6 +180,12 @@ final class WatchDownloads: NSObject, URLSessionDownloadDelegate {
             for task in tasks where WatchDownloadJob.decode(task.taskDescription) == nil { task.cancel() }
             Task { @MainActor in
                 for (job, task) in restored where self.manifests[job.playlistKey]?.generation == job.generation {
+                    guard let original = task.originalRequest?.url, let current = task.currentRequest?.url,
+                          NASTransportSecurity.permitsRedirect(from: original, to: current) else {
+                        task.cancel()
+                        self.fail(job: job, message: "Review the connection when you tap Download again. HTTP needs permission on this Watch; use HTTPS on your iPhone and sync again to change the address.")
+                        continue
+                    }
                     guard task.state == .running || task.state == .suspended else { continue }
                     if self.manifests[job.playlistKey]?.files[job.trackID] == job.generation.uuidString + "/" + job.fileName,
                        WatchDownloadValidation.failure(for: job.destination(in: Self.root), expectedBytes: job.expectedBytes) == nil { continue }

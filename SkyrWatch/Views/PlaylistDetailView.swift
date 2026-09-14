@@ -8,6 +8,7 @@ struct PlaylistDetailView: View {
     @Environment(WatchDownloads.self) private var downloads
     @Environment(WatchPlayer.self) private var player
     @State private var isConfirmingRemoval = false
+    @State private var pendingHTTPCredentials: WatchCredentials?
 
     init(playlist: WatchPlaylist) { initialPlaylist = playlist }
 
@@ -38,6 +39,20 @@ struct PlaylistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Remove from the watch?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) { downloads.remove(playlist) }
+        }
+        .confirmationDialog("Allow unencrypted HTTP?", isPresented: Binding(
+            get: { pendingHTTPCredentials != nil },
+            set: { if !$0 { pendingHTTPCredentials = nil } }
+        ), titleVisibility: .visible, presenting: pendingHTTPCredentials) { credentials in
+            Button("Allow HTTP and Download") {
+                guard credentials == store.credentials(), credentials.matches(playlist), currentPlaylist != nil else { return }
+                NASTransportSecurity.allowHTTP(credentials.baseURL)
+                pendingHTTPCredentials = nil
+                Task { await downloads.download(playlist, credentials: credentials) }
+            }
+            Button("Cancel", role: .cancel) { pendingHTTPCredentials = nil }
+        } message: { credentials in
+            Text("\(NASOrigin(url: credentials.baseURL)?.identifier ?? "This address") sends your password and music without encryption. Allow only on a network you trust. This choice applies only to this address on this Watch. For HTTPS, reconnect your iPhone using HTTPS and sync again.")
         }
     }
 
@@ -94,7 +109,11 @@ struct PlaylistDetailView: View {
                     .multilineTextAlignment(.center)
             } else if let credentials = store.credentials(), credentials.matches(playlist) {
                 Button {
-                    Task { await downloads.download(playlist, credentials: credentials) }
+                    if NASOrigin(url: credentials.baseURL)?.isHTTPS == false, !NASTransportSecurity.isAllowed(credentials.baseURL) {
+                        pendingHTTPCredentials = credentials
+                    } else {
+                        Task { await downloads.download(playlist, credentials: credentials) }
+                    }
                 } label: {
                     Label(state == .none ? "Download" : "Try Again", systemImage: "arrow.down.circle.fill")
                 }

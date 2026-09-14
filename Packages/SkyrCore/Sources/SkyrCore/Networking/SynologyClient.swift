@@ -76,6 +76,7 @@ public nonisolated struct SynologyConfirmToken: Decodable, Sendable {
 /// Everything needed to talk to DSM after signing in.
 public nonisolated struct DSMSession: Sendable, Hashable {
     public let baseURL: URL
+    public let account: String?
     public let sid: String
     public let apis: [String: SynologyAPIDescriptor]
     /// The DSM application the session was scoped to at login, or nil for a plain DSM session.
@@ -88,8 +89,9 @@ public nonisolated struct DSMSession: Sendable, Hashable {
     /// route are refused unless each request is signed from it.
     public let noise: NoiseSession?
 
-    public init(baseURL: URL, sid: String, apis: [String: SynologyAPIDescriptor], sessionParam: String? = "FileStation", token: String? = nil, noise: NoiseSession? = nil) {
+    public init(baseURL: URL, sid: String, apis: [String: SynologyAPIDescriptor], sessionParam: String? = "FileStation", token: String? = nil, noise: NoiseSession? = nil, account: String? = nil) {
         self.baseURL = baseURL
+        self.account = account
         self.sid = sid
         self.apis = apis
         self.sessionParam = sessionParam
@@ -101,7 +103,7 @@ public nonisolated struct DSMSession: Sendable, Hashable {
 
     /// Builds a web API URL; string and array parameters are JSON encoded as DSM 7 expects.
     public func url(api: String, version: Int, method: String, params: [String: SynologyParam] = [:], authorized: Bool = true) -> URL? {
-        guard let descriptor = apis[api] else { return nil }
+        guard NASTransportSecurity.isAllowed(baseURL), let descriptor = apis[api] else { return nil }
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         components.path = "/webapi/" + descriptor.path
         let item = Self.encodedItem
@@ -124,7 +126,7 @@ public nonisolated struct DSMSession: Sendable, Hashable {
     /// The same call as a form POST. The session id and CSRF token stay in the query string, which is
     /// where DSM's checks read them; the call itself and its parameters go in the body.
     public func form(api: String, version: Int, method: String, params: [String: SynologyParam] = [:]) -> (URL, [String: String])? {
-        guard let descriptor = apis[api] else { return nil }
+        guard NASTransportSecurity.isAllowed(baseURL), let descriptor = apis[api] else { return nil }
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         components.path = "/webapi/" + descriptor.path
         var items = [Self.encodedItem("_sid", sid)]
@@ -243,7 +245,7 @@ public nonisolated enum SynologyClient {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
         configuration.waitsForConnectivity = false
-        return URLSession(configuration: configuration)
+        return URLSession(configuration: configuration, delegate: NASRedirectDelegate.shared, delegateQueue: nil)
     }()
 
     /// Builds a base URL from what the user typed: a host, host:port, or full URL.
@@ -251,7 +253,7 @@ public nonisolated enum SynologyClient {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let hadScheme = trimmed.contains("://")
-        if !hadScheme { trimmed = "http://" + trimmed }
+        if !hadScheme { trimmed = "https://" + trimmed }
         guard var components = URLComponents(string: trimmed), let host = components.host, !host.isEmpty else { return nil }
         let hostPattern = #"^(\[[0-9A-Fa-f:.%]+\]|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*)$"#
         guard host.range(of: hostPattern, options: .regularExpression) != nil else { return nil }
@@ -261,40 +263,19 @@ public nonisolated enum SynologyClient {
         }
         components.path = ""
         components.query = nil
-        return components.url
+        guard let url = components.url, let origin = NASOrigin(url: url) else { return nil }
+        return origin.url
     }
 
     /// Where DSM answers for what the person typed. A full URL is taken as it is; a bare name or
-    /// address is tried on DSM's usual ports, HTTPS first for anything beyond the home network,
-    /// so "myname.synology.me" just works and a private "192.168.1.40" does too.
+    /// address is tried using HTTPS. An explicitly typed HTTP URL is offered for local confirmation
+    /// without probing it or sending credentials; HTTP is never an automatic fallback.
     public static func reachableBaseURL(for text: String) async throws -> URL {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let typed = baseURL(from: trimmed), let host = typed.host() else { throw SynologyError.invalidAddress }
-        let hadScheme = trimmed.contains("://")
-        let hadPort = trimmed.range(of: #":\d+(/|$)"#, options: .regularExpression) != nil
+        if typed.scheme == "http" { return typed }
         let isHome = ServerConnection.isHomeAddress(host)
-        var candidates: [URL] = []
-        func add(_ scheme: String, _ port: Int?) {
-            var components = URLComponents()
-            components.scheme = scheme
-            components.host = host
-            components.port = port
-            if let url = components.url, !candidates.contains(url) { candidates.append(url) }
-        }
-        if hadScheme {
-            candidates.append(typed)
-            if typed.port == nil, typed.scheme == "https" { add("https", 5001) }
-        } else if hadPort, let port = typed.port {
-            // A port without a scheme: HTTPS is the likelier meaning away from home.
-            if isHome { add("http", port); add("https", port) } else { add("https", port); add("http", port) }
-        } else if isHome {
-            add("http", 5000)
-            add("https", 5001)
-        } else {
-            add("https", 5001)
-            add("https", nil)
-            add("http", 5000)
-        }
+        let candidates = secureCandidates(for: trimmed)
         // Everything is asked at once; the first answer in order of preference wins.
         let results: [ProbeOutcome] = await parallelResults(candidates) { url in
             if case .failure(let error) = await Self.probe(url) { return ProbeOutcome(error: error) }
@@ -313,6 +294,20 @@ public nonisolated enum SynologyClient {
         if certificateProblem { throw SynologyError.untrustedCertificate(host: host) }
         if !isHome { throw SynologyError.noAnswer(host: host) }
         throw SynologyError.unreachable("Nothing answered at \(host). Check the address and that the NAS is on.")
+    }
+
+    /// Pure route selection, shared by the resolver and ordinary compatibility tests.
+    static func secureCandidates(for text: String) -> [URL] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let typed = baseURL(from: trimmed), typed.scheme == "https",
+              let original = URLComponents(string: trimmed.contains("://") ? trimmed : "https://" + trimmed) else { return [] }
+        var candidates = [typed]
+        if original.port == nil {
+            var components = URLComponents(url: typed, resolvingAgainstBaseURL: false)!
+            components.port = trimmed.contains("://") ? 5001 : 443
+            if let alternate = components.url, !candidates.contains(alternate) { candidates.append(alternate) }
+        }
+        return candidates
     }
 
     /// What one probe found; a struct rather than a `Result`, which came back corrupted from worker tasks in release builds.
@@ -342,6 +337,7 @@ public nonisolated enum SynologyClient {
     }
 
     public static func loadAPIs(baseURL: URL) async throws -> [String: SynologyAPIDescriptor] {
+        try NASTransportSecurity.requireAllowed(baseURL)
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         components.path = "/webapi/query.cgi"
         components.queryItems = [
@@ -357,6 +353,9 @@ public nonisolated enum SynologyClient {
     /// session's id is refused there with error 119. `handshake` negotiates DSM 7.2's sign-in
     /// handshake, which the server demands before it will manage users over a public route.
     public static func login(baseURL: URL, account: String, password: String, otpCode: String?, sessionName: String? = "FileStation", handshake: Bool = false) async throws -> DSMSession {
+        try NASTransportSecurity.requireAllowed(baseURL)
+        guard let origin = NASOrigin(url: baseURL) else { throw NASTransportError.invalidAddress }
+        let baseURL = origin.url
         let apis = try await loadAPIs(baseURL: baseURL)
         guard let auth = apis["SYNO.API.Auth"] else { throw SynologyError.fileStationMissing }
         guard apis["SYNO.FileStation.List"] != nil, apis["SYNO.FileStation.Download"] != nil else { throw SynologyError.fileStationMissing }
@@ -391,7 +390,7 @@ public nonisolated enum SynologyClient {
         }
         let live = noise?.isFinished == true ? noise : nil
         diagnostics("DSM session “\(sessionName ?? "DSM")” opened as \(account) (API version \(version), CSRF token \(data.synotoken == nil ? "absent" : "present"), handshake \(handshake ? (live != nil ? "established" : "not established") : "not requested"))")
-        return DSMSession(baseURL: baseURL, sid: data.sid, apis: apis, sessionParam: sessionName, token: data.synotoken, noise: live)
+        return DSMSession(baseURL: baseURL, sid: data.sid, apis: apis, sessionParam: sessionName, token: data.synotoken, noise: live, account: account)
     }
 
     /// Fetches DSM's login UI config, which hands back the `_SSID` cookie carrying the server's
@@ -546,6 +545,7 @@ public nonisolated enum SynologyClient {
     public static func request<Payload: Decodable & Sendable>(
         _ url: URL, as type: Payload.Type, api: String, form: [String: String]? = nil, headers: [String: String] = [:]
     ) async throws -> Payload {
+        try NASTransportSecurity.requireAllowed(url)
         var request = URLRequest(url: url)
         for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
         if let form {

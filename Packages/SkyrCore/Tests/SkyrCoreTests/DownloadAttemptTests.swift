@@ -13,8 +13,10 @@ private final class TransferHarness {
     private(set) var session: URLSession!
     private(set) var started: [URLSessionDownloadTask] = []
     private var restoreTasks: (@Sendable ([URLSessionTask]) -> Void)?
+    private let isTransportAllowed: (URL) -> Bool
 
-    init() throws {
+    init(isTransportAllowed: @escaping (URL) -> Bool = { NASTransportSecurity.isAllowed($0) }) throws {
+        self.isTransportAllowed = isTransportAllowed
         directory = FileManager.default.temporaryDirectory.appending(path: "SkyrAttemptTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         open()
@@ -28,7 +30,7 @@ private final class TransferHarness {
                 self?.restoreTasks = completion
             }, resumeTask: { [weak self] task in
                 if self?.started.contains(where: { $0 === task }) == false { self?.started.append(task) }
-            })
+            }, isTransportAllowed: isTransportAllowed)
         manager.driveIDProvider = { "nas-a" }
         manager.activeProfileID = "listener"
     }
@@ -40,13 +42,13 @@ private final class TransferHarness {
     }
 
     func task(_ job: DownloadJob) -> URLSessionDownloadTask {
-        let task = session.downloadTask(with: directory.appending(path: "never-requested"))
+        let task = session.downloadTask(with: URL(string: "https://nas.example:5001/never-requested")!)
         task.taskDescription = job.encoded
         return task
     }
 
-    func queue(_ owner: DownloadOwner) {
-        manager.download(owner, driveID: "nas-a") { _ in directory.appending(path: "never-requested") }
+    func queue(_ owner: DownloadOwner, source: URL = URL(string: "https://nas.example:5001/never-requested")!) {
+        manager.download(owner, driveID: "nas-a") { _ in source }
     }
 
     func startedJob(_ index: Int) throws -> DownloadJob {
@@ -95,6 +97,46 @@ private func transferAlbum(count: Int = 1) -> Album {
 
 @Suite(.serialized) @MainActor
 struct DownloadAttemptTests {
+    @Test func HTTPApprovalRevokedBetweenSongsStopsQueuedTransfersAndKeepsSharedRetry() async throws {
+        let suite = "skyr.download.transport.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = URL(string: "http://nas.example:5000/never-requested")!
+        NASTransportSecurity.allowHTTP(source, defaults: defaults)
+        let harness = try TransferHarness(isTransportAllowed: { NASTransportSecurity.isAllowed($0, defaults: defaults) })
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum(count: 2)
+        let firstOwner = DownloadOwner(album: album, profileID: "listener")
+        let secondOwner = DownloadOwner(album: album, profileID: "second")
+        harness.queue(firstOwner, source: source)
+        harness.queue(secondOwner, source: source)
+        #expect(harness.started.count == 1)
+        let firstSong = try harness.startedJob(0)
+
+        NASTransportSecurity.revokeHTTP(source, defaults: defaults)
+        try harness.deliver(firstSong)
+        try await drain()
+        #expect(harness.started.count == 1)
+        #expect(harness.manager.pendingByOwner.isEmpty)
+        #expect(harness.manager.progressSnapshot(ownerID: firstOwner.id, driveID: "nas-a")?.outcome == .partial)
+        #expect(harness.manager.progressSnapshot(ownerID: secondOwner.id, driveID: "nas-a")?.outcome == .partial)
+        #expect(harness.manager.lastError?.contains("no longer allowed") == true)
+        #expect(harness.manager.records[firstSong.cacheKey]?.owners == [firstOwner.id, secondOwner.id])
+
+        NASTransportSecurity.allowHTTP(source, defaults: defaults)
+        harness.queue(firstOwner, source: source)
+        harness.queue(secondOwner, source: source)
+        #expect(harness.started.count == 2)
+        let retry = try harness.startedJob(1)
+        #expect(retry.trackID != firstSong.trackID)
+        try harness.deliver(retry)
+        try await drain()
+        #expect(harness.manager.state(for: firstOwner) == .downloaded)
+        #expect(harness.manager.state(for: secondOwner) == .downloaded)
+        #expect(harness.manager.records[retry.cacheKey]?.owners == [firstOwner.id, secondOwner.id])
+    }
+
     @Test(arguments: [false, true])
     func plainRetryAfterEmptyRestorationStartsANewTaskAndKeepsBothOwners(requestedDuringEnumeration: Bool) async throws {
         let harness = try TransferHarness()

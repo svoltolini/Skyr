@@ -61,7 +61,7 @@ struct LibraryView: View {
                 .padding(.bottom, 32)
                 .animation(.easeInOut(duration: 0.25), value: model.facet)
             }
-            .pullToRefresh {
+            .pullToRefresh { [model] in
                 // Pull down to scan the folder again; the shelf shows progress from here on.
                 await model.rescan()
                 try? await Task.sleep(for: .seconds(1))

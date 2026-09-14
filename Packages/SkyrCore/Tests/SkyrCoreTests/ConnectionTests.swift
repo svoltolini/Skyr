@@ -107,7 +107,7 @@ import Testing
     let saved = ServerConnection(name: "NAS", baseURL: URL(string: "https://nas.example:5001")!, account: "listener", musicPath: "/music")
     try fixture.save(saved)
     var catalogue = SampleLibrary.catalogue
-    catalogue.driveID = saved.host
+    catalogue.driveID = saved.sourceID
     catalogue.rootPath = "/music"
     fixture.services.loadCatalogue = { catalogue }
     var suppliedCodes: [String?] = []
@@ -150,7 +150,7 @@ import Testing
 @Test func catalogueRequiresBothServerAndFolder() {
     let connection = ServerConnection(name: "NAS", baseURL: URL(string: "https://nas.example:5001")!, account: "listener", musicPath: "/music")
     var catalogue = Catalogue.empty
-    catalogue.driveID = "nas.example"
+    catalogue.driveID = connection.sourceID
     catalogue.rootPath = "/music"
     #expect(catalogue.belongs(to: connection))
     catalogue.rootPath = "/other"
@@ -182,7 +182,7 @@ import Testing
     let saved = ServerConnection(name: "NAS", baseURL: URL(string: "https://nas.example:5001")!, account: "listener", musicPath: "/music")
     try fixture.save(saved)
     var catalogue = SampleLibrary.catalogue
-    catalogue.driveID = saved.host
+    catalogue.driveID = saved.sourceID
     catalogue.rootPath = "/music"
     fixture.services.loadCatalogue = { catalogue }
     let pending = PendingLogin()

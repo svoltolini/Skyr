@@ -193,6 +193,8 @@ public final class DownloadManager {
     private let cacheDirectory: URL
     private let log: (String) -> Void
     private let resumeTask: (URLSessionDownloadTask) -> Void
+    private let isTransportAllowed: (URL) -> Bool
+    private var isStartingTask = false
     private var expectedAttempts: [String: String] = [:]
     private var retiredAttempts: Set<String> = []
     private var requests: [String: OwnerRequest] = [:]
@@ -265,11 +267,13 @@ public final class DownloadManager {
          delegate: DownloadDelegate = DownloadDelegate(),
          restoreTasks: ((URLSession, @escaping @Sendable ([URLSessionTask]) -> Void) -> Void)? = nil,
          resumeTask: @escaping (URLSessionDownloadTask) -> Void = { $0.resume() },
+         isTransportAllowed: @escaping (URL) -> Bool = { NASTransportSecurity.isAllowed($0) },
          log: @escaping (String) -> Void = { _ in }) {
         cacheDirectory = directory
         self.log = log
         self.delegate = delegate
         self.resumeTask = resumeTask
+        self.isTransportAllowed = isTransportAllowed
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         delegate.directory = directory
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
@@ -466,9 +470,12 @@ public final class DownloadManager {
                 pending.insert(key)
                 continue
             }
-            let source = url(track)
+            let offeredSource = url(track)
+            let source = offeredSource.flatMap { isTransportAllowed($0) ? $0 : nil }
             guard source != nil || (isSample && driveID.isEmpty) else {
-                lastError = "Connect to your NAS, then try downloading “\(owner.title)” again. Your existing downloads are still available."
+                lastError = offeredSource == nil
+                    ? "Connect to your NAS, then try downloading “\(owner.title)” again. Your existing downloads are still available."
+                    : "Review the server address in Sign in before downloading. HTTPS is recommended; HTTP requires permission on this device. Your existing downloads are still available."
                 requests[requestID]?.errors[key] = lastError
                 pending.remove(key)
                 pendingByOwner[owner.id]?.remove(key)
@@ -517,13 +524,33 @@ public final class DownloadManager {
 
     /// Starts the first waiting task when nothing is running, so files come down one after another.
     private func startNextIfIdle() {
-        guard !tasks.values.contains(where: { $0.state == .running }) else { return }
+        guard !isStartingTask, !tasks.values.contains(where: { $0.state == .running }) else { return }
+        isStartingTask = true
+        defer { isStartingTask = false }
         for trackID in order {
             guard let task = tasks[trackID], task.state == .suspended else { continue }
+            // A task can wait behind many songs after its URL was created. A local permission
+            // change must take effect before the next task sends its session credentials.
+            guard allowsTransport(for: task) else {
+                task.cancel()
+                if let job = jobs[trackID] {
+                    fail(job: job, message: "This connection is no longer allowed on this device. Review the server address in Sign in, then retry.")
+                } else {
+                    tasks[trackID] = nil
+                    order.removeAll { $0 == trackID }
+                }
+                continue
+            }
             progressByKey[trackID] = 0
             resumeTask(task)
             return
         }
+    }
+
+    private func allowsTransport(for task: URLSessionTask) -> Bool {
+        guard let original = task.originalRequest?.url, let current = task.currentRequest?.url,
+              let origin = NASOrigin(url: original), origin == NASOrigin(url: current) else { return false }
+        return isTransportAllowed(original) && isTransportAllowed(current)
     }
 
     /// Stops what is still on its way for the album or playlist; songs another owner also waits for keep coming.
@@ -606,6 +633,11 @@ public final class DownloadManager {
     private func restore(_ restored: [(DownloadJob, URLSessionDownloadTask)]) {
         for (job, task) in restored {
             guard accept(job) else { task.cancel(); continue }
+            guard allowsTransport(for: task) else {
+                task.cancel()
+                deferredSessionEvents.append(.failed(job, message: "Review the server address in Sign in, then retry this download. Its saved connection is no longer allowed on this device."))
+                continue
+            }
             guard tasks[job.cacheKey] == nil else { continue }
             tasks[job.cacheKey] = task
             if task.state == .running { progressByKey[job.cacheKey] = 0 }

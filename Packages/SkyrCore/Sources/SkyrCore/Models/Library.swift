@@ -345,8 +345,9 @@ public nonisolated struct ServerConnection: Codable, Hashable, Sendable {
         let port = baseURL.port.map { ":\($0)" } ?? ""
         return host + port
     }
-    /// Keychain key for the remembered password: the server's identity, not its current address.
-    public var keychainAccount: String { "\(host)|\(account)" }
+    public var sourceID: String { NASSource.identifier(baseURL: baseURL, account: account) }
+    /// Hostname-only keys cannot distinguish two ports or accounts on the same server.
+    public var keychainAccount: String { sourceID }
     /// The key older builds used; the address changes between routes, so it is only read for migration.
     public var legacyKeychainAccount: String { "\(baseURL.absoluteString)|\(account)" }
 }

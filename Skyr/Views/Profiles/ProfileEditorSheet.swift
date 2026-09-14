@@ -86,6 +86,7 @@ struct ProfileEditorSheet: View {
     }
 
     var body: some View {
+        let photoLabel = hasPhoto ? "Change Photo" : "Choose Photo"
         NavigationStack {
             ScrollView {
                 VStack(spacing: 28) {
@@ -94,7 +95,7 @@ struct ProfileEditorSheet: View {
                             .animation(.snappy(duration: 0.25), value: preview.map(ObjectIdentifier.init))
                         #if canImport(PhotosUI) && !os(tvOS)
                         PhotosPicker(selection: $pickedItem, matching: .images, photoLibrary: .shared()) {
-                            Label(hasPhoto ? "Change Photo" : "Choose Photo", systemImage: "photo")
+                            Label(photoLabel, systemImage: "photo")
                         }
                         .buttonStyle(.glass)
                         #else

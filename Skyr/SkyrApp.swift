@@ -193,10 +193,12 @@ struct SkyrApp: App {
         PlaybackIntentBridge.handler = { [library, player, model, downloads, widgetFeed, profiles] albumID in
             guard let sessionID = profiles.sessionID, let album = library.album(id: albumID) else { return }
             let driveID = library.catalogue.driveID
+            let command = player.beginDeferredPlaybackCommand()
             if downloads.state(for: downloads.owner(for: album)) != .downloaded {
                 await model.waitForDrive(upTo: .seconds(8))
             }
-            guard profiles.sessionID == sessionID, library.catalogue.driveID == driveID else { return }
+            guard !Task.isCancelled, profiles.sessionID == sessionID, library.catalogue.driveID == driveID,
+                  player.commandRevision == command else { return }
             if player.album?.id == album.id, player.hasTrack {
                 player.togglePlayPause()
             } else {

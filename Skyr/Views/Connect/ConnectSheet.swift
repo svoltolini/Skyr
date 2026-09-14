@@ -26,7 +26,7 @@ struct ConnectSheet: View {
                 } header: {
                     Text("Server")
                 } footer: {
-                    Text("From anywhere, the DDNS name you gave your NAS in DSM, such as myds.synology.me. At home, its local address such as 192.168.1.40 works too. No port or https:// needed.")
+                    Text("Enter a NAS name, IP address, or full HTTPS address. Skyr tries HTTPS on DSM port 5001 and port 443. A Tailscale IP or full MagicDNS name also works when this device can reach it. If your NAS only supports HTTP, enter its full http:// address and port; you will review that choice before signing in.")
                 }
                 Section {
                     Button {

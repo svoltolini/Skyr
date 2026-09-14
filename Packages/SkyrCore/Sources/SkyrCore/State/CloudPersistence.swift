@@ -7,6 +7,8 @@ struct CloudAccountState: Codable {
         var changeToken: Data?
         var systemFields: [String: Data] = [:]
         var remoteStamps: [String: Date] = [:]
+        /// Optional for snapshots saved before per-field profile-state reconciliation existed.
+        var remoteStateDigests: [String: String]? = nil
         /// Kept after acknowledgement too: delayed pages must never resurrect a deleted profile.
         var deletions: [String: Set<String>] = [:]
     }
