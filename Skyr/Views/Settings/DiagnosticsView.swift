@@ -31,8 +31,10 @@ struct DiagnosticsView: View {
             }
         }
         .groupedList()
+        #if os(tvOS)
         .hiddenScrollBackground()
         .skyrBackground(player.tint)
+        #endif
         .navigationTitle("Diagnostics")
         .inlineTitle()
         .toolbar {

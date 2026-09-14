@@ -70,3 +70,27 @@ import Testing
     #expect(store.searchResults("Old server content").isEmpty)
     #expect(store.contentRevision == clearedRevision)
 }
+
+@Test @MainActor func derivedRowsRetainTheirSourceUntilTheNewCataloguePublishes() async {
+    let library = LibraryStore()
+    var catalogue = SampleLibrary.catalogue
+    catalogue.driveID = "first-source"
+    library.replace(with: catalogue, drive: nil)
+    let firstRevision = library.contentRevision
+    #expect(library.contentSourceID == "first-source")
+    let firstTracks = library.tracks
+
+    // Identical relative paths and tags on two NAS sources still represent a source change.
+    catalogue.driveID = "second-source"
+    library.replace(with: catalogue, drive: nil)
+    #expect(library.catalogue.driveID == "second-source")
+    #expect(library.contentSourceID == "first-source")
+    await library.derivationTask?.value
+    #expect(library.contentSourceID == "second-source")
+    #expect(library.contentRevision > firstRevision)
+    #expect(library.tracks == firstTracks)
+
+    library.replace(with: .empty, drive: nil)
+    #expect(library.contentSourceID == "")
+    #expect(library.tracks.isEmpty)
+}

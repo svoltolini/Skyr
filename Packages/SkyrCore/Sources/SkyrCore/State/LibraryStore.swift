@@ -3,6 +3,7 @@ import SwiftUI
 /// Everything the store derives from a catalogue: shown albums, lookups, shelves and search keys.
 /// Built off the main thread whenever the library is already on screen.
 public nonisolated struct DerivedLibrary: Sendable {
+    public var sourceID: String
     public var albums: [Album]
     public var albumsByID: [String: Album]
     public var tracksByID: [String: Track]
@@ -51,6 +52,7 @@ public nonisolated struct DerivedLibrary: Sendable {
             .map { Genre(name: $0.key, albums: $0.value.sorted(by: byRecency)) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         return DerivedLibrary(
+            sourceID: catalogue.driveID,
             albums: albums,
             albumsByID: Dictionary(uniqueKeysWithValues: albums.map { ($0.id, $0) }),
             tracksByID: Dictionary(allTracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
@@ -101,6 +103,9 @@ public final class LibraryStore {
     public private(set) var albums: [Album] = []
     /// Changes once a complete set of derived catalogue content is published, never for scan progress.
     public private(set) var contentRevision = 0
+    /// The NAS whose derived rows are on screen. A replacement catalogue can be waiting for its
+    /// background derivation, so its source must not be assigned to the preceding source's rows.
+    public private(set) var contentSourceID: String?
     public private(set) var artists: [Artist] = []
     public private(set) var genres: [Genre] = []
     /// Genres with enough albums to deserve a shelf on the Library home, most albums first.
@@ -227,8 +232,9 @@ public final class LibraryStore {
 
     /// Stores the derived data, touching only what actually changed so screens showing the rest stay put.
     private func apply(_ derived: DerivedLibrary) {
+        let sourceChanged = contentSourceID != derived.sourceID
         let albumsChanged = albums != derived.albums
-        if albumsChanged {
+        if albumsChanged || sourceChanged {
             albums = derived.albums
             albumsByID = derived.albumsByID
             tracksByID = derived.tracksByID
@@ -246,7 +252,8 @@ public final class LibraryStore {
         if coveredAlbumIDs != derived.coveredAlbumIDs { coveredAlbumIDs = derived.coveredAlbumIDs }
         if palettes != derived.palettes { palettes = derived.palettes }
         if let root = derived.folderRoot { folderRoot = root }
-        if albumsChanged {
+        if sourceChanged { contentSourceID = derived.sourceID }
+        if albumsChanged || sourceChanged {
             shuffleDay = ""
             rebuildPlaylists()
             contentRevision &+= 1
@@ -314,6 +321,8 @@ public final class LibraryStore {
     public func album(id: String) -> Album? { albumsByID[id] }
     public func album(for track: Track) -> Album? { albumsByID[track.albumID] }
     public func track(id: String) -> Track? { tracksByID[id] }
+    /// Catalogue order, prepared with the other derived content rather than flattened by each screen.
+    public var tracks: [Track] { allTracks }
     public func artist(named name: String) -> Artist? { artists.first { $0.name == name } }
 
     public var recentlyPlayed: [Album] { recentlyPlayedIDs.compactMap { albumsByID[$0] } }
@@ -594,6 +603,22 @@ public final class LibraryStore {
         guard let index = localPlaylists.firstIndex(where: { $0.id == id }) else { return }
         localPlaylists[index].trackIDs.removeAll { $0 == track.id }
         saveLocalPlaylists()
+    }
+
+    /// Removes selected visible occurrences, including when the same song appears more than once.
+    /// Unavailable songs may be absent from the visible list, so translate positions back to the
+    /// stored identifiers before editing. Out-of-range selections are ignored.
+    public func removeEntries(at positions: IndexSet, fromPlaylist id: String) {
+        guard !positions.isEmpty, let index = localPlaylists.firstIndex(where: { $0.id == id }) else { return }
+        var visiblePosition = 0
+        var changed = false
+        localPlaylists[index].trackIDs = localPlaylists[index].trackIDs.filter { trackID in
+            guard tracksByID[trackID] != nil else { return true }
+            defer { visiblePosition += 1 }
+            if positions.contains(visiblePosition) { changed = true; return false }
+            return true
+        }
+        if changed { saveLocalPlaylists() }
     }
 
     public func deletePlaylist(id: String) {

@@ -43,7 +43,11 @@ struct ArtworkPrivacyControl: View {
                 }
         }
         .multilineTextAlignment(.leading)
+        #if os(tvOS)
         .skyrBackground(Palette.neutralTint)
+        #elseif os(macOS)
+        .frame(minWidth: 480, idealWidth: 560, minHeight: 440, idealHeight: 640)
+        #endif
         .sheetDetents([.large])
     }
 }

@@ -111,7 +111,7 @@ public final class LibraryIndexer {
     }
 
     /// Scans `rootPath` on the drive; `onCatalogue` receives the catalogue when the structure is known and again as tags arrive.
-    public func start(drive: any RemoteDrive, rootPath: String, serverName: String, existing: Catalogue?, onCatalogue: @escaping @MainActor (Catalogue) -> Void) {
+    public func start(drive: any RemoteDrive, rootPath: String, serverName: String, existing: Catalogue?, forceMetadataReread: Bool = false, onCatalogue: @escaping @MainActor (Catalogue) -> Void) {
         cancel()
         let run = IndexingRun()
         currentRun = run
@@ -125,6 +125,7 @@ public final class LibraryIndexer {
         coversTotal = 0
         lastProgressPublish = .distantPast
         recordDiagnostics("Scan started at \(rootPath) on \(drive.displayName)")
+        if forceMetadataReread { recordDiagnostics("Reading all song tags again was requested") }
         task = Task { [weak self] in
             guard let self else { return }
             defer {
@@ -179,7 +180,7 @@ public final class LibraryIndexer {
                     let catalogue = await Task.detached(priority: .userInitiated) {
                         CoverStore.$directoryOverride.withValue(coverDirectory) {
                             CoverStore.$indexingRun.withValue(run) {
-                                var built = Catalogue.build(folders: folders, rootPath: rootPath, serverName: serverName, driveID: driveID, existing: existing)
+                                var built = Catalogue.build(folders: folders, rootPath: rootPath, serverName: serverName, driveID: driveID, existing: existing, forceMetadataReread: forceMetadataReread)
                                 if run.isActive, built.enrichedTrackCount > 0 { built.regroupByTags() }
                                 return built
                             }
@@ -321,7 +322,7 @@ public final class LibraryIndexer {
             return true
         }
         let rereads = pending.filter(\.isEnriched).count
-        if rereads > 0 { recordDiagnostics("Reading tags again for \(rereads) tracks indexed by an older version") }
+        if rereads > 0 { recordDiagnostics("Reading tags again for \(rereads) previously indexed tracks") }
         if restingCount > 0 { recordDiagnostics("Leaving \(restingCount) songs that could not be read three times; they are tried again after a week") }
         if !pending.isEmpty { recordDiagnostics("Reading tags for \(pending.count) songs") }
         enrichTotal = pending.count
@@ -492,6 +493,11 @@ public final class LibraryIndexer {
             updated.tagVersion = Track.currentTagVersion
             return EnrichmentResult(track: updated, cover: cover)
         }
+        let filenameTags = PathParser.track(fileName: track.fileName)
+        let folderName = path.split(separator: "/").dropLast().last.map(String.init) ?? ""
+        let fallbackNumber = filenameTags.number ?? track.index + 1
+        let fallbackDisc = filenameTags.disc ?? PathParser.discNumber(in: folderName)
+            ?? PathParser.splitDisc(folderName).disc ?? 1
 
         if track.codec == "flac" {
             if var info = try? await readFLAC(path: path, drive: drive) {
@@ -501,10 +507,10 @@ public final class LibraryIndexer {
                 if let size = track.fileSize, let bitrate = MediaBounds.bitrate(bytes: size, duration: updated.duration) {
                     updated.bitrate = bitrate
                 }
-                if let title = info.tag("TITLE") { updated.title = title }
-                if let number = info.number("TRACKNUMBER") { updated.number = number }
-                if let disc = info.number("DISCNUMBER"), disc > 0 { updated.disc = disc }
-                updated.artist = info.tag("ARTIST") ?? updated.artist
+                updated.title = info.tag("TITLE").nonEmpty ?? filenameTags.title
+                updated.number = info.number("TRACKNUMBER").flatMap { $0 > 0 ? $0 : nil } ?? fallbackNumber
+                updated.disc = info.number("DISCNUMBER").flatMap { $0 > 0 ? $0 : nil } ?? fallbackDisc
+                updated.artist = info.tag("ARTIST").nonEmpty ?? filenameTags.artist
                 updated.albumTitleTag = info.tag("ALBUM")
                 updated.albumArtistTag = info.tag("ALBUMARTIST") ?? info.tag("ALBUM ARTIST")
                 updated.yearTag = info.year
@@ -528,6 +534,11 @@ public final class LibraryIndexer {
             guard let url = drive.streamURL(for: path) else { return EnrichmentResult(track: updated, cover: cover) }
             probe = await MediaProbe.probe(url: url)
         }
+        // An unavailable or failed parser must not erase the last successful tags. A successful
+        // parse may omit a removed tag, in which case filename/folder defaults apply again.
+        guard probe.duration != nil || probe.title != nil else {
+            return EnrichmentResult(track: updated, cover: cover)
+        }
         if let duration = probe.duration { updated.duration = duration }
         if let codec = probe.codec, !codec.isEmpty { updated.codec = codec }
         updated.sampleRate = probe.sampleRate ?? updated.sampleRate
@@ -538,20 +549,18 @@ public final class LibraryIndexer {
                   let bitrate = MediaBounds.bitrate(bytes: size, duration: duration) {
             updated.bitrate = bitrate
         }
-        if let title = probe.title?.trimmingCharacters(in: .whitespaces), !title.isEmpty { updated.title = title }
-        if let number = probe.trackNumber, number > 0 { updated.number = number }
-        if let disc = probe.discNumber, disc > 0 { updated.disc = disc }
-        if let artist = probe.artist, !artist.isEmpty { updated.artist = artist }
+        updated.title = probe.title.nonEmpty ?? filenameTags.title
+        updated.number = probe.trackNumber.flatMap { $0 > 0 ? $0 : nil } ?? fallbackNumber
+        updated.disc = probe.discNumber.flatMap { $0 > 0 ? $0 : nil } ?? fallbackDisc
+        updated.artist = probe.artist.nonEmpty ?? filenameTags.artist
         updated.albumTitleTag = probe.album
         updated.albumArtistTag = probe.albumArtist
         updated.yearTag = probe.year
         updated.genreTag = probe.genre
         updated.normalizeDiscFromAlbumTag()
         updated.format = FormatLabel.make(codec: updated.codec, sampleRate: updated.sampleRate, bitrate: updated.isLossless ? nil : updated.bitrate, bitDepth: updated.bitDepth)
-        if probe.duration != nil || probe.title != nil {
-            updated.isEnriched = true
-            updated.tagVersion = Track.currentTagVersion
-        }
+        updated.isEnriched = true
+        updated.tagVersion = Track.currentTagVersion
         if cover == nil, wantsEmbeddedArt, let artwork = probe.artwork { cover = artwork }
         return EnrichmentResult(track: updated, cover: cover)
     }

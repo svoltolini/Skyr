@@ -1,0 +1,1432 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-09-14",
+  "issue": 35,
+  "baseline_commit": "9a7bd969c2652d74b24b6b536c79f466d23878f4",
+  "hardware": {
+    "model": "Mac17,6",
+    "chip": "Apple M5 Max",
+    "macos": "26.6.2"
+  },
+  "scope": "Isolates the navigation-performance changes while retaining the preceding release Mac interface. The native Mac redesign, Settings and new playback changes are not included in this comparison.",
+  "method": {
+    "configuration": "Release Xcode build, native macOS app with production views, matching baseline/candidate fixture changes",
+    "data": "Synthetic 5,000- or 15,000-track catalogue, one full-library playlist, empty downloads, silent local WAV through AVPlayer",
+    "isolation": "Unique app identifier, fresh per-run data folder, no saved NAS connection, mock no-account CloudKit services, ephemeral downloads, muted playback; no user profile or NAS changes",
+    "interaction": "Four-second startup wait, then 48 iterations selecting Recently Added, Artists, Genres, Playlists, the full-library playlist and Search, calling next after each selection; requested sleep 500 ms before each iteration",
+    "loop_bounds": "Wall-clock begin/end recorded by the fixture, converted to the trace time base using the trace start timestamp",
+    "wake_delay": "Elapsed sleep plus main-actor resumption delay minus the requested 500 ms; a scheduling probe, not input-to-display latency or frame rate",
+    "hitches": "Apple Instruments Hitches events whose start time lies within the recorded interaction loop; maxima include other work within that interval",
+    "statistics": "Sorted[n//2] median, sorted[min(n-1,int(n*0.95))] p95; one timed run per case plus a separate confirming 15k pair",
+    "instrument": "Instruments SwiftUI template; Hitches and Time Profiler captured, SwiftUI view-body detail unavailable",
+    "environment": "One development Mac; native foreground recordings were serialized. Other agent editing and some build activity occurred during the session."
+  },
+  "diagnosis": "Sampled stacks attribute most of the prior playlist stall to DownloadManager downloadedCount/cacheKey inside the playlist download control. It encoded and SHA-hashed every track then formatted each digest byte with Foundation String(format:), even when there were no saved or pending downloads.",
+  "fixes": [
+    "Skip per-song downloaded/pending lookups for empty collections; existing failure/cancelled request state is still checked",
+    "Produce identical lowercase SHA-256 key bytes directly, preserving existing on-disk keys and NAS isolation",
+    "Cache occurrence-based playlist entries, preserving repeated songs and avoiding per-body identity array construction",
+    "Give each lazy playlist/card-list item one container regardless of its conditional separator",
+    "Expose the already-derived full track list and add a single-edit selected-occurrence removal API for the Mac table"
+  ],
+  "verification": {
+    "package": "194 Release tests passed in 9 suites from an immutable temporary package snapshot",
+    "new_tests": [
+      "Stable repeated-song identities and cached-entry refresh",
+      "Selected-occurrence removal preserving unavailable songs and other duplicates within one source",
+      "Byte-for-byte existing download cache key compatibility across 49 input pairs",
+      "A 15k-song playlist with empty downloads performs one owner-level source lookup instead of per-song lookups",
+      "Background sort preserves multicolumn/reverse order and stable ties and cancels away from the main actor",
+      "Derived rows retain the prior NAS source until the replacement catalogue publishes, even with identical metadata",
+      "Fresh background offline reads count duplicate occurrences, pending progress, cancellation and errors correctly",
+      "External file deletion/recreation is noticed on the next read; localURL still refuses a deleted file",
+      "Source/profile/metadata replacement and task cancellation during a paused background file check reject its result"
+    ],
+    "build": "Both comparison Mac Release builds succeeded",
+    "later_package": "206 Release tests passed in 10 suites with normal parallel execution from an immutable temporary package snapshot, 5.351 seconds. This includes the async download reader, sort/source guards and real AV transport tests.",
+    "later_package_log": "/tmp/skyr-navigation-performance/async-final-suite.log",
+    "test_scheduling": {
+      "observation": "The original 5-second local AV waits failed under concurrent MainActor test and compiler load, though both tests passed together in isolation in 0.191 seconds. A serialized AV suite passed twice (6.807s and 4.606s full suites) but another loaded run proved serialization alone insufficient.",
+      "fix": "Only the two real AV tests are grouped in a serialized suite with a one-minute per-test limit, 15-second service-loading wait and a separate 15-second seek wait. Assertions are unchanged. Fake transport tests remain parallel. Paused-worker coordination uses a bounded 30-second wait to tolerate the same host load.",
+      "earlier_full_serialized_run": "203 tests in 9 suites passed with --no-parallel in 22.527 seconds; global serialization is not required by the final test setup."
+    },
+    "later_mac_build": "Refreshed integrated Mac Release build succeeded with asynchronous status consumers and Mac collection action-scope guards. A subsequent incremental build covers final table accessibility and sheet-item corrections.",
+    "later_mac_build_log": "/tmp/skyr-navigation-performance/integrated-mac-final.log"
+  },
+  "limits": [
+    "This supports removal of seconds-long download-status stalls, not a claim of hitch-free UI. Candidate timed navigation still includes maximum frame hitches of 142 ms at 15k and 192 ms at 5k.",
+    "At 5k, wake-delay and loop-duration samples did not materially improve: the previous approximately 500 ms frame stalls could fit inside the fixture half-second waiting period.",
+    "Raw hitch counts are not equivalent to unique user-visible pauses and are not presented as an improvement.",
+    "A native desktop redesign must be validated separately; these fixtures intentionally retain the preceding shared Mac UI to isolate the cause.",
+    "Synthetic local playback does not establish real NAS, CloudKit, Watch, TV, CarPlay, remote-network or physical-device acceptance.",
+    "This comparison uses empty downloads; workloads with existing or active transfers remain subject to their own costs."
+  ],
+  "cases": [
+    {
+      "case": "baseline-5000-timed",
+      "loop_bounds_seconds": [
+        5.374253988265991,
+        30.136007070541382
+      ],
+      "loop_seconds": 24.7617529630661,
+      "loop_hitches": {
+        "count": 31,
+        "max_ms": 508.333208,
+        "over_100ms": 8
+      },
+      "wake_delay": {
+        "count": 48,
+        "median_ms": 12.004971504211426,
+        "p95_ms": 31.517982482910156,
+        "max_ms": 33.56301784515381
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 1.9899606704711914,
+        "p95_ms": 3.545999526977539,
+        "max_ms": 3.764033317565918
+      },
+      "mutation": {
+        "count": 46,
+        "median_ms": 0.6209611892700195,
+        "p95_ms": 0.90789794921875,
+        "max_ms": 1.073002815246582
+      },
+      "flush": {
+        "count": 19,
+        "median_ms": 0.009059906005859375,
+        "p95_ms": 0.013947486877441406,
+        "max_ms": 0.013947486877441406
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "track_count": 5000,
+      "result_sha256": "bca6fabf71687db1a13a4e4a5b8cff9a8962fac5886f44eec9cf4189bfe00e3a",
+      "summary_sha256": "04c408646be007580c608c1289480cdb2df348a346b44cda095046c520e5b7a9",
+      "artifact_directory": "/tmp/skyr-navigation-performance"
+    },
+    {
+      "case": "candidate-5000-timed",
+      "loop_bounds_seconds": [
+        5.378631114959717,
+        30.17563009262085
+      ],
+      "loop_seconds": 24.796998977661133,
+      "loop_hitches": {
+        "count": 253,
+        "max_ms": 191.666541,
+        "over_100ms": 8
+      },
+      "wake_delay": {
+        "count": 48,
+        "median_ms": 14.449000358581543,
+        "p95_ms": 33.22708606719971,
+        "max_ms": 37.23704814910889
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 1.7399787902832031,
+        "p95_ms": 2.599000930786133,
+        "max_ms": 12.188911437988281
+      },
+      "mutation": {
+        "count": 53,
+        "median_ms": 0.6519556045532227,
+        "p95_ms": 0.9980201721191406,
+        "max_ms": 1.9290447235107422
+      },
+      "flush": {
+        "count": 27,
+        "median_ms": 0.010013580322265625,
+        "p95_ms": 0.012993812561035156,
+        "max_ms": 0.013947486877441406
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "track_count": 5000,
+      "result_sha256": "3d37329ca7e9dc7b27353a85946ca7c4c0c12758f42e9a6549b299368d9a20d9",
+      "summary_sha256": "566806c63890c7046ad858325d75aee95c199630b2cb3017faee1d266b163f36",
+      "artifact_directory": "/tmp/skyr-navigation-performance"
+    },
+    {
+      "case": "baseline-15000-timed",
+      "loop_bounds_seconds": [
+        5.610331058502197,
+        40.15854811668396
+      ],
+      "loop_seconds": 34.54821705818176,
+      "loop_hitches": {
+        "count": 48,
+        "max_ms": 2374.99825,
+        "over_100ms": 14
+      },
+      "wake_delay": {
+        "count": 48,
+        "median_ms": 30.946969985961914,
+        "p95_ms": 760.9080076217651,
+        "max_ms": 786.0029935836792
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 2.4939775466918945,
+        "p95_ms": 4.809975624084473,
+        "max_ms": 5.419015884399414
+      },
+      "mutation": {
+        "count": 38,
+        "median_ms": 0.5871057510375977,
+        "p95_ms": 0.9210109710693359,
+        "max_ms": 0.9590387344360352
+      },
+      "flush": {
+        "count": 19,
+        "median_ms": 0.009059906005859375,
+        "p95_ms": 0.012993812561035156,
+        "max_ms": 0.012993812561035156
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "track_count": 15000,
+      "result_sha256": "f0e6c4f1bc80b824362292ee6cb1b6acf78c1801d50782295dc6c90f4dd5a561",
+      "summary_sha256": "a1a57eb8c7b2b23acb08f71c21ce59c9ed3d4e9ba896c15d9b0e8b7c02536f07",
+      "artifact_directory": "/tmp/skyr-navigation-performance"
+    },
+    {
+      "case": "candidate-15000-timed",
+      "loop_bounds_seconds": [
+        5.600178956985474,
+        30.570700883865356
+      ],
+      "loop_seconds": 24.970522046089172,
+      "loop_hitches": {
+        "count": 54,
+        "max_ms": 141.666583,
+        "over_100ms": 8
+      },
+      "wake_delay": {
+        "count": 48,
+        "median_ms": 17.11106300354004,
+        "p95_ms": 32.00399875640869,
+        "max_ms": 33.73301029205322
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 3.414034843444824,
+        "p95_ms": 5.257964134216309,
+        "max_ms": 7.827043533325195
+      },
+      "mutation": {
+        "count": 53,
+        "median_ms": 0.6049871444702148,
+        "p95_ms": 1.242995262145996,
+        "max_ms": 1.8500089645385742
+      },
+      "flush": {
+        "count": 26,
+        "median_ms": 0.008106231689453125,
+        "p95_ms": 0.010967254638671875,
+        "max_ms": 0.014066696166992188
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "track_count": 15000,
+      "result_sha256": "274ee049c1f6898a26e041641996623c4fb7b6d84f1ccbf3f3fb517d0ae087fa",
+      "summary_sha256": "fcfde26d52c9562495d92a0b9b7e5937b32bf7991a91d1d19ef608e8c1ec2716",
+      "artifact_directory": "/tmp/skyr-navigation-performance"
+    }
+  ],
+  "time_profiler_15000": {
+    "baseline": {
+      "scope": "Main-thread samples within interaction-loop time bounds",
+      "main_thread_sample_count": 222826,
+      "nominal_sample_period_ms": 0.1,
+      "estimated_main_thread_sampled_cpu_ms": 22282.6,
+      "download_symbols_inclusive_ms": {
+        "closure #1 in DownloadManager.downloadedCount(for:)": 8014.000000011623,
+        "static DownloadManager.cacheKey(trackID:driveID:)": 7884.600000011153,
+        "specialized DownloadManager.access<A>(keyPath:)": 53.40000000000049,
+        "DownloadManager.key(for:)": 38.300000000000274,
+        "DownloadManager.record(for:)": 19.300000000000004,
+        "DownloadManager.records.getter": 3.600000000000002,
+        "DownloadManager.driveIDProvider.getter": 1.6000000000000003,
+        "DownloadManager.downloadedCount(for:)": 0.4
+      },
+      "stack_summary_sha256": "d4bf0fdf4a2704e13f420c78abd83173d141639f1d4b0f11efbb826564fd619f"
+    },
+    "candidate": {
+      "scope": "Main-thread samples within interaction-loop time bounds",
+      "main_thread_sample_count": 82055,
+      "nominal_sample_period_ms": 0.1,
+      "estimated_main_thread_sampled_cpu_ms": 8205.5,
+      "download_symbols_inclusive_ms": {
+        "specialized DownloadManager.access<A>(keyPath:)": 0.1,
+        "DownloadManager.record(for:)": 0.1
+      },
+      "stack_summary_sha256": "ace0349db7f7e27b67359c7996884205e15ee1fcadc810475d196010e6c3a4d3"
+    }
+  },
+  "supplemental_download_status_probe": {
+    "configuration": "Release package test, isolated folder, synthetic 15,000-track playlist, three consecutive reads per case; no network",
+    "empty_ms": [
+      0.10406970977783203,
+      0.0069141387939453125,
+      0.003933906555175781
+    ],
+    "one_unrelated_saved_track_ms": [
+      37.908077239990234,
+      38.62297534942627,
+      38.33794593811035
+    ],
+    "one_saved_track_ms": [
+      39.21997547149658,
+      38.269996643066406,
+      38.03205490112305
+    ],
+    "all_tracks_saved_ms": [
+      124.40800666809082,
+      121.34003639221191,
+      121.14202976226807
+    ],
+    "file_fixture": "Synthetic manifest; each completed record points at the same existing temporary 4-byte file to exercise FileManager existence checks without media/network effects",
+    "conclusion": "Saved/active-download workloads still require asynchronous display-state preparation or an invalidated availability index. Preserve file existence verification; isolating view observation reduces repeated reads but does not remove first-open cost.",
+    "log": "/tmp/skyr-navigation-performance/download-read-probe.log"
+  },
+  "issue_status": "Large-library main-thread download-state stall is concretely remediated by background reads and supported by the offline heartbeat probe. Keep issue 35 open until final integrated desktop/device and real offline-library acceptance; original navigation traces do not measure the later desktop redesign.",
+  "desktop_table_sort_probe": {
+    "scope": "Read-only review of the initial desktop table implementation; reproduces its row fields and Foundation KeyPathComparator calls in a Release test with 15,000 synthetic songs",
+    "row_preparation_ms": 2.436041831970215,
+    "sort_position_ms": [
+      7.40206241607666,
+      6.873011589050293,
+      7.048964500427246
+    ],
+    "sort_title_ms": [
+      315.09101390838623,
+      318.3269500732422,
+      316.75994396209717
+    ],
+    "sort_artist_ms": [
+      65.99199771881104,
+      65.06991386413574,
+      65.50395488739014
+    ],
+    "sort_album_ms": [
+      15.06197452545166,
+      14.877915382385254,
+      14.92607593536377
+    ],
+    "recommendation": "Sort immutable row snapshots off the main actor; ignore cancelled or superseded results and retain source, selection and current-sort boundaries. This is a CPU probe, not a native Table rendering measurement.",
+    "log": "/tmp/skyr-navigation-performance/table-work-probe.log"
+  },
+  "fixture_source_files": [
+    {
+      "path": "Packages/SkyrCore/Sources/SkyrCore/Models/Library.swift",
+      "sha256": "5c4c797551bbc7bf107799b2a2c3ba4acffda3931abe667caeb790c85d6d3f6b",
+      "fixture_match": "exact"
+    },
+    {
+      "path": "Packages/SkyrCore/Sources/SkyrCore/State/LibraryStore.swift",
+      "sha256": "ad8a326e1daeb21ed78c11fddaec54bd98d123ff3bcfad6abdb5999a20f4c674",
+      "fixture_match": "exact"
+    },
+    {
+      "path": "Packages/SkyrCore/Sources/SkyrCore/State/DownloadManager.swift",
+      "sha256": "435497529a3f25780313073a28a7d650f38f90093d322db0e451ac68d14857b1",
+      "fixture_match": "exact except intentional ephemeral session substitution"
+    },
+    {
+      "path": "Skyr/Views/Playlists/PlaylistsView.swift",
+      "sha256": "18683bf85a2c0f422615d1729132ffda1b38afad0325cf85770b27ebfaf3c864",
+      "fixture_match": "exact"
+    },
+    {
+      "path": "Skyr/Views/Components/Components.swift",
+      "sha256": "e135c994b8738b00c608206e089070b3651d544b356edaac1b3128963f2d688c",
+      "fixture_match": "exact"
+    }
+  ],
+  "changes_after_navigation_measurement": {
+    "note": "The prior five-file performance comparison remains valid for its isolated scope. The following correctness and desktop changes were implemented afterwards and require separate integrated validation.",
+    "files": [
+      {
+        "path": "Packages/SkyrCore/Sources/SkyrCore/State/LibraryStore.swift",
+        "sha256": "8f40d7a29d2a2f86fd9466be6b114923e8ca7db6d98bb8ecc99e59d185dab48d"
+      },
+      {
+        "path": "Packages/SkyrCore/Sources/SkyrCore/State/BackgroundSort.swift",
+        "sha256": "079a0a7e5d490f626077c60959b2a8d8c517c32abd643bb87ad2c9386a0367db"
+      },
+      {
+        "path": "Packages/SkyrCore/Sources/SkyrCore/State/DownloadManager.swift",
+        "sha256": "f5329c1c502334d13351f94724f5c1b85b7a2e02dfb6c851dc4cb3fdc82b2cdd"
+      },
+      {
+        "path": "Packages/SkyrCore/Sources/SkyrCore/State/DownloadStateSnapshot.swift",
+        "sha256": "3c4d1f54785c3ba7bde9c9941d7331fe7e100cd09c73e92dddbd15d1bda159d3"
+      },
+      {
+        "path": "SkyrMac/MacTrackTable.swift",
+        "sha256": "35d3e9521af67f45ad93042bbaf5e3947373f6922a319b067e15413c277124ce"
+      },
+      {
+        "path": "SkyrMac/MacCollectionViews.swift",
+        "sha256": "b3deb468578c79cc50b183a4152142769f66bb38e8072073492242caf922e7a3"
+      },
+      {
+        "path": "Skyr/Views/Components/DownloadStateReader.swift",
+        "sha256": "ac7802bbaf18289d454e9bab80fbb3ba114b214dbd444651e56e7daa4800eee3"
+      },
+      {
+        "path": "Skyr/Views/Playlists/AddToPlaylistSheet.swift",
+        "sha256": "994997198c9a13fcc40164ccd1f719f1024ac9193fa299377fa6e6d6a2fd50cd"
+      },
+      {
+        "path": "Skyr/Views/Album/AlbumView.swift",
+        "sha256": "38fd23dccf9fa359e84473d03485a60a14531752e17c2a97af9bbe2bcf0c6d2e"
+      },
+      {
+        "path": "Skyr/Views/Playlists/PlaylistsView.swift",
+        "sha256": "1e0a1601a5ac30402dfc8cfdb973ac6b3cc69c33c74a69d441c1b0f3af281f55"
+      },
+      {
+        "path": "Skyr/Views/Settings/DownloadsView.swift",
+        "sha256": "bb500a7f279bc703755b3e07004601cd67821a07d5d895df96a6e239d9655e8e"
+      }
+    ],
+    "changes": [
+      "Derived content records its actual source ID; publishing a different source increments contentRevision even if all metadata is identical",
+      "One cancellable detached sort request per table input; generation, source, authenticated profile/session and revision checks before publication",
+      "Table actions refuse stale presentation or playlist contents, including duplicate ordinal changes; selected IDs map to current positions only after exact snapshot validation",
+      "Table sorting preserves selection; membership and source/session changes clear selection and dismiss captured add-to-playlist contents",
+      "Space is handled only by the focused song table",
+      "Download owner display state is computed from an immutable snapshot in a cancellable detached task; stale source/profile/metadata revisions cannot publish",
+      "Shared album/playlist controls, downloaded tiles, and Mac download controls use asynchronous display state; duplicate tile counts no longer rescan files",
+      "Native Table cells receive observable stores explicitly because runtime cell hosting did not inherit environment objects",
+      "The table accessibility label precedes overlay modifiers so the empty-state content keeps its own label",
+      "Add-to-playlist sheet uses one identifiable immutable selection item and validates its captured input immediately before add/create"
+    ]
+  },
+  "async_offline_probe": {
+    "method": "One immutable Release package fixture, 15,000 unique tracks and owned records. Each record points to the same existing temporary four-byte file, so every unique track still receives a real FileManager existence check without network/media. Three synchronous reads followed by three background reads, each while a MainActor task requests a one-millisecond heartbeat. Elapsed read duration and maximum heartbeat wake delay are measured; no UI frame or NAS performance claim.",
+    "results": [
+      {
+        "mode": "synchronous",
+        "iteration": 0,
+        "elapsedMs": 109.05206203460693,
+        "heartbeatMaxDelayMs": 108.07101631164551,
+        "heartbeatSamples": 7
+      },
+      {
+        "mode": "synchronous",
+        "iteration": 1,
+        "elapsedMs": 98.49202632904053,
+        "heartbeatMaxDelayMs": 97.52302074432373,
+        "heartbeatSamples": 7
+      },
+      {
+        "mode": "synchronous",
+        "iteration": 2,
+        "elapsedMs": 91.744065284729,
+        "heartbeatMaxDelayMs": 92.7049388885498,
+        "heartbeatSamples": 6
+      },
+      {
+        "mode": "background",
+        "iteration": 0,
+        "elapsedMs": 93.41299533843994,
+        "heartbeatMaxDelayMs": 1.1250247955322266,
+        "heartbeatSamples": 55
+      },
+      {
+        "mode": "background",
+        "iteration": 1,
+        "elapsedMs": 90.02697467803955,
+        "heartbeatMaxDelayMs": 1.066969871520996,
+        "heartbeatSamples": 52
+      },
+      {
+        "mode": "background",
+        "iteration": 2,
+        "elapsedMs": 89.22803401947021,
+        "heartbeatMaxDelayMs": 1.0890235900878906,
+        "heartbeatSamples": 55
+      }
+    ],
+    "log": "/tmp/skyr-navigation-performance/async-offline-probe.log",
+    "log_sha256": "6dd7e5f87edecfb28fcd90289b8f190bd5ef79db5b4fd4948ab63145cdc0dbf6",
+    "probe_source_sha256": "9da1b9bb2b9f96d6f1ca1902f12703f7ef4058d84ee6024e87e7cfcf08dcfa56",
+    "limitations": "Local shared-file metadata probe; cold distinct files, large real offline directories, power use and integrated Instruments frame behavior still require acceptance. Other compilation occurred during the overall session.",
+    "invalidation": "A new scan reads actual files on appearance, foregrounding, structural download changes, and every five seconds while visible/active. While downloading, readers sample again after each scan with a 250ms delay. Rapid byte progress does not cancel file scans. Playback localURL and isDownloaded continue to check the actual file synchronously. External deletion may take up to one display polling interval to update the badge but never authorizes playback of a missing file."
+  },
+  "final_combined_release_validation": {
+    "configuration": "Release",
+    "source_snapshot": "/tmp/skyr-combined-validation/source",
+    "source_manifest_sha256": "d2c66dce79a725bbd59505a6af1a4fec9074aad9c867d51b25bf747c058d4935",
+    "source_files": {
+      "project.yml": "93ce3575b3ecf503219979957acee13c4c0b695e5780b67b1bdd0baf38470f5d",
+      "SkyrWatch/WatchPlayer.swift": "f8c45d39389ba6140e21f9784dd91e61c14c9c88355928575d8c0e732ffa2ee9",
+      "SkyrWatch/WatchDownloads.swift": "c14308cf047c2135b2b4f14384cf8186e8d72e936f35bcba6719a6146342e895",
+      "SkyrWatch/SkyrWatchApp.swift": "3f92131621337a9f9d78a3bf7d179fd6c0fbd3b114612449e32a6d52e69c71b4",
+      "SkyrWatch/WatchStore.swift": "1eef5fe3b04fe8dfc4c4d8b160c1de222d16aecf6dad7f00a7a35d538b87c552",
+      "SkyrWatch/Info.plist": "3fbba2e19015d3d1564cb32b044212f46a367503333d7fff57670395d7995630",
+      "SkyrMac/MacNowPlayingInspector.swift": "61d745822e3f832b300cb097bdefa1fe1f5f9ef3bb62c440b0607d160a2d7cd8",
+      "SkyrMac/MacRootView.swift": "be11af164545293ada44f1f4c83acf7061df038a0f0642bbb17574277f5b6229",
+      "SkyrMac/MacSetupView.swift": "29d62e6b6ef0bb48af5a10c337bb9484c5434c47f85ded18a98eb46efd441b01",
+      "SkyrMac/MacNavigation.swift": "6f6754ed6b6502ec5144ed2e77d86e0a5044f24ba3907fb913d3596a110b11b4",
+      "SkyrMac/MacSettingsView.swift": "2655a0bed5d134b271ed6f2134f2cce3d7af1c6696ebdeb8444ca08d638ea95e",
+      "SkyrMac/MacTrackTable.swift": "35d3e9521af67f45ad93042bbaf5e3947373f6922a319b067e15413c277124ce",
+      "SkyrMac/MacCollectionViews.swift": "b3deb468578c79cc50b183a4152142769f66bb38e8072073492242caf922e7a3",
+      "SkyrMac/MacPlayerBar.swift": "e24d15169fe174a69373cc34fedb69a4ec669d9933d3c83f006d160516140afa",
+      "SkyrMac/MacLibraryView.swift": "34ff09ca7afad270f2a8390096e9e54cb8628374ddd3434dfb9eeee39af1d7f4",
+      "SkyrMac/SkyrMacApp.swift": "d6f35c6938f6decee2f17457b2859d1af8beb6834a3878b1d245123883d44614",
+      "SkyrMac/Info.plist": "c709d056a4b4e26e204bc3c5979fc30655106ad18e6cdf58c3b943facee967bb",
+      "SkyrTV/SkyrTVApp.swift": "ed8fbae03dc7045d3b9504af042a2b6b9ac22546dbe65d8eab00583815f7cb4e",
+      "SkyrTV/TVRootView.swift": "f65f4836cd7ad42aa9c31863779d19b202fc1eb3981746d366ddc5935b79d54e",
+      "SkyrTV/Info.plist": "8f8ad3716a5a83e422efcf1f97fa40d0be515b2c49d88d1e7dcd061c71520e5a",
+      "Skyr/SkyrApp.swift": "a32f62c3abf3db4688cc621ff321758525b44898b011965fa7553e01e4165ab4",
+      "Skyr/WatchBridge.swift": "d4bf8516699f0ddcb10dd5ce14d613caba2d9522f72a47a701c6d6e42795e8ef",
+      "Skyr/Info.plist": "238a683dff5a0d708b3a3c36e4cbce0b408b80e0a70997eae27ca46e7af128bf",
+      "SkyrWidgets/SkyrWidgetsBundle.swift": "d79ea492821be5cec0a9839c2c854dbc6bd274721ec828f85f37a30619084f57",
+      "SkyrWidgets/PlaylistsWidget.swift": "ca0ced07c430d0d8015c48e5d5c58d910c10c013ce1775420fb5248ad7c10213",
+      "SkyrWidgets/WidgetPieces.swift": "70126f9dd2487b342921ff8b2df7ed38ca3e44f1e1edd402ca7b0b89c3382d2d",
+      "SkyrWidgets/SkyrHomeWidget.swift": "5554d6304bdb6c41b78e267dab34ca2f1df051182c8c5ead711a0e29ed897cae",
+      "SkyrWidgets/DownloadLiveActivity.swift": "f27e6be2d25527d0689730f6b8f4961ba0ab966da1869eb56c4db54a84018bf8",
+      "SkyrWidgets/RediscoverWidget.swift": "3dfdb456933fb9fb17b7d13afba6dcd35cabd13687492b438f8eb43ca6d12247",
+      "SkyrWidgets/DownloadsWidget.swift": "7ca391703b7ac818a72536658f2bb501cf87a28f81fd3c6268587e0cbd5a7fae",
+      "SkyrWidgets/Info.plist": "45f8f96c599c2408f49fa6017c6871b2b1998a5fc362f4c9ca8eb37703bb5208",
+      "SkyrWatch/Assets.xcassets/Contents.json": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f",
+      "SkyrWatch/Views/PlaylistDetailView.swift": "9719687863779050fbcada5f4f711a2b0039cbae89d5a7a3718befed43ffb337",
+      "SkyrWatch/Views/WatchRootView.swift": "2b3eb2ce761e5bda3b57b512310bc6be85cab0ac75c77288837e3bd31580cdab",
+      "SkyrWatch/Views/PlaylistsListView.swift": "a6bf3dc53c21505fb6232ff5009c04a448f473db683e3410a63898ddc9103b98",
+      "SkyrWatch/Assets.xcassets/WatchAppIcon.appiconset/Contents.json": "960ba4939c5910e9b00eeb4dc265595f3aaddb9d8e84a73955af8d8d735efffa",
+      "docs/evidence/navigation-performance.json": "04218db25b0ee1bf5f153793c09698eaedbc4778d9bde334f1c285ca887f1b8e",
+      "docs/evidence/batch-4-testflight-status.json": "af6ff718c2bfb8690bef2038fc7a60836cd30424caf555d9576bd9087ce6d820",
+      "docs/evidence/batch-4-performance.json": "205192fe91a1c767cb4b7e2b468876608154cdda3eb52483d7ef0501d6c937a9",
+      "docs/evidence/batch-4-export-verification.json": "761920306ff42ebce647dfb9663859e1c7b2ee86b71082dd319d42e16bd21f3b",
+      "Packages/SkyrCore/Package.swift": "99208fcae6e142387c3d1a62a3280f80c30e29249b772585237750886318096b",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/PlaybackRecoveryTests.swift": "9850fc23e523bff02e372e4f4db7a61a87f31155cb27fc0146d0ed80fce91a6a",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/NASTransportTests.swift": "45e6050a54e56ef2ffcf396999a764fb2b6dd9473788c805d9921403cd3d1f04",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/ProfileStateMergeTests.swift": "1c01bac451de1d6af7b6673f4992b43efe74e5d9b5f475cfc6ac2059ded3ed41",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/CoverStoreReliabilityTests.swift": "b3ebde9a6ece7e1089c32b91766b89fa863dd99bb96d10472d9ccca2d7981f39",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/CloudReliabilityTests.swift": "8427a31cef1864af373f3dc6c340d0239e6a96c8c100f9fc59e6eaaa79cbd6fd",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/DownloadTests.swift": "27a28e20dc0e185bd6942278a9708355ec573042b753050a6579b9c6193992fe",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/ArtworkPrivacyTests.swift": "d3f53679ec32c13b3b6a41ed29154ba8b70d4f4f86cd3065a2126183d66af9f0",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/DownloadReadPerformanceTests.swift": "3d33cbb85368c8ef572368198ef75c904a069c705840f3a5d5a8343b54c7865d",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/DownloadRestorationTests.swift": "8c439626c49cfbffb39b64b20d1d803627e7210c706e5d58e1229d44c3ba6df5",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/MetadataRefreshTests.swift": "a2e68dc03c6bafe741eba1a8f4ebf8ef5d7bb02ced59f8f712d3990a03bef0b4",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/DownloadAttemptTests.swift": "109553d0e22d02a2e88ce20d65a9b88db2f402d73a111ea6f9d66ae465d57ad5",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/DownloadStateReadTests.swift": "d2f14907530cc1b4a77bc9f08cfcc9beb167e23cc2cb91bac3d5797cbdabddc2",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/FamilyAccessTests.swift": "327238b4eab0c5ff3474ebff916de7e19531343ed046c12167aa122e0a27d694",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/ConnectionTests.swift": "92e303cb083d4fc6c4fec4225fb8cfc7d1c47d9b96f6349cfb632b43b8de7a11",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/PlaylistEntryTests.swift": "bf9177213dcd996e7417b0f62dd9633ebcd98dcfd7919ea5592ce0f3817164b3",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/ProfileAuthorizationTests.swift": "6390f36913873bad12b4824bb911656c525086339bd3e90db1305abdd5ed5e18",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/ProfilePersistencePerformanceTests.swift": "9244f30ea0731472bac6f4d451d7f178fa4586227146f89e7dbc66fdba65c94c",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/BoundedBytesTests.swift": "53d3c2e80adff35e3469d1fed59d08bacdb7251e991e0e2b91d7e9a97eefc398",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/LegacyLibraryRecoveryTests.swift": "b142bc2e3d07e9649f2856250b2beb88083bd90719bdabb76496fcdc3d836f45",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/BackgroundSortTests.swift": "f3e93872fb99aa361d9236ab97ce2bde146d885dcb572e969c6f20ac6bc3781f",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/MediaBoundaryTests.swift": "2166a81881fdf9a967ec9d007c168db09cb2c6037693fd68a77e2aeef1786cbf",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/ProfilePersistenceTests.swift": "b2a20f94fc21288b48794f2425efe59424fa6fc52934f69580264c2672fc9367",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/ScanTests.swift": "f007ac78a1430880642493b48a476c94e95808ed440b617516f3b2bc119b238b",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/IndexingReliabilityTests.swift": "8657a1bd061b57ad608811cd6643f8af569085d144c9a2aaaba604a0c7ac136b",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/WidgetAuthorizationTests.swift": "cea4b89cf72b2ba5cb59dcc4fa8da0c48719c53bb3db2ed2cc4d22ce7d16c263",
+      "Packages/SkyrCore/Tests/SkyrCoreTests/SearchRevisionTests.swift": "107363c4b3a75eef8dfc715f33e96a0392e52e30a29982f59386aafd43ea2009",
+      "Packages/SkyrCore/Sources/SkyrShared/DownloadActivityAttributes.swift": "7f35d897062acddfc3f276228005138748d02439e6be208429d56c7a9b320eb9",
+      "Packages/SkyrCore/Sources/SkyrShared/WidgetSnapshot.swift": "934080c53c4ba3abcd8fd06d21192786943be14853121df96c042873c632a44e",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/BoundedBytes.swift": "a6e0e07e3d68920eddec5190a1aefa20584b8c6adb64b85bcd04e175fe2af197",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/SynologyCipher.swift": "1cafa75820a4b8e2e2e319f730b1fd76c2119b42b87d4b682ad36c356c0826e9",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/NASOrigin.swift": "83d5e4fd16978a4d4709ecdc2e2adf43284518a585ab6c9b4fced657c9b8e150",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/SynologyDrive.swift": "6b4978337f7fcbcdfea2fc8ac3bb32341083baf3a7c57758ccc51e635c822abe",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/KeychainStore.swift": "97ef0ef05d91b7fbc35d91622358e7f0df73372cfeba4aeece2b439191caf274",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/RemoteDrive.swift": "f73391e7bd8f737a2fa64f3c65f91d72aa44e882cc962de65fd969b1c882f6b0",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/SynologyClient.swift": "8dacbf2191032d57d2706532ba2759f1172d1536bffd0c1d314cd68e65e1d4e2",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/NoiseSession.swift": "bc3fc5556715933de4ca0a405b4a3af43d9197ea27ba81d36d61cad0b88491f7",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/NASSource.swift": "70a02ff23dd1896950c15bb0771478a6996cd1b22bd5a894e0d45c7d8de5511f",
+      "Packages/SkyrCore/Sources/SkyrCore/Networking/ServerDiscovery.swift": "2c5876dfc9cf0633919419f4569a378f9f36d5490e04a6380ac34352415445eb",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/Library.swift": "6fb35f8835b7e0227086797bf38468fee90d301429c21a59af58ef6549915179",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/ProfileCloudDocument.swift": "822a5b112c1db61c810c330295d3cec134e6747fcdeb505d237b4356531ac2ff",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/ProfileHistorySync.swift": "9c2f52b5b7a01f69db6376a21d4f9f46171478ace411b14cad19a3bd7f321bb4",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/Profile.swift": "6815986a2e3d000e6cf2467138f863a45636947a16430893d3469aa9530048a0",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/ProfileStateMerge.swift": "c405916777891db406b1fb5ad3534a8f440719e3245d099d506b002b6ac0cd80",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/Catalogue.swift": "8a6ad5dde1dd62dd0cd03d73ff3b80c314c57f12662b546ce8f90d328a74bdf3",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/WatchCatalogue.swift": "c2abd8fc8cf2e826c993efce3d7184864592141645221cf07128d6994620d2f4",
+      "Packages/SkyrCore/Sources/SkyrCore/Models/SampleLibrary.swift": "b235440d1303fa6c61826417f5d668ce5255cd53aafee9f00b9ff9457de336f4",
+      "Packages/SkyrCore/Sources/SkyrCore/State/ParallelWork.swift": "c0825fb2c11b355e2c7306f0a4e03f1d58bb231157543b1626d32469b4ea113e",
+      "Packages/SkyrCore/Sources/SkyrCore/State/LibraryStore.swift": "8f40d7a29d2a2f86fd9466be6b114923e8ca7db6d98bb8ecc99e59d185dab48d",
+      "Packages/SkyrCore/Sources/SkyrCore/State/ProfileStateEdit.swift": "c5a6ce7f9eeec2ddb3518084e070e49181593b3893b4665a42e6b895965dac7e",
+      "Packages/SkyrCore/Sources/SkyrCore/State/AppDirectories.swift": "7157701cbd29804aec96c4dedaa3dbb15409fe7f0b6ac8f31ebe6070a0c01076",
+      "Packages/SkyrCore/Sources/SkyrCore/State/AppModel.swift": "fe77cb03f3647f987f54f76543f94f3247db081cf523a155410ae741bf91493b",
+      "Packages/SkyrCore/Sources/SkyrCore/State/DownloadStateSnapshot.swift": "3c4d1f54785c3ba7bde9c9941d7331fe7e100cd09c73e92dddbd15d1bda159d3",
+      "Packages/SkyrCore/Sources/SkyrCore/State/ProfileStore.swift": "3bfa1dcc919ea8d50236429ea4c4c7388b62b9b5521785659c5adce5b8abec49",
+      "Packages/SkyrCore/Sources/SkyrCore/State/ProfileCloudPreparation.swift": "d71e1d1ecf4b45ed97aa1f715cf5cbf87a510a7a08728ccddd02143f2d355d0d",
+      "Packages/SkyrCore/Sources/SkyrCore/State/ProfilePersistence.swift": "324daf50901af3fc396b2ec56f17d070fadf203151bfb9a8093011fca51aed12",
+      "Packages/SkyrCore/Sources/SkyrCore/State/PlayerModel.swift": "d3db13ad4b200b459ba082baca60dc85b6c88cb74af31ac817da91050db45fd7",
+      "Packages/SkyrCore/Sources/SkyrCore/State/CloudPersistence.swift": "e05f38ef2471aa5fe7a7926e41e4ebaa66181ef45bbc133e9265d9d0eb151160",
+      "Packages/SkyrCore/Sources/SkyrCore/State/LegacyLibraryRecovery.swift": "fbabf99f959e925737cbf0b7b2bb3a079c2a5a393032a483f1bdaa526c99c312",
+      "Packages/SkyrCore/Sources/SkyrCore/State/ConnectionServices.swift": "81785740f3aa2bb687d976ba7682fc36b7f56848023f81d145665576cc0581b6",
+      "Packages/SkyrCore/Sources/SkyrCore/State/CloudServices.swift": "365582e087e2e841e3893dc55fc23b5b5478b913d3f0e9a82a06a409e5b42345",
+      "Packages/SkyrCore/Sources/SkyrCore/State/DownloadManager.swift": "f5329c1c502334d13351f94724f5c1b85b7a2e02dfb6c851dc4cb3fdc82b2cdd",
+      "Packages/SkyrCore/Sources/SkyrCore/State/CloudSync.swift": "0591a9f7540e1c4a6c935210105f811a4cc6f137261b686768c87f18b790ab40",
+      "Packages/SkyrCore/Sources/SkyrCore/State/WidgetFeed.swift": "2e105435972b5c7d6e022c3ae9e219793a817c8b9df72be032135955d52ba1f1",
+      "Packages/SkyrCore/Sources/SkyrCore/State/BackgroundSort.swift": "079a0a7e5d490f626077c60959b2a8d8c517c32abd643bb87ad2c9386a0367db",
+      "Packages/SkyrCore/Sources/SkyrCore/State/PlaybackTransport.swift": "839f328f1f2a556fa8f09c4734fbbea88ef2da50bc9e4650272de17985856460",
+      "Packages/SkyrCore/Sources/SkyrCore/State/DiagnosticsLog.swift": "560ee20fbed48f51f5d8c6cb9a70ce95b7e6cba3e1e6a9deff15e7d2c843025a",
+      "Packages/SkyrCore/Sources/SkyrCore/Theme/Palette.swift": "067512203641ae24f2f17d6f442d51e947168234d5bec462225eb21d3362d613",
+      "Packages/SkyrCore/Sources/SkyrCore/Theme/CoverImageCache.swift": "aa2e8c612b554a367fce26c18d919a95238f62a57adb719375b50c66f99bf1e6",
+      "Packages/SkyrCore/Sources/SkyrCore/Theme/CoverPalette.swift": "4a130e2cf59a0987a732b505af717fe7414643795d5dc59136b48d1da5f70f03",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/ID3Tags.swift": "7b65ec99b14c4870f370d564129ee43f794986cbc974c368e81347e7d42dd889",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/MediaBounds.swift": "b61a660c7d6ba672dcd2b6dfac5b438f62e92b9052498597ae90ab7e06f1eb2c",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/ArtistClustering.swift": "abb6fca3003ac96d3ea63d8aa18d5433859ff75e3be937a0371c222308475ef1",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/LibraryIndexer.swift": "ea0e0a5e6b7501434c37e3f82aab0ba04e8ef196cb366a69c044df055ce10a55",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/CoverStore.swift": "764278ac36414c98e76dcbf894ed0cda9a19591943eccc0ba93eb058e0cfc132",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/MP4Tags.swift": "72bd1d181417ab3fa3bf5f534c91482245d22e00b13f0756100c27be60074ace",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/PathParser.swift": "f6bfa8423ff7cf60e650c6bddc6d29fe54cb922349c78c09485126efd51446f3",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/MediaProbe.swift": "941ecaacea1e5a33eab631e02012f63be982850e7d7e434c6ce432cb46794da1",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/ArtworkLookup.swift": "03b6cb31cdc82b18e5b78166a34ba214936f8c1503e5db3d503b11160540f96d",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/FLACHeader.swift": "9dcff1b4e93f014406131b04bddac36d8d9404f035a9b9d3da82901d0b01295e",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/IndexingRun.swift": "f39b9850ccd9c0f6bf74eb6112d7668fe18ed23f235e68b8fa23f418e3f79e9a",
+      "Packages/SkyrCore/Sources/SkyrCore/Indexing/ArtworkPrivacyPreference.swift": "278547714a1d50227c4a8d3df1a569a5b86f932840fa0c0cf3d4676a1274f381",
+      "Skyr/CarPlay/CarPlaySceneDelegate.swift": "3acc330440c4188d1f41c0d9ba775910268c19a8ed808e148cfe3fe92dfe6a3b",
+      "Skyr/Assets.xcassets/Contents.json": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f",
+      "Skyr/Shared/PlaybackIntents.swift": "8788c6ecae2b6ff9469a934af8f70fb38f58300d1e49911d694ee843eb12cc7a",
+      "Skyr/Theme/Platform.swift": "8b6f36229a7da0bbbfc37f4482fac4ea8170a9749668d68fe5d1d21cfa2ee0e6",
+      "Skyr/Theme/Theme.swift": "9adff92ffcb43e1e168aba9b932420b80ecebe3a9aa3dd1f0fa97eda21b0bf57",
+      "Skyr/Theme/ArtworkView.swift": "aa3e028feef5383b1362f73cbed8b6b1ea3874a4ca84e344ea6fbe8df48a081f",
+      "Skyr/Views/RootView.swift": "f9af03df4388a9727fc12b4729138fd201b5307fd18f3385cfdeff8edaa42879",
+      "Skyr/Assets.xcassets/AppIcon.appiconset/Contents.json": "6e8026fcc6f6ae1f9598adcb7612b8faa81f38b36ce9b60e0b9ae80f4c433fb3",
+      "Skyr/Assets.xcassets/AccentColor.colorset/Contents.json": "60b972840352e92e46e4396525d4b332320e53c3160f0b6dbc6ea6158836cd14",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/Contents.json": "237412c534736e1f77ae7074a69e8635d9f29588c27a0ba22a6c23ec681496d3",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon - App Store.imagestack/Contents.json": "43f738ce434c425f4f2d13959f842ce144a0b29f6704a04901673704393918a2",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/Top Shelf Image.imageset/Contents.json": "c54ed8fc95d9793ee739e6cb12f0dd9279e3023be3594786d9876e217ea39c96",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon.imagestack/Contents.json": "43f738ce434c425f4f2d13959f842ce144a0b29f6704a04901673704393918a2",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/Top Shelf Image Wide.imageset/Contents.json": "0509257b3292668f195731ecfd532d510704ac332f4ab45ac92197bff3c29f94",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon - App Store.imagestack/Front.imagestacklayer/Contents.json": "a3393322cd7b4c1e0aa93bebe09abaa91ad891290d1225b0b5d10b5c6f216025",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon - App Store.imagestack/Back.imagestacklayer/Contents.json": "a3393322cd7b4c1e0aa93bebe09abaa91ad891290d1225b0b5d10b5c6f216025",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon - App Store.imagestack/Front.imagestacklayer/Content.imageset/Contents.json": "7cec9f313a23d751236cb0f302079222e838524c7bc0a2d0fb1eac5985cc0307",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon - App Store.imagestack/Back.imagestacklayer/Content.imageset/Contents.json": "e24e60b96e89ea1153113b9a8538c40b9b5c09f9ac1ee75e1025a84c2903d864",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon.imagestack/Front.imagestacklayer/Contents.json": "a3393322cd7b4c1e0aa93bebe09abaa91ad891290d1225b0b5d10b5c6f216025",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon.imagestack/Back.imagestacklayer/Contents.json": "a3393322cd7b4c1e0aa93bebe09abaa91ad891290d1225b0b5d10b5c6f216025",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon.imagestack/Front.imagestacklayer/Content.imageset/Contents.json": "fc2ca2723e808ca34c404cf1066f09ab81aa4c9345d6f08318d46a42138b59c2",
+      "Skyr/Assets.xcassets/TVIcon.brandassets/App Icon.imagestack/Back.imagestacklayer/Content.imageset/Contents.json": "84f2628b32e101e7c46f02a03a55cc81656fa72026f70ee7f00b4ba3f7362e18",
+      "Skyr/Views/Settings/DownloadsView.swift": "bb500a7f279bc703755b3e07004601cd67821a07d5d895df96a6e239d9655e8e",
+      "Skyr/Views/Settings/SettingsView.swift": "c646af04f397942cc581af3f7347c5741ecd8751ff6aac9118f53e8a29422cdb",
+      "Skyr/Views/Settings/ArtworkPrivacyControl.swift": "d9949e0be1f03c4fa4cf4ea1a6365ad26037edff01f23fc8817727e31962a9f7",
+      "Skyr/Views/Settings/PrivacyDetailsView.swift": "074d76014107ff4241194a4ecef89a5e994081aa6c5c1f79f6f4f0c0a09836d8",
+      "Skyr/Views/Settings/ReleaseNotesView.swift": "513a423e6656071e3519f3141d3cff44f985ecc2b637bb2e87065d93a7d5badf",
+      "Skyr/Views/Settings/FamilyView.swift": "06db62b0e14116b7badf10e5283aa262d8c2a8ce6d7e6734ba7854c8bb689b97",
+      "Skyr/Views/Settings/DiagnosticsView.swift": "daeae8687211ab2d59729a6027cff4a094be333b47cb50c0afc73f60b1c6cdcf",
+      "Skyr/Views/Playlists/PlaylistsView.swift": "1e0a1601a5ac30402dfc8cfdb973ac6b3cc69c33c74a69d441c1b0f3af281f55",
+      "Skyr/Views/Playlists/AddToPlaylistSheet.swift": "789a25ba62c4d009384e356dd1306a011cf0161495613a498f4ab25754f4ad77",
+      "Skyr/Views/Library/GenreEditorSheet.swift": "45ab58d5ad04ce7abb590bff3b5dd74b6fc309a6e3b241448e3c66d14df3a75f",
+      "Skyr/Views/Library/GenresView.swift": "86eabd5d2590b9d6a6c30adbde8e0e340e100dfe09583ec25c1b82e6d399a958",
+      "Skyr/Views/Library/LibraryView.swift": "18b66dbd6b2aafdef12aaaffc62f4f4f409a4cf846e2ff04ca1fb654ed2bf420",
+      "Skyr/Views/Library/ArtistsListView.swift": "6cf1cff36cd403a81353bc9d09df80e8504fdb0b878d37c34fc381c6238f3781",
+      "Skyr/Views/Library/LibraryHomeView.swift": "70877b7487cfa92e94c46ca5536958a2756a6c2d83215ec5b3370699aa150269",
+      "Skyr/Views/Search/SearchView.swift": "58e731c9b0f13bf4d5e215a2d05a576f289865538cd3576c8aa40f16159f4365",
+      "Skyr/Views/Components/DownloadButton.swift": "7035b84567ea3f6003aee62375738393550c8099e8cb66340f05ce76e27561dd",
+      "Skyr/Views/Components/DownloadStateReader.swift": "ac7802bbaf18289d454e9bab80fbb3ba114b214dbd444651e56e7daa4800eee3",
+      "Skyr/Views/Components/Components.swift": "e135c994b8738b00c608206e089070b3651d544b356edaac1b3128963f2d688c",
+      "Skyr/Views/Profiles/ProfileAvatarView.swift": "9ee72dafab5419cc595215d60a44dddadfe2c9032949fdd3f37af8626607bff4",
+      "Skyr/Views/Profiles/PINEntryView.swift": "22e8e68ef4b446e62b8aa1d717fa19c694c3ab9beca56a1b5747bb443d42963e",
+      "Skyr/Views/Profiles/InviteSheet.swift": "1e24d088fdb48ed2f187d5d8c68179a498ccb491c90b4bde51fa31ededce6bb9",
+      "Skyr/Views/Profiles/JoinWithLinkSheet.swift": "ff8a05af3c9b24398963e3723f865093e22712454139128fa2cde3f02bf1f35e",
+      "Skyr/Views/Profiles/Permissions.swift": "4ef5827442da8941b5e9f05c8a34d4dea80359aaea2abca12a898e57ef73738b",
+      "Skyr/Views/Profiles/ProfilePickerView.swift": "0323707d09083b965dc76329f18e0e0d20d7caeb2d91b4ab202f02a27759f195",
+      "Skyr/Views/Profiles/ProfileEditorSheet.swift": "34ca7803ccef15a99d3fd04e8dedcb85cb427584ed665a24f50fb2121b6802e1",
+      "Skyr/Views/Main/MainTabView.swift": "2a3e93efacbe54068ab51389990e532b3b04e9fd62f937ea26a8cf4f477eaf61",
+      "Skyr/Views/Main/MiniPlayerView.swift": "94b5ddf77528fcb9f286b6a9aa8d838ebf4f965b0df8b2ea64eed9121fe2e9b4",
+      "Skyr/Views/Connect/LoginSheet.swift": "9d92d8271905be030b6b49cec991cec29a10e567f3a79d553c8bea194b92b289",
+      "Skyr/Views/Connect/ServerDiscoveryView.swift": "ca0cfa8e0ed86f0564c0b79218e5b9986f0f8c7996224a2130646c2e624b8700",
+      "Skyr/Views/Connect/RemoteAccessGuide.swift": "b2df2a7de63f88b6a98b2727aebce196fda58719f40252ad61543764d22412ca",
+      "Skyr/Views/Connect/FolderPickerView.swift": "476073f6c0e42bb0f1128db3fdd6290987d16089989a4938e273b8e925305de4",
+      "Skyr/Views/Connect/WelcomeView.swift": "2455feac0f1e005f44332de6cc4e7c40154fd6ee7ad5320b33fc79b457f746f4",
+      "Skyr/Views/Connect/ConnectSheet.swift": "261066d340d1195859611060520f7dd0531d2615d5d9f51a1377bc55c10eb9c1",
+      "Skyr/Views/Connect/IndexingView.swift": "898df50c288cca400cfe4d72f8a69cea69e4e80de0c99fbdf0f326b3dcf66f9a",
+      "Skyr/Views/Connect/OnboardingView.swift": "8d2565e09b276ffacd9a8341497bcec3808c846b0ffcd7fc2f6f6b54b5a9f59d",
+      "Skyr/Views/Connect/SetupPage.swift": "4680a6f314b17a17b468ea629e321c28a5f53cc9bd52a60a8d43b0d1715eb03c",
+      "Skyr/Views/Album/AlbumView.swift": "38fd23dccf9fa359e84473d03485a60a14531752e17c2a97af9bbe2bcf0c6d2e",
+      "Skyr/Views/Artist/ArtistView.swift": "66742e69caa26a28d03f53c8657eb45475a472bddabbdac2d127c1efe14d3f99",
+      "Skyr/Views/Player/NowPlayingView.swift": "602b3bce94564ac5607e06efac0a7836a5193ab8d9c642554dd8268ccc7c6e26"
+    },
+    "package": {
+      "result": "passed",
+      "tests": 219,
+      "suites": 11,
+      "duration_seconds": 9.329,
+      "parallelism": "Swift Testing normal parallelism, scoped serialized real AV playback suite",
+      "skyr_shared_coverage": "SkyrShared is a target in this package; six WidgetAuthorizationTests are included",
+      "log": "/tmp/skyr-combined-validation/package-release.log"
+    },
+    "tvOS": {
+      "result": "BUILD SUCCEEDED",
+      "destination": "generic/platform=tvOS",
+      "signing": "disabled for build-only validation",
+      "log": "/tmp/skyr-combined-validation/tv-release.log"
+    },
+    "later_swift_source_changes": [
+      "SkyrMac/MacNowPlayingInspector.swift"
+    ],
+    "notes": [
+      "This verifies compilation and deterministic synthetic test cases, not device or provider-backed acceptance.",
+      "MacNowPlayingInspector was updated after this snapshot with a queue action revision guard; it is excluded from package and tvOS targets."
+    ]
+  },
+  "final_native_ui_navigation": {
+    "scope": "Final native Mac interface including async table preparation, async download summaries and queue action revision guard. The later Mac genre-help sheet cosmetic change is outside this workload.",
+    "source_base": "final_combined_release_validation.source_files",
+    "source_override": {
+      "path": "SkyrMac/MacNowPlayingInspector.swift",
+      "sha256": "d48924eb70a3dafba3d1eb16b3341eacf75c7b6a87c90e4f01353924d45bf003",
+      "reason": "Post-snapshot queue action revision guard; Mac-only, package and TV unchanged"
+    },
+    "fixture_source_manifest_sha256": "f0ce75e2f8cb80b43b4a8da9fb192ef49de95f942181f94b7e974ceb15be1d6a",
+    "fixture_changes": [
+      "SkyrMac/MacNowPlayingInspector.swift",
+      "SkyrMac/PerformanceRun.swift",
+      "SkyrMac/SkyrMacApp.swift",
+      "Packages/SkyrCore/Sources/SkyrCore/PerformanceFixture.swift",
+      "Packages/SkyrCore/Sources/SkyrCore/State/AppDirectories.swift",
+      "Packages/SkyrCore/Sources/SkyrCore/State/ProfileStore.swift",
+      "Packages/SkyrCore/Sources/SkyrCore/State/DownloadManager.swift",
+      "Packages/SkyrCore/Sources/SkyrCore/State/CloudSync.swift"
+    ],
+    "method": "Same six routes, 48 iterations and signposts as the preceding timed baseline/candidate cases. Release native app, isolated fresh sample catalogue and mock cloud, local muted WAV; no user data or NAS. Root UI and all agent build/test work were paused during both recordings.",
+    "cases": [
+      {
+        "case": "native-5000-timed",
+        "loop_bounds_seconds": [
+          5.770533084869385,
+          30.835318088531494
+        ],
+        "loop_hitches": {
+          "count": 375,
+          "max_ms": 266.666541,
+          "over_100ms": 33
+        },
+        "wake_delay": {
+          "count": 48,
+          "median_ms": 21.47197723388672,
+          "p95_ms": 32.795071601867676,
+          "max_ms": 33.390045166015625
+        },
+        "loop_seconds": 25.064783930778503,
+        "mutation": {
+          "count": 53,
+          "median_ms": 0.6589889526367188,
+          "p95_ms": 1.145005226135254,
+          "max_ms": 1.3320446014404297
+        },
+        "flush": {
+          "count": 20,
+          "median_ms": 0.010967254638671875,
+          "p95_ms": 0.02002716064453125,
+          "max_ms": 0.02002716064453125
+        },
+        "commands": {
+          "count": 48,
+          "median_ms": 3.200054168701172,
+          "p95_ms": 4.3430328369140625,
+          "max_ms": 5.069971084594727
+        },
+        "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+        "startup_hitches": {
+          "count": 2,
+          "maximum_ms": 500.0,
+          "over_100ms": 1,
+          "p95_event_ms": 500.0
+        },
+        "post_loop_hitches": {
+          "count": 12,
+          "maximum_ms": 224.999958,
+          "over_100ms": 1,
+          "p95_event_ms": 224.999958
+        },
+        "startup_seconds_before_loop": 5.770533084869385,
+        "first_route_visit_hitches": {
+          "count": 13,
+          "maximum_ms": 266.666541,
+          "over_100ms": 3,
+          "p95_event_ms": 266.666541
+        },
+        "repeat_route_visit_hitches": {
+          "count": 361,
+          "maximum_ms": 241.666583,
+          "over_100ms": 30,
+          "p95_event_ms": 158.333166
+        },
+        "navigation_attribution_note": "Events are grouped by the route active at event start; an event can overlap the following route and includes simultaneous playback/OS work. All interval ends use the original timing workload.",
+        "route_visits": {
+          "recentlyAdded": [
+            {
+              "visit": 1,
+              "count": 0,
+              "over_100ms": 0,
+              "maximum_ms": 0
+            },
+            {
+              "visit": 2,
+              "count": 15,
+              "over_100ms": 0,
+              "maximum_ms": 75.0
+            },
+            {
+              "visit": 3,
+              "count": 9,
+              "over_100ms": 0,
+              "maximum_ms": 91.666625
+            },
+            {
+              "visit": 4,
+              "count": 15,
+              "over_100ms": 1,
+              "maximum_ms": 108.33325
+            },
+            {
+              "visit": 5,
+              "count": 11,
+              "over_100ms": 1,
+              "maximum_ms": 100.0
+            },
+            {
+              "visit": 6,
+              "count": 7,
+              "over_100ms": 1,
+              "maximum_ms": 108.333291
+            },
+            {
+              "visit": 7,
+              "count": 6,
+              "over_100ms": 0,
+              "maximum_ms": 91.666625
+            },
+            {
+              "visit": 8,
+              "count": 6,
+              "over_100ms": 1,
+              "maximum_ms": 108.333291
+            }
+          ],
+          "artists": [
+            {
+              "visit": 1,
+              "count": 1,
+              "over_100ms": 1,
+              "maximum_ms": 116.666625
+            },
+            {
+              "visit": 2,
+              "count": 18,
+              "over_100ms": 1,
+              "maximum_ms": 124.999958
+            },
+            {
+              "visit": 3,
+              "count": 8,
+              "over_100ms": 1,
+              "maximum_ms": 133.33325
+            },
+            {
+              "visit": 4,
+              "count": 11,
+              "over_100ms": 1,
+              "maximum_ms": 158.333166
+            },
+            {
+              "visit": 5,
+              "count": 10,
+              "over_100ms": 0,
+              "maximum_ms": 8.333375
+            },
+            {
+              "visit": 6,
+              "count": 7,
+              "over_100ms": 1,
+              "maximum_ms": 158.333291
+            },
+            {
+              "visit": 7,
+              "count": 7,
+              "over_100ms": 1,
+              "maximum_ms": 174.999958
+            },
+            {
+              "visit": 8,
+              "count": 9,
+              "over_100ms": 1,
+              "maximum_ms": 170.83325
+            }
+          ],
+          "genres": [
+            {
+              "visit": 1,
+              "count": 1,
+              "over_100ms": 0,
+              "maximum_ms": 66.666625
+            },
+            {
+              "visit": 2,
+              "count": 15,
+              "over_100ms": 0,
+              "maximum_ms": 79.166625
+            },
+            {
+              "visit": 3,
+              "count": 11,
+              "over_100ms": 0,
+              "maximum_ms": 75.0
+            },
+            {
+              "visit": 4,
+              "count": 12,
+              "over_100ms": 0,
+              "maximum_ms": 66.666583
+            },
+            {
+              "visit": 5,
+              "count": 12,
+              "over_100ms": 0,
+              "maximum_ms": 83.333291
+            },
+            {
+              "visit": 6,
+              "count": 8,
+              "over_100ms": 0,
+              "maximum_ms": 91.666625
+            },
+            {
+              "visit": 7,
+              "count": 4,
+              "over_100ms": 0,
+              "maximum_ms": 83.333333
+            },
+            {
+              "visit": 8,
+              "count": 5,
+              "over_100ms": 0,
+              "maximum_ms": 99.999916
+            }
+          ],
+          "playlists": [
+            {
+              "visit": 1,
+              "count": 1,
+              "over_100ms": 0,
+              "maximum_ms": 66.666625
+            },
+            {
+              "visit": 2,
+              "count": 19,
+              "over_100ms": 0,
+              "maximum_ms": 50.0
+            },
+            {
+              "visit": 3,
+              "count": 10,
+              "over_100ms": 0,
+              "maximum_ms": 66.666666
+            },
+            {
+              "visit": 4,
+              "count": 6,
+              "over_100ms": 0,
+              "maximum_ms": 74.999958
+            },
+            {
+              "visit": 5,
+              "count": 9,
+              "over_100ms": 0,
+              "maximum_ms": 83.333291
+            },
+            {
+              "visit": 6,
+              "count": 7,
+              "over_100ms": 0,
+              "maximum_ms": 83.333333
+            },
+            {
+              "visit": 7,
+              "count": 8,
+              "over_100ms": 0,
+              "maximum_ms": 83.333333
+            },
+            {
+              "visit": 8,
+              "count": 1,
+              "over_100ms": 0,
+              "maximum_ms": 83.33325
+            }
+          ],
+          "playlist(\"perf\")": [
+            {
+              "visit": 1,
+              "count": 2,
+              "over_100ms": 1,
+              "maximum_ms": 266.666541
+            },
+            {
+              "visit": 2,
+              "count": 10,
+              "over_100ms": 2,
+              "maximum_ms": 187.499958
+            },
+            {
+              "visit": 3,
+              "count": 7,
+              "over_100ms": 2,
+              "maximum_ms": 199.999958
+            },
+            {
+              "visit": 4,
+              "count": 6,
+              "over_100ms": 2,
+              "maximum_ms": 183.333208
+            },
+            {
+              "visit": 5,
+              "count": 5,
+              "over_100ms": 2,
+              "maximum_ms": 208.333208
+            },
+            {
+              "visit": 6,
+              "count": 6,
+              "over_100ms": 2,
+              "maximum_ms": 191.666583
+            },
+            {
+              "visit": 7,
+              "count": 5,
+              "over_100ms": 2,
+              "maximum_ms": 208.333208
+            },
+            {
+              "visit": 8,
+              "count": 3,
+              "over_100ms": 2,
+              "maximum_ms": 241.666583
+            }
+          ],
+          "search": [
+            {
+              "visit": 1,
+              "count": 8,
+              "over_100ms": 1,
+              "maximum_ms": 158.333291
+            },
+            {
+              "visit": 2,
+              "count": 12,
+              "over_100ms": 1,
+              "maximum_ms": 175.0
+            },
+            {
+              "visit": 3,
+              "count": 10,
+              "over_100ms": 1,
+              "maximum_ms": 191.666583
+            },
+            {
+              "visit": 4,
+              "count": 8,
+              "over_100ms": 1,
+              "maximum_ms": 183.33325
+            },
+            {
+              "visit": 5,
+              "count": 7,
+              "over_100ms": 1,
+              "maximum_ms": 191.666625
+            },
+            {
+              "visit": 6,
+              "count": 6,
+              "over_100ms": 1,
+              "maximum_ms": 191.6665
+            },
+            {
+              "visit": 7,
+              "count": 9,
+              "over_100ms": 1,
+              "maximum_ms": 191.666625
+            },
+            {
+              "visit": 8,
+              "count": 1,
+              "over_100ms": 0,
+              "maximum_ms": 8.333375
+            }
+          ]
+        },
+        "summary_sha256": "e597f784c211e8ac0a3c97fbbe7973a4aa021687ce1b4b55304c4c2037e4c972",
+        "artifact_directory": "/tmp/skyr-navigation-performance",
+        "trace": "native-5000-timed.trace"
+      },
+      {
+        "case": "native-15000-timed",
+        "loop_bounds_seconds": [
+          6.760113000869751,
+          32.720746755599976
+        ],
+        "loop_hitches": {
+          "count": 176,
+          "max_ms": 716.666416,
+          "over_100ms": 39
+        },
+        "wake_delay": {
+          "count": 48,
+          "median_ms": 27.006983757019043,
+          "p95_ms": 141.81900024414062,
+          "max_ms": 234.49599742889404
+        },
+        "loop_seconds": 25.960633039474487,
+        "mutation": {
+          "count": 45,
+          "median_ms": 0.8339881896972656,
+          "p95_ms": 1.320958137512207,
+          "max_ms": 1.7750263214111328
+        },
+        "flush": {
+          "count": 21,
+          "median_ms": 0.014066696166992188,
+          "p95_ms": 0.019073486328125,
+          "max_ms": 0.0209808349609375
+        },
+        "commands": {
+          "count": 48,
+          "median_ms": 3.6530494689941406,
+          "p95_ms": 5.3130388259887695,
+          "max_ms": 5.872011184692383
+        },
+        "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+        "startup_hitches": {
+          "count": 12,
+          "maximum_ms": 891.666666,
+          "over_100ms": 1,
+          "p95_event_ms": 891.666666
+        },
+        "post_loop_hitches": {
+          "count": 11,
+          "maximum_ms": 16.666666,
+          "over_100ms": 0,
+          "p95_event_ms": 16.666666
+        },
+        "startup_seconds_before_loop": 6.760113000869751,
+        "first_route_visit_hitches": {
+          "count": 11,
+          "maximum_ms": 658.333125,
+          "over_100ms": 3,
+          "p95_event_ms": 658.333125
+        },
+        "repeat_route_visit_hitches": {
+          "count": 164,
+          "maximum_ms": 716.666416,
+          "over_100ms": 36,
+          "p95_event_ms": 295.83325
+        },
+        "navigation_attribution_note": "Events are grouped by the route active at event start; an event can overlap the following route and includes simultaneous playback/OS work. All interval ends use the original timing workload.",
+        "route_visits": {
+          "recentlyAdded": [
+            {
+              "visit": 1,
+              "count": 3,
+              "over_100ms": 0,
+              "maximum_ms": 25.000041
+            },
+            {
+              "visit": 2,
+              "count": 10,
+              "over_100ms": 1,
+              "maximum_ms": 116.666541
+            },
+            {
+              "visit": 3,
+              "count": 3,
+              "over_100ms": 1,
+              "maximum_ms": 133.333208
+            },
+            {
+              "visit": 4,
+              "count": 5,
+              "over_100ms": 1,
+              "maximum_ms": 124.999958
+            },
+            {
+              "visit": 5,
+              "count": 5,
+              "over_100ms": 1,
+              "maximum_ms": 124.999875
+            },
+            {
+              "visit": 6,
+              "count": 11,
+              "over_100ms": 1,
+              "maximum_ms": 183.33325
+            },
+            {
+              "visit": 7,
+              "count": 4,
+              "over_100ms": 1,
+              "maximum_ms": 124.999916
+            },
+            {
+              "visit": 8,
+              "count": 4,
+              "over_100ms": 1,
+              "maximum_ms": 108.333291
+            }
+          ],
+          "artists": [
+            {
+              "visit": 1,
+              "count": 2,
+              "over_100ms": 1,
+              "maximum_ms": 174.999916
+            },
+            {
+              "visit": 2,
+              "count": 11,
+              "over_100ms": 1,
+              "maximum_ms": 166.666625
+            },
+            {
+              "visit": 3,
+              "count": 3,
+              "over_100ms": 1,
+              "maximum_ms": 199.999875
+            },
+            {
+              "visit": 4,
+              "count": 7,
+              "over_100ms": 1,
+              "maximum_ms": 199.999875
+            },
+            {
+              "visit": 5,
+              "count": 2,
+              "over_100ms": 1,
+              "maximum_ms": 199.999875
+            },
+            {
+              "visit": 6,
+              "count": 6,
+              "over_100ms": 1,
+              "maximum_ms": 295.83325
+            },
+            {
+              "visit": 7,
+              "count": 2,
+              "over_100ms": 1,
+              "maximum_ms": 199.999916
+            },
+            {
+              "visit": 8,
+              "count": 2,
+              "over_100ms": 1,
+              "maximum_ms": 183.333291
+            }
+          ],
+          "genres": [
+            {
+              "visit": 1,
+              "count": 1,
+              "over_100ms": 0,
+              "maximum_ms": 91.666625
+            },
+            {
+              "visit": 2,
+              "count": 10,
+              "over_100ms": 0,
+              "maximum_ms": 99.999916
+            },
+            {
+              "visit": 3,
+              "count": 2,
+              "over_100ms": 1,
+              "maximum_ms": 108.333291
+            },
+            {
+              "visit": 4,
+              "count": 12,
+              "over_100ms": 1,
+              "maximum_ms": 108.333166
+            },
+            {
+              "visit": 5,
+              "count": 8,
+              "over_100ms": 1,
+              "maximum_ms": 116.666625
+            },
+            {
+              "visit": 6,
+              "count": 6,
+              "over_100ms": 1,
+              "maximum_ms": 124.999916
+            },
+            {
+              "visit": 7,
+              "count": 2,
+              "over_100ms": 0,
+              "maximum_ms": 99.999958
+            },
+            {
+              "visit": 8,
+              "count": 1,
+              "over_100ms": 0,
+              "maximum_ms": 99.999916
+            }
+          ],
+          "playlists": [
+            {
+              "visit": 1,
+              "count": 2,
+              "over_100ms": 0,
+              "maximum_ms": 91.666583
+            },
+            {
+              "visit": 2,
+              "count": 2,
+              "over_100ms": 0,
+              "maximum_ms": 91.666666
+            },
+            {
+              "visit": 3,
+              "count": 3,
+              "over_100ms": 1,
+              "maximum_ms": 108.333333
+            },
+            {
+              "visit": 4,
+              "count": 2,
+              "over_100ms": 0,
+              "maximum_ms": 91.666666
+            },
+            {
+              "visit": 5,
+              "count": 3,
+              "over_100ms": 1,
+              "maximum_ms": 116.666625
+            },
+            {
+              "visit": 6,
+              "count": 5,
+              "over_100ms": 1,
+              "maximum_ms": 137.499958
+            },
+            {
+              "visit": 7,
+              "count": 1,
+              "over_100ms": 0,
+              "maximum_ms": 91.666541
+            },
+            {
+              "visit": 8,
+              "count": 2,
+              "over_100ms": 0,
+              "maximum_ms": 91.6665
+            }
+          ],
+          "playlist(\"perf\")": [
+            {
+              "visit": 1,
+              "count": 3,
+              "over_100ms": 2,
+              "maximum_ms": 658.333125
+            },
+            {
+              "visit": 2,
+              "count": 2,
+              "over_100ms": 2,
+              "maximum_ms": 691.666416
+            },
+            {
+              "visit": 3,
+              "count": 4,
+              "over_100ms": 2,
+              "maximum_ms": 449.999875
+            },
+            {
+              "visit": 4,
+              "count": 3,
+              "over_100ms": 2,
+              "maximum_ms": 691.6665
+            },
+            {
+              "visit": 5,
+              "count": 1,
+              "over_100ms": 1,
+              "maximum_ms": 716.666416
+            },
+            {
+              "visit": 6,
+              "count": 3,
+              "over_100ms": 2,
+              "maximum_ms": 691.666375
+            },
+            {
+              "visit": 7,
+              "count": 3,
+              "over_100ms": 2,
+              "maximum_ms": 633.333125
+            },
+            {
+              "visit": 8,
+              "count": 3,
+              "over_100ms": 2,
+              "maximum_ms": 633.333083
+            }
+          ],
+          "search": [
+            {
+              "visit": 1,
+              "count": 0,
+              "over_100ms": 0,
+              "maximum_ms": 0
+            },
+            {
+              "visit": 2,
+              "count": 3,
+              "over_100ms": 0,
+              "maximum_ms": 8.333375
+            },
+            {
+              "visit": 3,
+              "count": 4,
+              "over_100ms": 1,
+              "maximum_ms": 266.666583
+            },
+            {
+              "visit": 4,
+              "count": 0,
+              "over_100ms": 0,
+              "maximum_ms": 0
+            },
+            {
+              "visit": 5,
+              "count": 4,
+              "over_100ms": 1,
+              "maximum_ms": 358.333291
+            },
+            {
+              "visit": 6,
+              "count": 0,
+              "over_100ms": 0,
+              "maximum_ms": 0
+            },
+            {
+              "visit": 7,
+              "count": 0,
+              "over_100ms": 0,
+              "maximum_ms": 0
+            },
+            {
+              "visit": 8,
+              "count": 0,
+              "over_100ms": 0,
+              "maximum_ms": 0
+            }
+          ]
+        },
+        "summary_sha256": "4051a3ae37d4a945e1b71e72f0fa1f6b570521e7236c86c684706ab94f894876",
+        "artifact_directory": "/tmp/skyr-navigation-performance",
+        "trace": "native-15000-timed.trace"
+      }
+    ],
+    "conclusion": "Steady-navigation acceptance is not met: repeated route visits contain 30 >=100ms hitches at 5k and 36 at 15k, with the full-library playlist the largest recurring stall. Keep #35 open; scheduling or command duration does not prove smooth frame presentation.",
+    "followup": "Analyze symbolicated route-window main-thread stacks and fix concrete hotspots in an isolated following patch."
+  }
+}

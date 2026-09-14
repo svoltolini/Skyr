@@ -15,10 +15,151 @@ import Testing
         case .resume: fixture.model.resume()
         case .next: fixture.model.next()
         case .previous: fixture.model.previous()
+        case .queueJump: fixture.model.playQueuedTrack(at: 1)
         case .seek: fixture.model.seek(toFraction: 0.5)
         case .stop: fixture.model.stop()
         }
         #expect(fixture.model.commandRevision != pending)
+    }
+
+    @Test(arguments: [0, 2, 4])
+    func shuffleKeepsEveryDuplicateAndRestoresTheCurrentOccurrence(_ startingAt: Int) {
+        let fixture = PlaybackFixture(status: .ready)
+        let repeated = track("repeat")
+        let original = [repeated, track("second"), repeated, track("fourth"), repeated]
+        fixture.model.repeatMode = .all
+        fixture.model.play(queue: original, startingAt: startingAt, title: "Duplicates")
+        fixture.transports[0].positionChanged?(37)
+        for _ in 0..<3 {
+            fixture.model.toggleShuffle()
+            #expect(fixture.model.queue.count == original.count)
+            #expect(fixture.model.queue.filter { $0.id == "repeat" }.count == 3)
+            #expect(fixture.model.queue.map(\.id).sorted() == original.map(\.id).sorted())
+            #expect(fixture.model.index == 0)
+            #expect(fixture.model.track == repeated)
+            fixture.model.toggleShuffle()
+            #expect(fixture.model.queue == original)
+            #expect(fixture.model.index == startingAt)
+            #expect(fixture.model.position == 37)
+            #expect(fixture.model.isPlaying)
+            #expect(fixture.model.repeatMode == .all)
+            #expect(fixture.model.queueTitle == "Duplicates")
+            #expect(fixture.transports.count == 1)
+        }
+    }
+
+    @Test func initiallyShuffledQueueRestoresTheRequestedDuplicateOccurrence() {
+        let fixture = PlaybackFixture(status: .ready)
+        let repeated = track("repeat")
+        let original = [repeated, track("middle"), repeated, repeated]
+        fixture.model.applySettings(repeatMode: .one, shuffle: true)
+        fixture.model.play(queue: original, startingAt: 2, title: "Duplicates")
+        #expect(fixture.model.queue.count == 4)
+        #expect(fixture.model.queue.filter { $0.id == "repeat" }.count == 3)
+        #expect(fixture.model.index == 0)
+        fixture.model.toggleShuffle()
+        #expect(fixture.model.queue == original)
+        #expect(fixture.model.index == 2)
+        #expect(fixture.model.repeatMode == .one)
+        #expect(fixture.transports.count == 1)
+    }
+
+    @Test func queueJumpPreservesShuffledOrderAndTheSelectedDuplicateOccurrence() throws {
+        let fixture = PlaybackFixture(status: .ready)
+        // Equal file IDs may also carry different metadata snapshots. Keep the selected occurrence.
+        let original = (0..<5).map { position in
+            var value = track(position.isMultiple(of: 2) ? "repeat" : "other-\(position)")
+            value.title = "Occurrence \(position)"
+            return value
+        }
+        fixture.model.play(queue: original, startingAt: 2, title: "Original order")
+        fixture.model.repeatMode = .one
+        fixture.model.toggleShuffle()
+        let shuffled = fixture.model.queue
+        let selected = try #require(shuffled.firstIndex { $0.title == "Occurrence 4" })
+        fixture.transports[0].positionChanged?(48)
+        fixture.model.pause()
+        let pending = fixture.model.beginDeferredPlaybackCommand()
+        fixture.model.playQueuedTrack(at: selected)
+        #expect(fixture.model.commandRevision != pending)
+        #expect(fixture.model.queue == shuffled)
+        #expect(fixture.model.index == selected)
+        #expect(fixture.model.track?.title == "Occurrence 4")
+        #expect(fixture.model.position == 0)
+        #expect(fixture.model.isPlaying)
+        #expect(fixture.model.isShuffling)
+        #expect(fixture.model.repeatMode == .one)
+        #expect(fixture.model.queueTitle == "Original order")
+        #expect(fixture.transports.count == 2)
+        #expect(fixture.transports[0].invalidated)
+        #expect(fixture.transports[1].playCount == 1)
+        fixture.model.toggleShuffle()
+        #expect(fixture.model.queue == original)
+        #expect(fixture.model.index == 4)
+        #expect(fixture.model.track?.title == "Occurrence 4")
+        #expect(fixture.transports.count == 2)
+    }
+
+    @Test func invalidQueueJumpLeavesPlaybackAndDeferredCommandsUnchanged() {
+        let fixture = PlaybackFixture(status: .ready)
+        var pending = fixture.model.beginDeferredPlaybackCommand()
+        fixture.model.playQueuedTrack(at: 0)
+        #expect(fixture.model.commandRevision == pending)
+        #expect(fixture.transports.isEmpty)
+        fixture.model.play(queue: [track("first"), track("second")], title: "Queue")
+        fixture.transports[0].positionChanged?(23)
+        fixture.model.pause()
+        pending = fixture.model.beginDeferredPlaybackCommand()
+        let original = fixture.model.queue
+        for invalidIndex in [Int.min, -1, original.count, Int.max] {
+            fixture.model.playQueuedTrack(at: invalidIndex)
+            #expect(fixture.model.commandRevision == pending)
+            #expect(fixture.model.queue == original)
+            #expect(fixture.model.index == 0)
+            #expect(fixture.model.position == 23)
+            #expect(!fixture.model.isPlaying)
+            #expect(fixture.transports.count == 1)
+        }
+    }
+
+    @Test func queueJumpInvalidatesPendingRecoveryCallbacks() {
+        let fixture = PlaybackFixture(status: .ready)
+        fixture.model.play(queue: [track("first"), track("second")], title: "Queue")
+        fixture.transports[0].positionChanged?(40)
+        fixture.transports[0].status = .failed("Connection lost")
+        fixture.model.resume()
+        let recovery = fixture.transports[1]
+        let latePosition = recovery.positionChanged
+        let lateStatus = recovery.statusChanged
+        let lateEnd = recovery.ended
+        fixture.model.playQueuedTrack(at: 1)
+        latePosition?(99)
+        recovery.status = .failed("Old failure")
+        lateStatus?()
+        lateEnd?()
+        recovery.seeks[0].completion(false)
+        #expect(fixture.model.index == 1)
+        #expect(fixture.model.track?.id == "second")
+        #expect(fixture.model.position == 0)
+        #expect(fixture.model.lastError == nil)
+        #expect(fixture.model.isPlaying)
+        #expect(fixture.transports.count == 3)
+        #expect(recovery.invalidated)
+        #expect(recovery.playCount == 0)
+    }
+
+    @Test func queueJumpDuringInterruptionCancelsOldResumeAfterNewItemFails() {
+        let fixture = PlaybackFixture(status: .ready)
+        fixture.model.play(queue: [track("first"), track("second")], title: nil)
+        fixture.model.interruptionBegan()
+        fixture.nextStatus = .failed("Second song unavailable")
+        fixture.model.playQueuedTrack(at: 1)
+        fixture.model.interruptionEnded(shouldResume: true)
+        #expect(fixture.model.index == 1)
+        #expect(fixture.transports.count == 2)
+        #expect(fixture.transports[1].playCount == 0)
+        #expect(!fixture.model.isPlaying)
+        #expect(fixture.model.lastError == "Second song unavailable")
     }
 
     @Test func pauseWithoutATrackCancelsDeferredPlayback() {
@@ -382,58 +523,53 @@ import Testing
         fixture.model.stop()
     }
 
-    @Test func localInvalidAudioReportsFailureWithoutPlaying() async throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "skyr-invalid-audio-\(UUID()).wav")
-        defer { try? FileManager.default.removeItem(at: url) }
-        try Data("This is not audio".utf8).write(to: url)
-        let transport = AVPlaybackTransport(url: url)
-        defer { transport.invalidate() }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-        while transport.status == .loading, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        guard case .failed = transport.status else {
-            Issue.record("Invalid local audio did not report failure: \(transport.status)")
-            return
-        }
+    @Test(arguments: PlayerModel.RepeatMode.allCases)
+    func naturalCompletionHonorsRepeatModeAtTheEndOfTheQueue(_ repeatMode: PlayerModel.RepeatMode) {
+        let fixture = PlaybackFixture(status: .ready)
+        fixture.model.repeatMode = repeatMode
+        let queue = [track("first"), track("last")]
+        fixture.model.play(queue: queue, startingAt: 1, title: "Queue")
+        fixture.transports[0].ended?()
+        #expect(fixture.model.queue == queue)
+        #expect(fixture.model.index == (repeatMode == .all ? 0 : 1))
+        #expect(fixture.model.isPlaying == (repeatMode != .off))
+        #expect(fixture.transports.count == 2)
+        #expect(fixture.transports[0].invalidated)
+        #expect(fixture.transports[1].playCount == (repeatMode == .off ? 0 : 1))
     }
 
-    @Test func localAudioBecomesReadyAndCompletesRecoverySeekWithoutPlaying() async throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "skyr-valid-audio-\(UUID()).wav")
-        defer { try? FileManager.default.removeItem(at: url) }
-        // One second of mono PCM silence is sufficient to exercise AVFoundation's real loading and seek callbacks.
-        var audio = Data("RIFF".utf8)
-        func append<T: FixedWidthInteger>(_ value: T) {
-            var littleEndian = value.littleEndian
-            withUnsafeBytes(of: &littleEndian) { audio.append(contentsOf: $0) }
-        }
-        append(UInt32(36 + 16_000))
-        audio.append(Data("WAVEfmt ".utf8))
-        append(UInt32(16))
-        append(UInt16(1))
-        append(UInt16(1))
-        append(UInt32(8_000))
-        append(UInt32(16_000))
-        append(UInt16(2))
-        append(UInt16(16))
-        audio.append(Data("data".utf8))
-        append(UInt32(16_000))
-        audio.append(Data(repeating: 0, count: 16_000))
-        try audio.write(to: url)
-        let transport = AVPlaybackTransport(url: url)
-        defer { transport.invalidate() }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-        while transport.status == .loading, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(transport.status == .ready)
-        #expect(abs((transport.duration ?? 0) - 1) < 0.01)
-        var finished: Bool?
-        transport.seek(to: 0.5) { finished = $0 }
-        while finished == nil, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(finished == true)
+    @Test func manualSkipStillAdvancesWhenRepeatingOneSong() {
+        let fixture = PlaybackFixture(status: .ready)
+        fixture.model.repeatMode = .one
+        fixture.model.play(queue: [track("first"), track("second")], title: nil)
+        fixture.model.next()
+        #expect(fixture.model.track?.id == "second")
+        #expect(fixture.model.isPlaying)
+        #expect(fixture.model.repeatMode == .one)
+        fixture.transports[1].ended?()
+        #expect(fixture.model.track?.id == "second")
+        #expect(fixture.transports.count == 3)
+    }
+
+    @Test func failedNextItemStopsAndRetriesTheSelectedItemWithoutReplayingOldCompletion() {
+        let fixture = PlaybackFixture(status: .ready)
+        fixture.model.play(queue: [track("first"), track("second")], title: "Queue")
+        let oldCompletion = fixture.transports[0].ended
+        fixture.nextStatus = .failed("Next song unavailable")
+        oldCompletion?()
+        #expect(fixture.model.track?.id == "second")
+        #expect(!fixture.model.isPlaying)
+        #expect(fixture.model.lastError == "Next song unavailable")
+        #expect(fixture.startedTrackIDs == ["first"])
+        oldCompletion?()
+        #expect(fixture.transports.count == 2)
+        fixture.nextStatus = .ready
+        fixture.model.resume()
+        #expect(fixture.model.track?.id == "second")
+        #expect(fixture.model.isPlaying)
+        #expect(fixture.model.lastError == nil)
+        #expect(fixture.startedTrackIDs == ["first", "second"])
+        #expect(fixture.transports.count == 3)
     }
 
     private func preparedRecovery() -> PlaybackFixture {
@@ -452,7 +588,7 @@ import Testing
 }
 
 nonisolated enum PlaybackCommand: CaseIterable, Sendable {
-    case play, pause, resume, next, previous, seek, stop
+    case play, pause, resume, next, previous, queueJump, seek, stop
 }
 
 private final class PlaybackFixture {
@@ -502,4 +638,64 @@ private final class FakePlaybackTransport: PlaybackTransport {
         positionChanged = nil
         ended = nil
     }
+}
+
+// Real transports share AVFoundation's host media service; fake transport tests remain parallel.
+// Give service callbacks a bounded integration-test budget even when other MainActor tests are busy.
+@Suite(.serialized, .timeLimit(.minutes(1))) struct AVPlaybackTransportTests {
+    @Test func localInvalidAudioReportsFailureWithoutPlaying() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "skyr-invalid-audio-\(UUID()).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("This is not audio".utf8).write(to: url)
+        let transport = AVPlaybackTransport(url: url)
+        defer { transport.invalidate() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while transport.status == .loading, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .failed = transport.status else {
+            Issue.record("Invalid local audio did not report failure: \(transport.status)")
+            return
+        }
+    }
+
+    @Test func localAudioBecomesReadyAndCompletesRecoverySeekWithoutPlaying() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "skyr-valid-audio-\(UUID()).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        // One second of mono PCM silence is sufficient to exercise AVFoundation's real loading and seek callbacks.
+        var audio = Data("RIFF".utf8)
+        func append<T: FixedWidthInteger>(_ value: T) {
+            var littleEndian = value.littleEndian
+            withUnsafeBytes(of: &littleEndian) { audio.append(contentsOf: $0) }
+        }
+        append(UInt32(36 + 16_000))
+        audio.append(Data("WAVEfmt ".utf8))
+        append(UInt32(16))
+        append(UInt16(1))
+        append(UInt16(1))
+        append(UInt32(8_000))
+        append(UInt32(16_000))
+        append(UInt16(2))
+        append(UInt16(16))
+        audio.append(Data("data".utf8))
+        append(UInt32(16_000))
+        audio.append(Data(repeating: 0, count: 16_000))
+        try audio.write(to: url)
+        let transport = AVPlaybackTransport(url: url)
+        defer { transport.invalidate() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while transport.status == .loading, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(transport.status == .ready)
+        #expect(abs((transport.duration ?? 0) - 1) < 0.01)
+        var finished: Bool?
+        transport.seek(to: 0.5) { finished = $0 }
+        let seekDeadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while finished == nil, ContinuousClock.now < seekDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(finished == true)
+    }
+
 }

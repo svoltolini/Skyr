@@ -32,7 +32,7 @@ public nonisolated enum SampleLibrary {
 
     public static let rootPath = "/music"
     public static let serverName = "Sample library"
-    public static let displayedTrackTotal = 41_208
+    public static var displayedTrackTotal: Int { catalogue.trackCount }
 
     public static let catalogue: Catalogue = {
         let rankOrder = recentlyAddedOrder + (0..<seeds.count).filter { !recentlyAddedOrder.contains($0) }
@@ -69,13 +69,15 @@ public nonisolated enum SampleLibrary {
     public static var recentlyPlayedIDs: [String] { recentlyPlayedOrder.map { album(seed: $0).id } }
 
     public static let playlists: [Playlist] = [
-        ("Late shift", "84 songs · 6 h 12 min", [0, 4, 7, 10]),
-        ("Sunday, slowly", "41 songs · 3 h 04 min", [2, 6, 11, 8]),
-        ("Hi-res showcase", "27 songs · 2 h 51 min", [8, 5, 3, 0]),
-        ("Vinyl rips", "132 songs · 9 h 40 min", [6, 1, 9, 4]),
-    ].map { name, summary, covers in
+        ("Late shift", [0, 4, 7, 10]),
+        ("Sunday, slowly", [2, 6, 11, 8]),
+        ("Hi-res showcase", [8, 5, 3, 0]),
+        ("Vinyl rips", [6, 1, 9, 4]),
+    ].map { name, covers in
         let albums = covers.map { album(seed: $0) }
-        return Playlist(id: "demo_playlist_\(name)", name: name, summary: summary, covers: albums, tracks: albums.flatMap { $0.tracks.prefix(3) })
+        let tracks = albums.flatMap { $0.tracks.prefix(3) }
+        let summary = "\(tracks.count) songs · \(TimeText.long(tracks.reduce(0) { $0 + $1.duration }))"
+        return Playlist(id: "demo_playlist_\(name)", name: name, summary: summary, covers: albums, tracks: tracks)
     }
 
     public static let recentSearches = ["ECM", "24/96", "Vesper Field", "1998"]

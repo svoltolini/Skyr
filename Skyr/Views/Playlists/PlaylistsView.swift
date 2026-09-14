@@ -190,15 +190,18 @@ struct PlaylistDetailView: View {
                 } else {
                     // Lazy: Recently played holds a hundred songs and only the visible rows need to exist.
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { position, track in
-                            PlaylistTrackRow(track: track, position: position, playlist: playlist, isLocal: isLocal, addingTrack: $addingTrack)
-                            if position < playlist.tracks.count - 1 {
-                                Divider().padding(.leading, 58)
+                        ForEach(playlist.entries) { entry in
+                            // One child per occurrence keeps lazy layout from probing every row
+                            // merely to count a conditional separator.
+                            VStack(spacing: 0) {
+                                PlaylistTrackRow(track: entry.track, position: entry.position, playlist: playlist, isLocal: isLocal, addingTrack: $addingTrack)
+                                if entry.position < playlist.tracks.count - 1 {
+                                    Divider().padding(.leading, 58)
+                                }
                             }
                         }
                     }
                     .padding(.top, 18)
-                    .animation(.snappy(duration: 0.3), value: playlist.tracks.map(\.id))
                 }
             }
             .padding(.horizontal, 24)
@@ -248,19 +251,29 @@ extension PlaylistDetailView {
     /// Same control as on an album: songs already downloaded for an album are shared, not fetched again.
     private func downloadButton(for playlist: Playlist) -> some View {
         let owner = downloads.owner(for: playlist)
-        return DownloadButton(state: downloads.state(for: owner)) {
-            switch downloads.state(for: owner) {
-        case .none, .failed, .partial, .cancelled:
-                downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) { track in
-                    library.streamURL(for: track, quality: .original)
+        return DownloadStateReader(owner: owner) { state in
+            if let state {
+                DownloadButton(state: state) {
+                    switch state {
+                    case .none, .failed, .partial, .cancelled:
+                        downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                            track in
+                            library.streamURL(for: track, quality: .original)
+                        }
+                    case .downloading:
+                        downloads.cancel(owner)
+                    case .downloaded:
+                        isConfirmingRemoval = true
+                    }
                 }
-            case .downloading:
-                downloads.cancel(owner)
-            case .downloaded:
-                isConfirmingRemoval = true
+            } else {
+                ProgressView().frame(width: 50, height: 50).accessibilityLabel("Checking downloads")
             }
         }
-        .confirmationDialog("Remove this playlist from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
+        .confirmationDialog(
+            "Remove this playlist from your \(Device.noun)?", isPresented: $isConfirmingRemoval,
+            titleVisibility: .visible
+        ) {
             Button("Remove Download", role: .destructive) { downloads.remove(owner) }
         } message: {
             Text("The playlist stays; songs a downloaded album still needs are kept.")

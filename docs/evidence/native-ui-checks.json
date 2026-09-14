@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "batch": "Native Mac, Settings and library reliability",
+  "baselineCommit": "9a7bd969c2652d74b24b6b536c79f466d23878f4",
+  "marketingVersion": "1.0",
+  "sourceBuild": "202609142150",
+  "uploadPerformed": false,
+  "environment": {
+    "computer": "Apple M5 Max",
+    "macOS": "26.6.2",
+    "Xcode": "26.5",
+    "Swift": "6.3.3",
+    "iPhoneSimulator": "iPhone 17 Pro, iOS 26.5"
+  },
+  "fixture": {
+    "macBundle": "com.samuelvoltolini.skyr.desktopfixture",
+    "macSource": "Actual app source with dedicated temporary storage, sample catalogue, mock CloudKit, notifications disabled, local silent WAV player URLs and ephemeral download session",
+    "iPhoneBundle": "com.samuelvoltolini.skyr.continuityfixture",
+    "iPhoneSource": "Actual Settings and profile views, synthetic catalogue, mock CloudKit, dedicated data container",
+    "liveNASContacted": false,
+    "personalMusicModified": false
+  },
+  "builds": {
+    "macOSRelease": "passed, including final queue guard and genre-help row",
+    "iOSReleaseIncludingWatchAndWidgets": "passed",
+    "tvOSRelease": "passed",
+    "distributionArchive": false
+  },
+  "tests": {
+    "focusedMetadataAndPlayback": {
+      "passed": 44,
+      "suites": 3,
+      "configuration": "Release"
+    },
+    "combinedPackage": {
+      "passed": 219,
+      "suites": 11,
+      "seconds": 9.329,
+      "configuration": "Release",
+      "parallelism": "normal",
+      "includes": "SkyrCore and SkyrShared, including six WidgetAuthorization tests"
+    }
+  },
+  "macChecks": [
+    {
+      "test": "Songs table opens",
+      "result": "Passed after fixing missing LibraryStore dependency in AppKit-hosted cell"
+    },
+    {
+      "test": "Return, Space and sorted-row double-click playback",
+      "result": "Passed; selected song and sorted queue match"
+    },
+    {
+      "test": "Now Playing queue Return and Go to Album",
+      "result": "Passed; exact queue occurrence and album route; Back visible"
+    },
+    {
+      "test": "Search categories, loading/no results and Cmd-F from pushed result",
+      "result": "Passed; Cmd-F returns and focuses search; edited query does not leave old album covering results"
+    },
+    {
+      "test": "Close/reopen main window while audio playing",
+      "result": "Passed via app reactivation; process remained alive and position advanced; literal Dock click not separately checked"
+    },
+    {
+      "test": "Cmd-comma native Settings and Space while Settings active",
+      "result": "Passed; settings opens and Space does not toggle playback"
+    },
+    {
+      "test": "Wide and minimum approximately 900x614 window, inspector open",
+      "result": "Passed; native list/queue scroll, compact volume popover and readable collection layout"
+    },
+    {
+      "test": "Playback position and Volume accessibility values/actions",
+      "result": "Passed via accessibility tree; increment seeks and 0 to 10 to 0 percent volume change verified"
+    },
+    {
+      "test": "Native playlist creation from Albums with Cmd-N",
+      "result": "Passed; new empty Desktop Check playlist selected"
+    },
+    {
+      "test": "Add exact selected song to playlist",
+      "result": "Passed after one identifiable sheet payload; final full-row click added the intended song and increased destination from one to two songs"
+    },
+    {
+      "test": "Repeated playlist song removal",
+      "result": "Passed; removing second occurrence preserved first and final song"
+    },
+    {
+      "test": "Genre rename and decade browsing",
+      "result": "Passed; rounded field autofocus, immediate typing/save and long-name wrapping verified. Mac explanation uses a native text row because the section-footer host clipped it."
+    },
+    {
+      "test": "Six long-name profiles narrow and wide",
+      "result": "Passed; three-by-two grid at narrow width and all six accessible wide; sixth profile opens"
+    },
+    {
+      "test": "Profile change clears old routes, queue and private playlists",
+      "result": "Passed"
+    },
+    {
+      "test": "Light/dark library and native Settings",
+      "result": "Passed"
+    },
+    {
+      "test": "Remote Access Help and metadata reread confirmation",
+      "result": "Remote Access Help opens in native scrollable Settings sheet. Read Song Tags Again is disabled in sample/no-NAS mode as intended; confirmation wiring reviewed in source, live confirmation not exercised"
+    },
+    {
+      "test": "Native playlist rename",
+      "result": "Passed; dialog prefills existing name, saves new name, sidebar and table title update"
+    }
+  ],
+  "settingsChecks": [
+    {
+      "test": "Mac category sidebar, nested Family/Privacy/Diagnostics/Genre panes",
+      "result": "Passed at approximately 780x580"
+    },
+    {
+      "test": "Mac arrow-key sidebar selection, Appearance popup, dark appearance and resize",
+      "result": "Passed; resize retained selected category and pushed page"
+    },
+    {
+      "test": "iPhone native Settings standard and Accessibility Extra Large text",
+      "result": "Passed; oversized server label and icon overflow corrected; original content size restored"
+    },
+    {
+      "test": "iPhone enlarged Profile Editor and Release Notes",
+      "result": "Passed visually; help wraps and Cancel returns without save; CUA omitted some visible native toolbar accessibility nodes"
+    },
+    {
+      "test": "Appearance persistence after quit and relaunch",
+      "result": "Passed on isolated Mac; saved Dark choice remains selected for the same profile"
+    }
+  ],
+  "remainingAcceptance": [
+    "Spoken VoiceOver and physical input/output checks",
+    "Real NAS, OTP and home/away/Tailscale certificate/VPN-off routes",
+    "Two-device CloudKit convergence and account/profile transitions",
+    "Watch transfer, offline playback and disconnected revocation policy",
+    "CarPlay, AirPlay, background transfers and real-device interruptions",
+    "All-platform Reduce Motion and final frame-time acceptance",
+    "Public policy/support URL, store metadata and workable App Review access"
+  ],
+  "performanceEvidence": "docs/evidence/navigation-performance.json",
+  "axiomReferenceCommit": "71d342b65068d45787f5b6f45ce9deaf58f9629d",
+  "sourceManifestSHA256": "df8dace6345f8e8dbae4c3b4906b1fb57641f6ca76e99c1b864ac5418bf4f7a6",
+  "localLogs": {
+    "combinedPackage": "/tmp/skyr-combined-validation/package-release.log",
+    "tvOSRelease": "/tmp/skyr-combined-validation/tv-release.log",
+    "iOSRelease": "/tmp/skyr-native-desktop/final-ios.log",
+    "macOSRelease": "/tmp/skyr-native-desktop/final-mac-genre.log",
+    "focusedMetadataAndPlayback": "/tmp/skyr-metadata-review/metadata-playback-final.log",
+    "nativeMacFixture": "/tmp/skyr-native-desktop/ui-genre-final.log"
+  },
+  "sourceManifestMethod": "SHA256 of Python json.dumps(path-to-SHA256 map, sort_keys=True) for all Swift files in shipping source/Packages, excluding .build and .swiftpm"
+}

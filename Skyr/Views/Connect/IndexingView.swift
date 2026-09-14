@@ -109,7 +109,7 @@ struct IndexingView: View {
     private var subtitle: String? {
         if let failure = model.indexingFailure { return failure.detail }
         if model.isDemo {
-            return model.isIndexed ? "3,412 albums · 1,208 artists · 1.9 TB" : "Reading tags, artwork and folder structure…"
+            return model.isIndexed ? library.catalogue.detail : "Reading tags, artwork and folder structure…"
         }
         switch indexer.phase {
         case .scanning:

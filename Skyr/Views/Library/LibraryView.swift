@@ -101,6 +101,18 @@ struct LibraryView: View {
 extension View {
     /// Destinations shared by every navigation stack that can open catalogue content.
     func libraryDestinations() -> some View {
+        #if os(macOS)
+        self
+            .navigationDestination(for: Album.self) { MacAlbumDetailView(album: $0) }
+            .navigationDestination(for: AlbumDestination.self) { MacAlbumDetailView(album: $0.album) }
+            .navigationDestination(for: Artist.self) { MacArtistDetailView(artist: $0) }
+            .navigationDestination(for: ArtistDestination.self) { MacArtistDetailView(artist: $0.artist) }
+            .navigationDestination(for: AlbumCollection.self) { MacAlbumCollectionView(collection: $0) }
+            .navigationDestination(for: CollectionDestination.self) { MacAlbumCollectionView(collection: $0.collection) }
+            .navigationDestination(for: Playlist.self) { MacPlaylistDetailView(playlist: $0) }
+            .navigationDestination(for: PlaylistDestination.self) { MacPlaylistDetailView(playlist: $0.playlist) }
+            .navigationDestination(for: LibraryRoute.self) { _ in MacDownloadsView() }
+        #else
         self
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: AlbumDestination.self) { AlbumView(album: $0.album).artworkZoom(from: $0) }
@@ -115,6 +127,7 @@ extension View {
                 case .downloads: DownloadsView()
                 }
             }
+        #endif
     }
 }
 

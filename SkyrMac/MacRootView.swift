@@ -1,143 +1,139 @@
-import AppKit
 import SkyrCore
 import SwiftUI
 
-/// The first-run connection flow, or the sidebar app with the player bar, and the profile picker
-/// over either when nobody is signed in to a profile.
 struct MacRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(ProfileStore.self) private var profiles
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // The split view must be the window's root: nested in a stack, AppKit re-enters its
-        // constraint pass when a column's size changes and the app aborts. The profile picker
-        // therefore replaces it rather than covering it, and owns the window while it is up.
-        // Setup is a fixed assistant window; the app itself asks for a real window and grows it.
+        // Keep the split view at the root: wrapping it in a stack caused AppKit constraint re-entry.
         if model.stage == .ready, profiles.isLocked {
-            ProfilePickerView()
-                .frame(minWidth: 980, minHeight: 620)
+            ProfilePickerView().frame(minWidth: 900, minHeight: 560)
         } else if model.stage == .ready {
-            MacMainView()
-                .frame(minWidth: 980, minHeight: 620)
-                .onAppear(perform: growWindow)
+            MacMainView().frame(minWidth: 900, minHeight: 560)
         } else {
             MacSetupView()
         }
     }
-
-    /// The assistant's window is small; the library wants the app's usual size.
-    private func growWindow() {
-        guard let window = NSApp.windows.first(where: { $0.isVisible }), window.frame.width < 1200 else { return }
-        var frame = window.frame
-        let target = NSSize(width: 1240, height: 800)
-        frame.origin.x -= (target.width - frame.width) / 2
-        frame.origin.y -= (target.height - frame.height) / 2
-        frame.size = target
-        window.setFrame(frame, display: true, animate: !reduceMotion)
-    }
 }
 
-/// Sidebar on the left, the chosen section on the right, the player across the bottom.
+/// Desktop navigation and playback stay in the window while content changes.
 struct MacMainView: View {
     @Environment(MacNavigation.self) private var navigation
     @Environment(AppModel.self) private var model
+    @Environment(LibraryStore.self) private var library
+    @Environment(ProfileStore.self) private var profiles
+    @FocusState private var searchFocused: Bool
+    @Namespace private var artworkNamespace
 
     var body: some View {
         @Bindable var navigation = navigation
         NavigationSplitView {
-            // A GeometryReader reports no minimum size of its own, so the column's constraints
-            // never change while the sidebar's rows or the detail's pages do.
             GeometryReader { _ in
-                MacSidebar(selection: $navigation.selection)
-                    .clearOfPlayerBar()
+                MacSidebar(selection: $navigation.selection).clearOfPlayerBar()
             }
-            .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 320)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         } detail: {
             GeometryReader { _ in
-                detail
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // The phone's screens lean on the navigation bar for their top spacing; under a
-                    // Mac toolbar the first header would sit against its edge.
-                    .safeAreaPadding(.top, 16)
-                    .clearOfPlayerBar()
+                detail.frame(maxWidth: .infinity, maxHeight: .infinity).clearOfPlayerBar()
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MacPlayerBar { navigation.isShowingNowPlaying = true }
+            MacPlayerBar { navigation.isShowingNowPlaying.toggle() }
         }
-        .sheet(isPresented: $navigation.isShowingNowPlaying) {
-            NowPlayingView()
-                .frame(width: 440, height: 780)
-                .overlay(alignment: .topTrailing) {
-                    Button("Close", systemImage: "xmark") { navigation.isShowingNowPlaying = false }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.glass)
-                        .keyboardShortcut(.cancelAction)
-                        .padding(14)
+        .inspector(isPresented: $navigation.isShowingNowPlaying) {
+            MacNowPlayingInspector()
+                .inspectorColumnWidth(min: 260, ideal: 300, max: 380)
+        }
+        .searchable(text: $navigation.searchText, placement: .toolbar, prompt: "Search Library")
+        .searchFocused($searchFocused)
+        .onSubmit(of: .search) { library.noteSearch(navigation.searchText) }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button("New Playlist", systemImage: "plus") {
+                    navigation.selection = .playlists
+                    navigation.isNamingPlaylist = true
                 }
+                .help("Create a playlist (⌘N)")
+                Button("Scan for New Music", systemImage: "arrow.clockwise") { model.rescan() }
+                    .disabled(model.isScanning || model.connection == nil)
+                    .help("Scan for new music (⌘R)")
+                Button("Now Playing", systemImage: "sidebar.right") { navigation.isShowingNowPlaying.toggle() }
+                    .help("Show or hide Now Playing (⇧⌘N)")
+                Menu {
+                    if let profile = profiles.active { Text(profile.name) }
+                    Button("Switch Profile…", systemImage: "person.crop.circle") { profiles.lock() }
+                    SettingsLink()
+                } label: {
+                    Image(systemName: "person.crop.circle")
+                }
+                .help("Profile and Settings")
+            }
         }
+        .onChange(of: navigation.searchText) { _, query in
+            if !query.isEmpty, navigation.selection != .search { navigation.selection = .search }
+        }
+        .onChange(of: navigation.searchRequest) { _, _ in searchFocused = true }
         .onChange(of: navigation.selection, initial: true) { _, selection in
             if let facet = selection?.facet, model.facet != facet { model.facet = facet }
+            if selection != .search {
+                searchFocused = false
+                navigation.searchText = ""
+            }
+            if selection != .albums { navigation.albumToOpen = nil }
         }
-        .onChange(of: model.albumNavigationRequest) { _, _ in
-            // The shared model announces the request before pushing the album, giving the
-            // sidebar time to mount the Library stack even when the same album is requested again.
-            navigation.isShowingNowPlaying = false
-            if navigation.selection?.facet == nil { navigation.selection = .recentlyAdded }
+        .onChange(of: model.albumToOpen) { _, album in
+            guard let album else { return }
+            navigation.showAlbum(album)
+            model.albumToOpen = nil
         }
+        .onChange(of: model.playlistToOpen) { _, playlist in
+            guard let playlist else { return }
+            navigation.selection = .playlist(playlist.id)
+            model.playlistToOpen = nil
+        }
+        .environment(\.artworkNamespace, artworkNamespace)
     }
 
-    @ViewBuilder
-    private var detail: some View {
+    @ViewBuilder private var detail: some View {
         switch navigation.selection ?? .recentlyAdded {
-        case .recentlyAdded, .artists, .genres:
-            LibraryView()
+        case .recentlyAdded, .albums, .songs, .artists, .genres:
+            MacLibraryView(section: navigation.selection ?? .recentlyAdded)
         case .playlists:
-            PlaylistsView()
+            MacPlaylistsView()
         case .playlist(let id):
             MacPlaylistPane(id: id)
         case .downloads:
-            DownloadsTabView()
+            NavigationStack { MacDownloadsView().libraryDestinations() }
         case .search:
-            SearchView()
+            MacSearchView()
         }
     }
 }
 
-/// Library, then every playlist by name, so a list is one click away.
 struct MacSidebar: View {
     @Binding var selection: MacSection?
     @Environment(LibraryStore.self) private var library
 
     var body: some View {
         List(selection: $selection) {
-            Label("Search", systemImage: "magnifyingglass")
-                .tag(MacSection.search)
+            Label("Search", systemImage: "magnifyingglass").tag(MacSection.search)
             Section("Library") {
-                Label("Recently Added", systemImage: "clock")
-                    .tag(MacSection.recentlyAdded)
-                Label("Artists", systemImage: "music.microphone")
-                    .tag(MacSection.artists)
-                Label("Genres", systemImage: "guitars")
-                    .tag(MacSection.genres)
-                Label("Downloads", systemImage: "arrow.down.circle")
-                    .tag(MacSection.downloads)
+                Label("Recently Added", systemImage: "clock").tag(MacSection.recentlyAdded)
+                Label("Albums", systemImage: "square.stack").tag(MacSection.albums)
+                Label("Songs", systemImage: "music.note").tag(MacSection.songs)
+                Label("Artists", systemImage: "music.microphone").tag(MacSection.artists)
+                Label("Genres", systemImage: "guitars").tag(MacSection.genres)
+                Label("Downloads", systemImage: "arrow.down.circle").tag(MacSection.downloads)
             }
             Section("Playlists") {
-                Label("All Playlists", systemImage: "square.grid.2x2")
-                    .tag(MacSection.playlists)
-                Label(library.favouritesPlaylist.name, systemImage: "heart.fill")
-                    .tag(MacSection.playlist(library.favouritesPlaylist.id))
-                Label(library.favouritesMixPlaylist.name, systemImage: "sparkles")
-                    .tag(MacSection.playlist(library.favouritesMixPlaylist.id))
-                Label(library.recentlyPlayedPlaylist.name, systemImage: "clock.arrow.circlepath")
-                    .tag(MacSection.playlist(library.recentlyPlayedPlaylist.id))
-                Label(library.libraryShufflePlaylist.name, systemImage: "shuffle")
-                    .tag(MacSection.playlist(library.libraryShufflePlaylist.id))
+                Label("All Playlists", systemImage: "music.note.list").tag(MacSection.playlists)
+                Label("Favourites", systemImage: "heart.fill").tag(MacSection.playlist(Playlist.favouritesID))
+                Label("Favourites Mix", systemImage: "sparkles").tag(MacSection.playlist(Playlist.favouritesMixID))
+                Label("Recently Played", systemImage: "clock.arrow.circlepath").tag(MacSection.playlist(Playlist.recentlyPlayedID))
+                Label("Library Shuffle", systemImage: "shuffle").tag(MacSection.playlist(Playlist.libraryShuffleID))
                 ForEach(library.playlists) { playlist in
-                    Label(playlist.name, systemImage: "music.note.list")
-                        .tag(MacSection.playlist(playlist.id))
+                    Label(playlist.name, systemImage: "music.note.list").tag(MacSection.playlist(playlist.id))
                 }
             }
         }
@@ -145,49 +141,25 @@ struct MacSidebar: View {
     }
 }
 
-/// One playlist as the detail column, with albums and artists pushed on top of it.
 struct MacPlaylistPane: View {
     let id: String
     @Environment(LibraryStore.self) private var library
-    @Namespace private var artworkNamespace
-
-    private var playlist: Playlist? {
-        let smart = [library.favouritesPlaylist, library.favouritesMixPlaylist, library.recentlyPlayedPlaylist, library.libraryShufflePlaylist]
-        return (smart + library.playlists).first { $0.id == id }
-    }
 
     var body: some View {
         NavigationStack {
-            if let playlist {
-                PlaylistDetailView(playlist: playlist)
-                    .libraryDestinations()
+            if let playlist = library.playlist(id: id) {
+                MacPlaylistDetailView(playlist: playlist).libraryDestinations()
             } else {
-                EmptyStateView(title: "Playlist Gone", systemImage: "music.note.list", message: "This playlist was deleted.")
+                ContentUnavailableView("Playlist Unavailable", systemImage: "music.note.list", description: Text("Select a playlist in the sidebar."))
             }
         }
         .id(id)
-        .environment(\.artworkNamespace, artworkNamespace)
-    }
-}
-
-/// The Settings window: the same groups as on the phone, with Family and Profiles pushed inside it.
-struct MacSettingsView: View {
-    @Namespace private var artworkNamespace
-
-    var body: some View {
-        NavigationStack {
-            SettingsView()
-                .libraryDestinations()
-        }
-        .environment(\.artworkNamespace, artworkNamespace)
     }
 }
 
 private extension View {
-    /// The columns are AppKit views that never see the split view's safe-area inset, so the player
-    /// bar would cover their last rows. Give them exactly the bar's height at the bottom instead.
+    // AppKit columns don't receive the outer inset. Reserve the bar without changing column constraints.
     func clearOfPlayerBar() -> some View {
-        safeAreaPadding(.bottom, MacPlayerBar.height)
-            .ignoresSafeArea(.container, edges: .bottom)
+        safeAreaPadding(.bottom, MacPlayerBar.height).ignoresSafeArea(.container, edges: .bottom)
     }
 }

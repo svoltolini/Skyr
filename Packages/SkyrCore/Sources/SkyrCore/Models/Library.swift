@@ -50,6 +50,9 @@ public nonisolated struct Track: Identifiable, Hashable, Codable, Sendable {
     public var genreTag: String?
     /// True once the file's own headers and tags have been read.
     public var isEnriched: Bool
+    /// Modification time reported by the source listing, in Unix seconds. Keep it numeric so
+    /// catalogue date encoding cannot discard fractional precision and cause repeated rereads.
+    public var sourceModifiedAt: TimeInterval? = nil
     /// Which version of the tag reader produced the tags; older tracks are read again on the next scan.
     public var tagVersion: Int? = nil
     /// How many times reading this song's tags failed, and when it was last tried; after three failures
@@ -160,12 +163,8 @@ public nonisolated struct Album: Identifiable, Hashable, Codable, Sendable {
         title = Self.mostCommon(enriched.compactMap(\.albumTitleTag)) ?? folderTitle
         let taggedArtists = enriched.compactMap { $0.albumArtistTag ?? $0.artist }
         artist = Self.mostCommon(taggedArtists) ?? folderArtist
-        if let taggedYear = Self.mostCommonInt(enriched.compactMap(\.yearTag)) {
-            year = taggedYear
-        } else if let folderYear {
-            year = folderYear
-        }
-        genre = Self.mostCommon(enriched.compactMap(\.genreTag)) ?? (genre.isEmpty ? "Unknown genre" : genre)
+        year = Self.mostCommonInt(enriched.compactMap(\.yearTag)) ?? folderYear ?? 0
+        genre = Self.mostCommon(enriched.compactMap(\.genreTag)) ?? "Unknown genre"
     }
 
     public nonisolated static func mostCommon(_ values: [String]) -> String? {
@@ -286,6 +285,28 @@ public nonisolated final class FolderNode: Identifiable, Hashable, Sendable {
     public func hash(into hasher: inout Hasher) { hasher.combine(path) }
 }
 
+/// A song's occurrence in an ordered list. Repeated songs need separate row identities, while
+/// removing a different song should preserve the identity of the remaining occurrences.
+public nonisolated struct TrackListEntry: Identifiable, Hashable, Sendable {
+    public struct ID: Hashable, Sendable {
+        public let trackID: String
+        public let occurrence: Int
+    }
+
+    public let id: ID
+    public let track: Track
+    public let position: Int
+
+    public static func make(from tracks: [Track]) -> [TrackListEntry] {
+        var occurrences: [String: Int] = [:]
+        return tracks.enumerated().map { position, track in
+            let occurrence = occurrences[track.id, default: 0]
+            occurrences[track.id] = occurrence + 1
+            return TrackListEntry(id: ID(trackID: track.id, occurrence: occurrence), track: track, position: position)
+        }
+    }
+}
+
 public nonisolated struct Playlist: Identifiable, Hashable, Sendable {
     public enum Kind: Hashable, Sendable {
         case local, smart
@@ -296,8 +317,37 @@ public nonisolated struct Playlist: Identifiable, Hashable, Sendable {
     public var summary: String
     /// Up to four albums whose artwork forms the mosaic cover.
     public var covers: [Album]
-    public var tracks: [Track]
+    public var tracks: [Track] {
+        didSet { entries = TrackListEntry.make(from: tracks) }
+    }
+    /// Prepared when contents change, so row identity does not enumerate the whole playlist on
+    /// every playback, progress or selection update.
+    public private(set) var entries: [TrackListEntry]
     public var kind: Kind = .local
+
+    public init(id: String, name: String, summary: String, covers: [Album], tracks: [Track], kind: Kind = .local) {
+        self.id = id
+        self.name = name
+        self.summary = summary
+        self.covers = covers
+        self.tracks = tracks
+        self.entries = TrackListEntry.make(from: tracks)
+        self.kind = kind
+    }
+
+    public static func == (lhs: Playlist, rhs: Playlist) -> Bool {
+        lhs.id == rhs.id && lhs.name == rhs.name && lhs.summary == rhs.summary &&
+            lhs.covers == rhs.covers && lhs.tracks == rhs.tracks && lhs.kind == rhs.kind
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(summary)
+        hasher.combine(covers)
+        hasher.combine(tracks)
+        hasher.combine(kind)
+    }
 
     public nonisolated static let favouritesID = "smart.favourites"
     public nonisolated static let favouritesMixID = "smart.favourites-mix"

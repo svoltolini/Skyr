@@ -31,8 +31,9 @@ public nonisolated struct Catalogue: Codable, Sendable {
     // MARK: Building from a folder scan
 
     /// Groups scanned folders into albums using folder and file names; `existing` supplies tags already read.
-    public nonisolated static func build(folders: [ScannedFolder], rootPath: String, serverName: String, driveID: String, existing: Catalogue?) -> Catalogue {
-        let previous = Dictionary(existing?.albums.flatMap(\.tracks).map { ($0.id, $0) } ?? [], uniquingKeysWith: { first, _ in first })
+    public nonisolated static func build(folders: [ScannedFolder], rootPath: String, serverName: String, driveID: String, existing: Catalogue?, forceMetadataReread: Bool = false) -> Catalogue {
+        let reusable = existing?.driveID == driveID ? existing : nil
+        let previous = Dictionary(reusable?.albums.flatMap(\.tracks).map { ($0.id, $0) } ?? [], uniquingKeysWith: { first, _ in first })
         let rootName = rootPath.split(separator: "/").last.map(String.init) ?? "music"
 
         struct Draft {
@@ -69,10 +70,23 @@ public nonisolated struct Catalogue: Codable, Sendable {
                     artist: trackGuess.artist, albumTitleTag: nil, albumArtistTag: nil, yearTag: nil, genreTag: nil,
                     isEnriched: false
                 )
-                if let known = previous[file.path], known.fileSize == file.size {
+                track.sourceModifiedAt = file.modified?.timeIntervalSince1970
+                // A changed, newly available or missing timestamp schedules a reread. Keep the
+                // last good tags until that read succeeds, including during an explicit reread.
+                // Providers without timestamps use the size/path cache until the user rereads.
+                if let known = previous[file.path] {
+                    let needsReread = forceMetadataReread || known.fileSize != file.size
+                        || known.sourceModifiedAt != track.sourceModifiedAt
                     if known.isEnriched {
                         track = known
+                        track.fileSize = file.size
+                        track.sourceModifiedAt = file.modified?.timeIntervalSince1970
                         track.normalizeDiscFromAlbumTag()
+                    }
+                    if needsReread {
+                        track.tagVersion = nil
+                        track.enrichAttempts = nil
+                        track.enrichAttemptedAt = nil
                     } else {
                         track.enrichAttempts = known.enrichAttempts
                         track.enrichAttemptedAt = known.enrichAttemptedAt

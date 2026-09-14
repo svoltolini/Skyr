@@ -4,6 +4,7 @@ import SwiftUI
 /// Picks a playlist for one or more songs, or creates a new one for them.
 struct AddToPlaylistSheet: View {
     let tracks: [Track]
+    var isContextCurrent: () -> Bool = { true }
     @Environment(LibraryStore.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var newName = ""
@@ -36,6 +37,7 @@ struct AddToPlaylistSheet: View {
                     }
                     ForEach(localPlaylists) { playlist in
                         Button {
+                            guard isContextCurrent() else { dismiss(); return }
                             library.add(tracks, toPlaylist: playlist.id)
                             dismiss()
                         } label: {
@@ -51,7 +53,14 @@ struct AddToPlaylistSheet: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            #if os(macOS)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            #endif
                         }
+                        #if os(macOS)
+                        .buttonStyle(.plain)
+                        #endif
                     }
                 }
             }
@@ -67,6 +76,7 @@ struct AddToPlaylistSheet: View {
     }
 
     private func createAndAdd() {
+        guard isContextCurrent() else { dismiss(); return }
         guard library.createPlaylist(named: newName, tracks: tracks) != nil else { return }
         dismiss()
     }
