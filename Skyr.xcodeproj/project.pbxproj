@@ -1,0 +1,1484 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		003880528CB5B68DCCAADFB9 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2370B6FFC67940F379B9D3 /* DownloadsView.swift */; };
+		0079364E9532D8C4FECDA213 /* SkyrHomeWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2165359FA4FD48C8C7533A36 /* SkyrHomeWidget.swift */; };
+		01F0B72AE8638DDFCF5A8771 /* DownloadLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1C3BAAC9E91767DF359608 /* DownloadLiveActivity.swift */; };
+		0298A754D9858ED6EA364C00 /* SkyrShared in Frameworks */ = {isa = PBXBuildFile; productRef = 28E0FC34241746F2CB1AD89C /* SkyrShared */; };
+		04517348ABB438716EDEE913 /* DownloadsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DE48E86000F79FABF497C05 /* DownloadsWidget.swift */; };
+		0500BAF15889E9E1A26640B4 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB6D97D7638167EDE4E5C4F /* RootView.swift */; };
+		05FB9815D74D21AE4BFA4F67 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9732916395F86A8F3B95F9C0 /* Assets.xcassets */; };
+		09444DE2609B45746AA1FFB7 /* ProfileAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95629FDF867F6A21E4D67BB6 /* ProfileAvatarView.swift */; };
+		0B8C97FD24280ADCB6DB5FFB /* ConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4047FC415D2744B36E067CD7 /* ConnectSheet.swift */; };
+		0BAB43F8EE4459C1C0A2A783 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8300C3725A73515B9C00AE /* WelcomeView.swift */; };
+		0F55C995EFC7CB078C49B6E4 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62FEFC567754EAB6BE56F91 /* SearchView.swift */; };
+		11D88606EB129C89906DACB6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15F92BAE0C6EE7A01CCAEA12 /* SettingsView.swift */; };
+		12F7B27AE8D531F2C5FB83A9 /* MacSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF319001B11C89BAB57D5E4C /* MacSetupView.swift */; };
+		13B33E3F6C1BFE7E5BC09890 /* GenresView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645D7A92E2D6C16B022F6818 /* GenresView.swift */; };
+		13DE8CB82C6F13042D14095F /* SetupPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AAEECA63B8D43194D61D1A /* SetupPage.swift */; };
+		156AB1CFB5E9BE8418575A56 /* GenresView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645D7A92E2D6C16B022F6818 /* GenresView.swift */; };
+		16B8F263F3A20039AF130FCB /* SkyrWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0383B42257D7C67DC50736B3 /* SkyrWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		1865BF2AF32431EC768C731A /* ServerDiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF17A498A17C05B923557591 /* ServerDiscoveryView.swift */; };
+		19807B05F9747C976EA493CF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6EE678F97602207BC1885D /* Theme.swift */; };
+		1FEB38BAD1784CD2322FF724 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23ABC3572C96C17C1826EABF /* MiniPlayerView.swift */; };
+		206A6D190DD9D65A82961675 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6E2626A87738A64A16B1F3 /* DiagnosticsView.swift */; };
+		21823B828C8395C811753D97 /* FamilyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76DE0D52AA1EDF4C76279121 /* FamilyView.swift */; };
+		24D3D174048F901E1A41C693 /* ReleaseNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C249CAA7CBBD030755FA55E5 /* ReleaseNotesView.swift */; };
+		284ED77622DE2134267CBDDE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9732916395F86A8F3B95F9C0 /* Assets.xcassets */; };
+		2AA5737BDDA573E3A0CD1A0E /* PlaylistsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF2727B03C5E5E0013D8A08 /* PlaylistsView.swift */; };
+		2B57D6A227345CEBF3AED2F3 /* RediscoverWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3942EFC950D7551434BE5B76 /* RediscoverWidget.swift */; };
+		2BB30932586C729F1929B329 /* ArtistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */; };
+		2C4CFE124EE1401586E17735 /* ConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4047FC415D2744B36E067CD7 /* ConnectSheet.swift */; };
+		31C78B1871DAA0DF7172894F /* InviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594813A7DCA7E4DF567366EF /* InviteSheet.swift */; };
+		32ABDCC9D4307AF6BD9E050B /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76999B3E83B1E35FE548B258 /* AlbumView.swift */; };
+		32F9DA7ED5FF5D23D7A606C2 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508BD333628DA5F796703A05 /* Components.swift */; };
+		348B902A3731E164CEABD1A8 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
+		35F5226C6042EB5BB29A74D3 /* ArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */; };
+		381935247CB6E48FC3EF2611 /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76999B3E83B1E35FE548B258 /* AlbumView.swift */; };
+		39577BF3A8D2106736D6FDDE /* ServerDiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF17A498A17C05B923557591 /* ServerDiscoveryView.swift */; };
+		3D41BEDA1FAD49FFA00BCB27 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98EA1B07C06B2A991E8BBB9F /* OnboardingView.swift */; };
+		3DAC5B49DD42867EB1E93C72 /* LoginSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46A7E609C705A923E1A4A36B /* LoginSheet.swift */; };
+		40909950FA30383C26FE3E17 /* FolderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C2D58DC84E0E9E315B7573 /* FolderPickerView.swift */; };
+		41CDAE2FE31546C6CAE4A0DC /* SkyrWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 7119DE395B61433117AB45F5 /* SkyrWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		44708B8A991BEB766B38E61F /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8300C3725A73515B9C00AE /* WelcomeView.swift */; };
+		44E07C99829272FA4FEA9DA8 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FFE56E0B6BBE8C73F1A9D3 /* MacRootView.swift */; };
+		44EAC9DDFA95176B583E8D6C /* ProfileEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9A9F88F442CFB1E42B35F0 /* ProfileEditorSheet.swift */; };
+		464D44582379E45B2BDD0990 /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F5E1450E44185EBECE7372 /* Permissions.swift */; };
+		4723F99031CC95BE835285A8 /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE3AB997C10C4D6F455FAC3 /* Platform.swift */; };
+		484736C65B6216E6E364F909 /* SetupPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AAEECA63B8D43194D61D1A /* SetupPage.swift */; };
+		4862D7D34A823AF66A9BEA84 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A5340DC2BFCE8A34AC303AFF /* PrivacyInfo.xcprivacy */; };
+		49F7D3A1CA28C66D546E4B5B /* SkyrCore in Frameworks */ = {isa = PBXBuildFile; productRef = D87E21571D139435AA826D5B /* SkyrCore */; };
+		4A924109A6D66E2F3E7BC5D7 /* PlaylistsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF2727B03C5E5E0013D8A08 /* PlaylistsView.swift */; };
+		4C5F57F2F4F071EDE2B546CF /* SkyrCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5A4B1E470A924AA870DBA618 /* SkyrCore */; };
+		4CF4356C3536D19021D7D030 /* AddToPlaylistSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2FFC8005FE1679550CDF0C0 /* AddToPlaylistSheet.swift */; };
+		4EB7547F4107CA85A6CC1178 /* RemoteAccessGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD9E68703127323E4DFC118 /* RemoteAccessGuide.swift */; };
+		511890FC241E0EF5E8ACA162 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6EE678F97602207BC1885D /* Theme.swift */; };
+		518BAE5E9D358FD33C2C8A01 /* ReleaseNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C249CAA7CBBD030755FA55E5 /* ReleaseNotesView.swift */; };
+		53A19656B6869BA72C806FE1 /* AddToPlaylistSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2FFC8005FE1679550CDF0C0 /* AddToPlaylistSheet.swift */; };
+		54075CF5F402084C79ECBE6D /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A6EEF9B55C165A9D3DBE3A /* WatchBridge.swift */; };
+		577CE8B71092831570408C70 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1E9066A665139899E08E49 /* MainTabView.swift */; };
+		588D952890C3D53FBDB37840 /* FamilyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76DE0D52AA1EDF4C76279121 /* FamilyView.swift */; };
+		5940B62E4C1F31FB656BF1FC /* PINEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADC3FC81179141D26CCADE0 /* PINEntryView.swift */; };
+		59675305C271743889344CCB /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DF322746A43E9949FB09C1 /* PlaylistDetailView.swift */; };
+		5D940A757AE2685205AAC1E4 /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE3AB997C10C4D6F455FAC3 /* Platform.swift */; };
+		6027A67DDF082E66E41222FD /* ServerDiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF17A498A17C05B923557591 /* ServerDiscoveryView.swift */; };
+		60ED5E3EFA324EED03BB5B74 /* InviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594813A7DCA7E4DF567366EF /* InviteSheet.swift */; };
+		60EF1DDAEBBFFC8485FFE889 /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B95EF839D1679A898C48A390 /* WatchRootView.swift */; };
+		62AC9DEF5FE3E449B76292E6 /* ProfileEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9A9F88F442CFB1E42B35F0 /* ProfileEditorSheet.swift */; };
+		65BAF229909129B9039159FB /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76999B3E83B1E35FE548B258 /* AlbumView.swift */; };
+		673D1EBBC06AD5ECA3DDE8A6 /* PlaylistsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0CCEFE404B5B4A4A29194E1 /* PlaylistsListView.swift */; };
+		68246BB1E37EA128E6586A19 /* TVRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5E14E1EE5B9746B47582654 /* TVRootView.swift */; };
+		69225495367BACC9A8566F96 /* LoginSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46A7E609C705A923E1A4A36B /* LoginSheet.swift */; };
+		6A1C62D0123857DFB5CB2A5B /* GenreEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E8C28E8B21EB4ACC5E6ECAA /* GenreEditorSheet.swift */; };
+		6AFEE65D46CC8852AB7F4660 /* MacPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B671802E92818945920D95 /* MacPlayerBar.swift */; };
+		6B4722C4C9C2E2F846F05CFF /* PlaylistsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF2727B03C5E5E0013D8A08 /* PlaylistsView.swift */; };
+		6BA74B326F33641D0BD942F6 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8300C3725A73515B9C00AE /* WelcomeView.swift */; };
+		6C827E240CC42B8B4564C224 /* ProfileEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9A9F88F442CFB1E42B35F0 /* ProfileEditorSheet.swift */; };
+		6F22CD743533E7DCAA316409 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98EA1B07C06B2A991E8BBB9F /* OnboardingView.swift */; };
+		6FD18E850C91F03A1381C69F /* IndexingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C09C48D0BA5C3B6472CA915 /* IndexingView.swift */; };
+		73251E8FCE80585FADDDB948 /* ArtistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */; };
+		73321F54A26921D51251883B /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
+		7434850786AA8A9470C493BF /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4861070908870505AA4418B2 /* WatchStore.swift */; };
+		79AB09648F40C7538D23183B /* PlaylistsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42FA1EB27E94507C208E3F2A /* PlaylistsWidget.swift */; };
+		7DC58CFF77E4AD615CBBF991 /* ConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4047FC415D2744B36E067CD7 /* ConnectSheet.swift */; };
+		7EA13D39C9FC899DE575CBE8 /* RemoteAccessGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD9E68703127323E4DFC118 /* RemoteAccessGuide.swift */; };
+		81963E1B55CF02988239421C /* LoginSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46A7E609C705A923E1A4A36B /* LoginSheet.swift */; };
+		826C657A5BDE0125809DED19 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2370B6FFC67940F379B9D3 /* DownloadsView.swift */; };
+		84122FDFB453823FB6ED67A4 /* SkyrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4796DA83A1A3251FE96C44B8 /* SkyrApp.swift */; };
+		87D43A1BA9344675A91D1735 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98EA1B07C06B2A991E8BBB9F /* OnboardingView.swift */; };
+		8B173EE31F045681361E91AF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15F92BAE0C6EE7A01CCAEA12 /* SettingsView.swift */; };
+		8B867D715DE5C35DCB890BE0 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB5B770F7494DCA273EDDAA /* CarPlaySceneDelegate.swift */; };
+		8D800B621C7C0D52C2E605FC /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F5E1450E44185EBECE7372 /* Permissions.swift */; };
+		8E21D611D88A8D4623ACDDEE /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F5E1450E44185EBECE7372 /* Permissions.swift */; };
+		8F3106315A5EC93C61205BE7 /* ProfilePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6D2214D22A0EA49D985547 /* ProfilePickerView.swift */; };
+		931CC821F47238C49AEFE877 /* ProfilePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6D2214D22A0EA49D985547 /* ProfilePickerView.swift */; };
+		940F339C19AF57D790372029 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62FEFC567754EAB6BE56F91 /* SearchView.swift */; };
+		95E88304CFCC0F71F9545B71 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6EE678F97602207BC1885D /* Theme.swift */; };
+		965AEAEDF041CF21FD5DA850 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15F92BAE0C6EE7A01CCAEA12 /* SettingsView.swift */; };
+		987D9D902702E816C21063FA /* DownloadButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E88961FDFDEF9C5E4D1714 /* DownloadButton.swift */; };
+		98875DE50DD7BEA58C4CA887 /* ReleaseNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C249CAA7CBBD030755FA55E5 /* ReleaseNotesView.swift */; };
+		9A40BDE02EEEA5A041C0301E /* SkyrCore in Frameworks */ = {isa = PBXBuildFile; productRef = 86852829474D95AE0BD47C4C /* SkyrCore */; };
+		9AD1C08127EA737A6A970505 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508BD333628DA5F796703A05 /* Components.swift */; };
+		9AD2451CD489F9710B6CABAB /* WidgetPieces.swift in Sources */ = {isa = PBXBuildFile; fileRef = A561FFEF329CE08B5853237E /* WidgetPieces.swift */; };
+		9B192C196B10D3D8B02F30B8 /* ArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */; };
+		9DBF2499BADA63DF28EFC40A /* SkyrWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29FCE943D299378E6086D87D /* SkyrWatchApp.swift */; };
+		9EB1CD3A4A578BC052D68F62 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FDAC4329CDE50566FC5C8A5E /* PrivacyInfo.xcprivacy */; };
+		A025AFB6A780B3A86E6CCD66 /* PINEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADC3FC81179141D26CCADE0 /* PINEntryView.swift */; };
+		A0732CF36FC3AA339239C5B2 /* SkyrWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5BDA8A2E4DF6D45A4240D3 /* SkyrWidgetsBundle.swift */; };
+		A1CBECBD80990B213A1BB685 /* IndexingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C09C48D0BA5C3B6472CA915 /* IndexingView.swift */; };
+		A341DB6534420EB91CC81961 /* JoinWithLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F009469D88D2C0DF695B0362 /* JoinWithLinkSheet.swift */; };
+		A36DCE5C657239B4D7F3E3DB /* PlaybackIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B246821D4F338E07E5DF4EBB /* PlaybackIntents.swift */; };
+		A4596CD2C1AAB60D2BD77048 /* SkyrCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1E33945F4953F33ADCEFE1E2 /* SkyrCore */; };
+		A7B56B6652D814E3281B3D51 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB6D97D7638167EDE4E5C4F /* RootView.swift */; };
+		A7C19D0C9C1870775094A1E7 /* PlaybackIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B246821D4F338E07E5DF4EBB /* PlaybackIntents.swift */; };
+		A8954A950EF55C5CF8354812 /* GenresView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645D7A92E2D6C16B022F6818 /* GenresView.swift */; };
+		A9EE2E9028BE364C65FBDD6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9732916395F86A8F3B95F9C0 /* Assets.xcassets */; };
+		AA55B3E1EC4150521888AB62 /* SkyrTVApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22076B46BD19CA7A5CF674C /* SkyrTVApp.swift */; };
+		AE43D8ABD1FBA97DA7377089 /* PINEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADC3FC81179141D26CCADE0 /* PINEntryView.swift */; };
+		B214A7CC1C0AB3F9D145F8EA /* InviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594813A7DCA7E4DF567366EF /* InviteSheet.swift */; };
+		B4C8361B2467B9E6C975652E /* ArtistsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318CE4E53FA5678964B51521 /* ArtistsListView.swift */; };
+		B64963A171FD00C0CABCE0E6 /* SetupPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AAEECA63B8D43194D61D1A /* SetupPage.swift */; };
+		BBA724B9A3B8AEF6FC4DE0B8 /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109C0D3C9C7619A07BD64D02 /* NowPlayingView.swift */; };
+		BE62E6965994097D1CA76B49 /* ProfileAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95629FDF867F6A21E4D67BB6 /* ProfileAvatarView.swift */; };
+		BECDC4D9C8BA42FC84A82656 /* SkyrMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42380B2A1080CB70CDE4ED90 /* SkyrMacApp.swift */; };
+		BF92161D2A516454CF34E9B5 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62FEFC567754EAB6BE56F91 /* SearchView.swift */; };
+		C361FE619B9AC39BCC0C42B3 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6E2626A87738A64A16B1F3 /* DiagnosticsView.swift */; };
+		C3B836D3111C5881731A3BBA /* ArtistsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318CE4E53FA5678964B51521 /* ArtistsListView.swift */; };
+		C41C409DBDF21CFF525D3624 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB6D97D7638167EDE4E5C4F /* RootView.swift */; };
+		C4F48A882E2F0ECCE7DF612F /* LibraryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B30C47CF51F97801CBAAA5 /* LibraryHomeView.swift */; };
+		C573C7D937326A37ACE38830 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2370B6FFC67940F379B9D3 /* DownloadsView.swift */; };
+		C9A0B0A4D3C1A1E2DF049957 /* RemoteAccessGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD9E68703127323E4DFC118 /* RemoteAccessGuide.swift */; };
+		CB977DD49E073C5ACA2D37C4 /* ProfileAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95629FDF867F6A21E4D67BB6 /* ProfileAvatarView.swift */; };
+		CE65845714C213D939242747 /* DownloadButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E88961FDFDEF9C5E4D1714 /* DownloadButton.swift */; };
+		D0589918808720A97BFE9F41 /* WatchDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74CE07649C500D2BB916B8CB /* WatchDownloads.swift */; };
+		D336492CFC599BFA51FFEA1F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F06FB342C0C5E493EABB9658 /* PrivacyInfo.xcprivacy */; };
+		D75F9C60213A00BEB79BC38E /* JoinWithLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F009469D88D2C0DF695B0362 /* JoinWithLinkSheet.swift */; };
+		DAD29E4964A4F229B487303F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9732916395F86A8F3B95F9C0 /* Assets.xcassets */; };
+		DB53E0B2E0133AC6B510F69A /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE3AB997C10C4D6F455FAC3 /* Platform.swift */; };
+		DBDCE5A3D91281EE1AC12C41 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 62B01BA1FCE2C81F7A37C779 /* PrivacyInfo.xcprivacy */; };
+		DD26C096599F207141DECDD1 /* ArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */; };
+		DFF67284634282FFEAEDB74A /* SkyrShared in Frameworks */ = {isa = PBXBuildFile; productRef = 8701BD207DCAC954D95C5238 /* SkyrShared */; };
+		E0B81D5A11A1B7972478DB5E /* DownloadButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E88961FDFDEF9C5E4D1714 /* DownloadButton.swift */; };
+		E0CCB5F5E6F7BD50EC76CF2F /* LibraryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B30C47CF51F97801CBAAA5 /* LibraryHomeView.swift */; };
+		E228B680BD53782F243ED4A0 /* GenreEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E8C28E8B21EB4ACC5E6ECAA /* GenreEditorSheet.swift */; };
+		E4F1B663851D1B7D5FE8B0BF /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109C0D3C9C7619A07BD64D02 /* NowPlayingView.swift */; };
+		E8B61B9C128B83D89AB53EC4 /* WatchPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAACE8D0EE1D858436C3285A /* WatchPlayer.swift */; };
+		E8E2D1B8996C211979A9CBC0 /* GenreEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E8C28E8B21EB4ACC5E6ECAA /* GenreEditorSheet.swift */; };
+		E8ED3A0140B1E90B3DE84D74 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6E2626A87738A64A16B1F3 /* DiagnosticsView.swift */; };
+		E99BACF8C0C1398047A4B6CC /* FamilyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76DE0D52AA1EDF4C76279121 /* FamilyView.swift */; };
+		EBC55E3A2BC6F9D8EB5AE4BA /* FolderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C2D58DC84E0E9E315B7573 /* FolderPickerView.swift */; };
+		EE1B043F98BA68966345AE92 /* IndexingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C09C48D0BA5C3B6472CA915 /* IndexingView.swift */; };
+		EEFFDC1F4F8C32F1C1F0F48C /* MacNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64000F873C5960D6EB056C3C /* MacNavigation.swift */; };
+		F111D831F910411152A31CA3 /* ProfilePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6D2214D22A0EA49D985547 /* ProfilePickerView.swift */; };
+		F6A250D78C1379618809F2AF /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
+		F6E15AEAAF259B7E6D9C9137 /* LibraryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B30C47CF51F97801CBAAA5 /* LibraryHomeView.swift */; };
+		F72FA379588F9C53F6406B40 /* FolderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C2D58DC84E0E9E315B7573 /* FolderPickerView.swift */; };
+		F7D665A823FE69E54B16540F /* AddToPlaylistSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2FFC8005FE1679550CDF0C0 /* AddToPlaylistSheet.swift */; };
+		F8CCC54C8648F1E89308A107 /* ArtistsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318CE4E53FA5678964B51521 /* ArtistsListView.swift */; };
+		F8D31C9D59591C2079D006B5 /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109C0D3C9C7619A07BD64D02 /* NowPlayingView.swift */; };
+		FB75E88CA7839052C19EDE95 /* JoinWithLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F009469D88D2C0DF695B0362 /* JoinWithLinkSheet.swift */; };
+		FC3B2DD9F53B7C6B65D3841B /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508BD333628DA5F796703A05 /* Components.swift */; };
+		FE5BAFFB9A5BEE2FE5D2808D /* ArtistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4F135B445C3C9186404EA3E7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CEDEEA3CF2950406745437F4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 47D2429DA586FAB7F5E98932;
+			remoteInfo = SkyrWatch;
+		};
+		B645E7BC236BB6109EA5554A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CEDEEA3CF2950406745437F4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9D5C811B60DFFAF239E86B3F;
+			remoteInfo = SkyrWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A7132838CB7A9F5B65C11685 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				41CDAE2FE31546C6CAE4A0DC /* SkyrWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C9A5811D8D0E9A82EF8BE746 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				16B8F263F3A20039AF130FCB /* SkyrWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0383B42257D7C67DC50736B3 /* SkyrWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = SkyrWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		081C95020ED88399E5AB75C6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		0C09C48D0BA5C3B6472CA915 /* IndexingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexingView.swift; sourceTree = "<group>"; };
+		0F9A9F88F442CFB1E42B35F0 /* ProfileEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorSheet.swift; sourceTree = "<group>"; };
+		109C0D3C9C7619A07BD64D02 /* NowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingView.swift; sourceTree = "<group>"; };
+		13F5E1450E44185EBECE7372 /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
+		15B7C2F4BEF633F0E7682829 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		15F92BAE0C6EE7A01CCAEA12 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		16AAEECA63B8D43194D61D1A /* SetupPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupPage.swift; sourceTree = "<group>"; };
+		17E88961FDFDEF9C5E4D1714 /* DownloadButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadButton.swift; sourceTree = "<group>"; };
+		193085B15767A136FFF4F666 /* SkyrTV.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SkyrTV.entitlements; sourceTree = "<group>"; };
+		1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkView.swift; sourceTree = "<group>"; };
+		1C1C3BAAC9E91767DF359608 /* DownloadLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadLiveActivity.swift; sourceTree = "<group>"; };
+		1D2370B6FFC67940F379B9D3 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
+		1D6EE678F97602207BC1885D /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		1DE48E86000F79FABF497C05 /* DownloadsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsWidget.swift; sourceTree = "<group>"; };
+		2165359FA4FD48C8C7533A36 /* SkyrHomeWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrHomeWidget.swift; sourceTree = "<group>"; };
+		23ABC3572C96C17C1826EABF /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
+		29FCE943D299378E6086D87D /* SkyrWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrWatchApp.swift; sourceTree = "<group>"; };
+		318CE4E53FA5678964B51521 /* ArtistsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistsListView.swift; sourceTree = "<group>"; };
+		31C2D58DC84E0E9E315B7573 /* FolderPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderPickerView.swift; sourceTree = "<group>"; };
+		36FFE56E0B6BBE8C73F1A9D3 /* MacRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRootView.swift; sourceTree = "<group>"; };
+		3942EFC950D7551434BE5B76 /* RediscoverWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RediscoverWidget.swift; sourceTree = "<group>"; };
+		3C5BDA8A2E4DF6D45A4240D3 /* SkyrWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrWidgetsBundle.swift; sourceTree = "<group>"; };
+		3E8C28E8B21EB4ACC5E6ECAA /* GenreEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreEditorSheet.swift; sourceTree = "<group>"; };
+		4047FC415D2744B36E067CD7 /* ConnectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectSheet.swift; sourceTree = "<group>"; };
+		42380B2A1080CB70CDE4ED90 /* SkyrMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrMacApp.swift; sourceTree = "<group>"; };
+		42FA1EB27E94507C208E3F2A /* PlaylistsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistsWidget.swift; sourceTree = "<group>"; };
+		46A7E609C705A923E1A4A36B /* LoginSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginSheet.swift; sourceTree = "<group>"; };
+		4796DA83A1A3251FE96C44B8 /* SkyrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrApp.swift; sourceTree = "<group>"; };
+		4861070908870505AA4418B2 /* WatchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchStore.swift; sourceTree = "<group>"; };
+		508BD333628DA5F796703A05 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		50A6EEF9B55C165A9D3DBE3A /* WatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchBridge.swift; sourceTree = "<group>"; };
+		50B30C47CF51F97801CBAAA5 /* LibraryHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryHomeView.swift; sourceTree = "<group>"; };
+		594813A7DCA7E4DF567366EF /* InviteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteSheet.swift; sourceTree = "<group>"; };
+		5AF2727B03C5E5E0013D8A08 /* PlaylistsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistsView.swift; sourceTree = "<group>"; };
+		5FB6D97D7638167EDE4E5C4F /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		62B01BA1FCE2C81F7A37C779 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		64000F873C5960D6EB056C3C /* MacNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacNavigation.swift; sourceTree = "<group>"; };
+		645D7A92E2D6C16B022F6818 /* GenresView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenresView.swift; sourceTree = "<group>"; };
+		652AC6E18CDFF3BFD367FE50 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6544B0243192EE2F88FE8415 /* Skyr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Skyr.entitlements; sourceTree = "<group>"; };
+		7119DE395B61433117AB45F5 /* SkyrWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyrWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		73F67107430ADA54D387DE22 /* SkyrMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyrMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		74CE07649C500D2BB916B8CB /* WatchDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDownloads.swift; sourceTree = "<group>"; };
+		76999B3E83B1E35FE548B258 /* AlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumView.swift; sourceTree = "<group>"; };
+		76DE0D52AA1EDF4C76279121 /* FamilyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyView.swift; sourceTree = "<group>"; };
+		7B68C360A38677656809F12C /* SkyrCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SkyrCore; path = Packages/SkyrCore; sourceTree = SOURCE_ROOT; };
+		8CE3AB997C10C4D6F455FAC3 /* Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform.swift; sourceTree = "<group>"; };
+		8F8300C3725A73515B9C00AE /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		95629FDF867F6A21E4D67BB6 /* ProfileAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAvatarView.swift; sourceTree = "<group>"; };
+		9732916395F86A8F3B95F9C0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		98EA1B07C06B2A991E8BBB9F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		9E2023DA8DBF0BC310181698 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A242FD77040DD6B873089DE5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A2F4443F474A757E2D313398 /* Skyr.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Skyr.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5340DC2BFCE8A34AC303AFF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A561FFEF329CE08B5853237E /* WidgetPieces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetPieces.swift; sourceTree = "<group>"; };
+		AF1E9066A665139899E08E49 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		AFD9E68703127323E4DFC118 /* RemoteAccessGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAccessGuide.swift; sourceTree = "<group>"; };
+		B04638E49D6ADF4830637751 /* SkyrMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SkyrMac.entitlements; sourceTree = "<group>"; };
+		B246821D4F338E07E5DF4EBB /* PlaybackIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackIntents.swift; sourceTree = "<group>"; };
+		B2FFC8005FE1679550CDF0C0 /* AddToPlaylistSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddToPlaylistSheet.swift; sourceTree = "<group>"; };
+		B7FCED91E60862B34F01BD04 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		B95EF839D1679A898C48A390 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
+		BADC3FC81179141D26CCADE0 /* PINEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PINEntryView.swift; sourceTree = "<group>"; };
+		BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistView.swift; sourceTree = "<group>"; };
+		BF17A498A17C05B923557591 /* ServerDiscoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDiscoveryView.swift; sourceTree = "<group>"; };
+		BF6E2626A87738A64A16B1F3 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		C249CAA7CBBD030755FA55E5 /* ReleaseNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotesView.swift; sourceTree = "<group>"; };
+		C4779D6FF289985E8C4459BC /* SkyrTV.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SkyrTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C5E14E1EE5B9746B47582654 /* TVRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRootView.swift; sourceTree = "<group>"; };
+		C62FEFC567754EAB6BE56F91 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		CDB5B770F7494DCA273EDDAA /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
+		D0B671802E92818945920D95 /* MacPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPlayerBar.swift; sourceTree = "<group>"; };
+		D9DF322746A43E9949FB09C1 /* PlaylistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistDetailView.swift; sourceTree = "<group>"; };
+		DE6D2214D22A0EA49D985547 /* ProfilePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePickerView.swift; sourceTree = "<group>"; };
+		E22076B46BD19CA7A5CF674C /* SkyrTVApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyrTVApp.swift; sourceTree = "<group>"; };
+		E5315620CC0777E4A86DF765 /* SkyrWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SkyrWidgets.entitlements; sourceTree = "<group>"; };
+		EAACE8D0EE1D858436C3285A /* WatchPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlayer.swift; sourceTree = "<group>"; };
+		EF319001B11C89BAB57D5E4C /* MacSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSetupView.swift; sourceTree = "<group>"; };
+		F009469D88D2C0DF695B0362 /* JoinWithLinkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinWithLinkSheet.swift; sourceTree = "<group>"; };
+		F06FB342C0C5E493EABB9658 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F0CCEFE404B5B4A4A29194E1 /* PlaylistsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistsListView.swift; sourceTree = "<group>"; };
+		FDAC4329CDE50566FC5C8A5E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2E9F2D26BF4DB3135DD0E616 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4C5F57F2F4F071EDE2B546CF /* SkyrCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B45B4799EA6FC56F18F92999 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9A40BDE02EEEA5A041C0301E /* SkyrCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BEB77F6EB57DDC4CF7C150B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0298A754D9858ED6EA364C00 /* SkyrShared in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D67848EFAA03314F4CD400F8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A4596CD2C1AAB60D2BD77048 /* SkyrCore in Frameworks */,
+				DFF67284634282FFEAEDB74A /* SkyrShared in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EDCD8514E2D2CB673A24E628 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				49F7D3A1CA28C66D546E4B5B /* SkyrCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0CB80B3068424DF605BC10F0 /* SkyrWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				1C1C3BAAC9E91767DF359608 /* DownloadLiveActivity.swift */,
+				1DE48E86000F79FABF497C05 /* DownloadsWidget.swift */,
+				9E2023DA8DBF0BC310181698 /* Info.plist */,
+				42FA1EB27E94507C208E3F2A /* PlaylistsWidget.swift */,
+				62B01BA1FCE2C81F7A37C779 /* PrivacyInfo.xcprivacy */,
+				3942EFC950D7551434BE5B76 /* RediscoverWidget.swift */,
+				2165359FA4FD48C8C7533A36 /* SkyrHomeWidget.swift */,
+				E5315620CC0777E4A86DF765 /* SkyrWidgets.entitlements */,
+				3C5BDA8A2E4DF6D45A4240D3 /* SkyrWidgetsBundle.swift */,
+				A561FFEF329CE08B5853237E /* WidgetPieces.swift */,
+			);
+			path = SkyrWidgets;
+			sourceTree = "<group>";
+		};
+		158F253942486213F5A2DDD5 /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				109C0D3C9C7619A07BD64D02 /* NowPlayingView.swift */,
+			);
+			path = Player;
+			sourceTree = "<group>";
+		};
+		1ED547F3ADA1A4066E02CFB2 /* Artist */ = {
+			isa = PBXGroup;
+			children = (
+				BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */,
+			);
+			path = Artist;
+			sourceTree = "<group>";
+		};
+		2662AEC511DD82D6B1E62386 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				BF6E2626A87738A64A16B1F3 /* DiagnosticsView.swift */,
+				1D2370B6FFC67940F379B9D3 /* DownloadsView.swift */,
+				76DE0D52AA1EDF4C76279121 /* FamilyView.swift */,
+				C249CAA7CBBD030755FA55E5 /* ReleaseNotesView.swift */,
+				15F92BAE0C6EE7A01CCAEA12 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		2D4E1BC140ACDB29F90688AE /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				508BD333628DA5F796703A05 /* Components.swift */,
+				17E88961FDFDEF9C5E4D1714 /* DownloadButton.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		2FE58606EB26302F47E64586 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */,
+				8CE3AB997C10C4D6F455FAC3 /* Platform.swift */,
+				1D6EE678F97602207BC1885D /* Theme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		3EA3E9CC036CFD20AF7373DC /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				D9DF322746A43E9949FB09C1 /* PlaylistDetailView.swift */,
+				F0CCEFE404B5B4A4A29194E1 /* PlaylistsListView.swift */,
+				B95EF839D1679A898C48A390 /* WatchRootView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		4C7C9E53485E9E654E306911 /* SkyrTV */ = {
+			isa = PBXGroup;
+			children = (
+				A242FD77040DD6B873089DE5 /* Info.plist */,
+				193085B15767A136FFF4F666 /* SkyrTV.entitlements */,
+				E22076B46BD19CA7A5CF674C /* SkyrTVApp.swift */,
+				C5E14E1EE5B9746B47582654 /* TVRootView.swift */,
+			);
+			path = SkyrTV;
+			sourceTree = "<group>";
+		};
+		58CEDA3AC41A0F153D17B071 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				7B68C360A38677656809F12C /* SkyrCore */,
+			);
+			path = Packages;
+			sourceTree = "<group>";
+		};
+		8A8FA65F48B77867358C375A /* Profiles */ = {
+			isa = PBXGroup;
+			children = (
+				594813A7DCA7E4DF567366EF /* InviteSheet.swift */,
+				F009469D88D2C0DF695B0362 /* JoinWithLinkSheet.swift */,
+				13F5E1450E44185EBECE7372 /* Permissions.swift */,
+				BADC3FC81179141D26CCADE0 /* PINEntryView.swift */,
+				95629FDF867F6A21E4D67BB6 /* ProfileAvatarView.swift */,
+				0F9A9F88F442CFB1E42B35F0 /* ProfileEditorSheet.swift */,
+				DE6D2214D22A0EA49D985547 /* ProfilePickerView.swift */,
+			);
+			path = Profiles;
+			sourceTree = "<group>";
+		};
+		963BEEC1A40A313A9EBBCB90 /* Skyr */ = {
+			isa = PBXGroup;
+			children = (
+				9732916395F86A8F3B95F9C0 /* Assets.xcassets */,
+				15B7C2F4BEF633F0E7682829 /* Info.plist */,
+				A5340DC2BFCE8A34AC303AFF /* PrivacyInfo.xcprivacy */,
+				6544B0243192EE2F88FE8415 /* Skyr.entitlements */,
+				4796DA83A1A3251FE96C44B8 /* SkyrApp.swift */,
+				50A6EEF9B55C165A9D3DBE3A /* WatchBridge.swift */,
+				DE0EF8D36A0DEF2434E4F6CE /* CarPlay */,
+				EA291A26252ADDE35AC2B504 /* Shared */,
+				2FE58606EB26302F47E64586 /* Theme */,
+				C1A721E9D81068C0D09D32AA /* Views */,
+			);
+			path = Skyr;
+			sourceTree = "<group>";
+		};
+		972C9AEEE98DB0E311BBB503 /* SkyrWatch */ = {
+			isa = PBXGroup;
+			children = (
+				652AC6E18CDFF3BFD367FE50 /* Info.plist */,
+				F06FB342C0C5E493EABB9658 /* PrivacyInfo.xcprivacy */,
+				29FCE943D299378E6086D87D /* SkyrWatchApp.swift */,
+				74CE07649C500D2BB916B8CB /* WatchDownloads.swift */,
+				EAACE8D0EE1D858436C3285A /* WatchPlayer.swift */,
+				4861070908870505AA4418B2 /* WatchStore.swift */,
+				3EA3E9CC036CFD20AF7373DC /* Views */,
+			);
+			path = SkyrWatch;
+			sourceTree = "<group>";
+		};
+		9A352F7F772248F16C181157 /* Search */ = {
+			isa = PBXGroup;
+			children = (
+				C62FEFC567754EAB6BE56F91 /* SearchView.swift */,
+			);
+			path = Search;
+			sourceTree = "<group>";
+		};
+		A5FD0D8FFB2700CB122EEC44 /* Album */ = {
+			isa = PBXGroup;
+			children = (
+				76999B3E83B1E35FE548B258 /* AlbumView.swift */,
+			);
+			path = Album;
+			sourceTree = "<group>";
+		};
+		A79CD9882C63E44BAEAA79A7 /* SkyrMac */ = {
+			isa = PBXGroup;
+			children = (
+				081C95020ED88399E5AB75C6 /* Info.plist */,
+				64000F873C5960D6EB056C3C /* MacNavigation.swift */,
+				D0B671802E92818945920D95 /* MacPlayerBar.swift */,
+				36FFE56E0B6BBE8C73F1A9D3 /* MacRootView.swift */,
+				EF319001B11C89BAB57D5E4C /* MacSetupView.swift */,
+				FDAC4329CDE50566FC5C8A5E /* PrivacyInfo.xcprivacy */,
+				B04638E49D6ADF4830637751 /* SkyrMac.entitlements */,
+				42380B2A1080CB70CDE4ED90 /* SkyrMacApp.swift */,
+			);
+			path = SkyrMac;
+			sourceTree = "<group>";
+		};
+		AFBBE9ACCCA7A4CD17E8F3BB /* Playlists */ = {
+			isa = PBXGroup;
+			children = (
+				B2FFC8005FE1679550CDF0C0 /* AddToPlaylistSheet.swift */,
+				5AF2727B03C5E5E0013D8A08 /* PlaylistsView.swift */,
+			);
+			path = Playlists;
+			sourceTree = "<group>";
+		};
+		B67E445C6E5B94AC2CC01402 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A2F4443F474A757E2D313398 /* Skyr.app */,
+				73F67107430ADA54D387DE22 /* SkyrMac.app */,
+				C4779D6FF289985E8C4459BC /* SkyrTV.app */,
+				7119DE395B61433117AB45F5 /* SkyrWatch.app */,
+				0383B42257D7C67DC50736B3 /* SkyrWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C1A721E9D81068C0D09D32AA /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				5FB6D97D7638167EDE4E5C4F /* RootView.swift */,
+				A5FD0D8FFB2700CB122EEC44 /* Album */,
+				1ED547F3ADA1A4066E02CFB2 /* Artist */,
+				2D4E1BC140ACDB29F90688AE /* Components */,
+				EBA69E551664C1CBAE059585 /* Connect */,
+				CFDA6D328E3EBC2B70BB523A /* Library */,
+				E113C31065C780A896F6109B /* Main */,
+				158F253942486213F5A2DDD5 /* Player */,
+				AFBBE9ACCCA7A4CD17E8F3BB /* Playlists */,
+				8A8FA65F48B77867358C375A /* Profiles */,
+				9A352F7F772248F16C181157 /* Search */,
+				2662AEC511DD82D6B1E62386 /* Settings */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		CFDA6D328E3EBC2B70BB523A /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				318CE4E53FA5678964B51521 /* ArtistsListView.swift */,
+				3E8C28E8B21EB4ACC5E6ECAA /* GenreEditorSheet.swift */,
+				645D7A92E2D6C16B022F6818 /* GenresView.swift */,
+				50B30C47CF51F97801CBAAA5 /* LibraryHomeView.swift */,
+				B7FCED91E60862B34F01BD04 /* LibraryView.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		DE0EF8D36A0DEF2434E4F6CE /* CarPlay */ = {
+			isa = PBXGroup;
+			children = (
+				CDB5B770F7494DCA273EDDAA /* CarPlaySceneDelegate.swift */,
+			);
+			path = CarPlay;
+			sourceTree = "<group>";
+		};
+		E113C31065C780A896F6109B /* Main */ = {
+			isa = PBXGroup;
+			children = (
+				AF1E9066A665139899E08E49 /* MainTabView.swift */,
+				23ABC3572C96C17C1826EABF /* MiniPlayerView.swift */,
+			);
+			path = Main;
+			sourceTree = "<group>";
+		};
+		E8BFAAFFE5B563AB051F0BFC = {
+			isa = PBXGroup;
+			children = (
+				58CEDA3AC41A0F153D17B071 /* Packages */,
+				963BEEC1A40A313A9EBBCB90 /* Skyr */,
+				A79CD9882C63E44BAEAA79A7 /* SkyrMac */,
+				4C7C9E53485E9E654E306911 /* SkyrTV */,
+				972C9AEEE98DB0E311BBB503 /* SkyrWatch */,
+				0CB80B3068424DF605BC10F0 /* SkyrWidgets */,
+				B67E445C6E5B94AC2CC01402 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EA291A26252ADDE35AC2B504 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				B246821D4F338E07E5DF4EBB /* PlaybackIntents.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		EBA69E551664C1CBAE059585 /* Connect */ = {
+			isa = PBXGroup;
+			children = (
+				4047FC415D2744B36E067CD7 /* ConnectSheet.swift */,
+				31C2D58DC84E0E9E315B7573 /* FolderPickerView.swift */,
+				0C09C48D0BA5C3B6472CA915 /* IndexingView.swift */,
+				46A7E609C705A923E1A4A36B /* LoginSheet.swift */,
+				98EA1B07C06B2A991E8BBB9F /* OnboardingView.swift */,
+				AFD9E68703127323E4DFC118 /* RemoteAccessGuide.swift */,
+				BF17A498A17C05B923557591 /* ServerDiscoveryView.swift */,
+				16AAEECA63B8D43194D61D1A /* SetupPage.swift */,
+				8F8300C3725A73515B9C00AE /* WelcomeView.swift */,
+			);
+			path = Connect;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		47D2429DA586FAB7F5E98932 /* SkyrWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 41687C5A079B1764C5DA4255 /* Build configuration list for PBXNativeTarget "SkyrWatch" */;
+			buildPhases = (
+				9988DC8A176E69921BDA2682 /* Sources */,
+				F93EB9E3E909C48C28BE9CE0 /* Resources */,
+				2E9F2D26BF4DB3135DD0E616 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SkyrWatch;
+			packageProductDependencies = (
+				5A4B1E470A924AA870DBA618 /* SkyrCore */,
+			);
+			productName = SkyrWatch;
+			productReference = 7119DE395B61433117AB45F5 /* SkyrWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4889E7884BB8545F7256FA89 /* SkyrMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 12D8C6958B4F1A2552F6CE4F /* Build configuration list for PBXNativeTarget "SkyrMac" */;
+			buildPhases = (
+				9136C2318AED29D4F0915DBF /* Sources */,
+				0530DD5A4719BA7C019DB480 /* Resources */,
+				EDCD8514E2D2CB673A24E628 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SkyrMac;
+			packageProductDependencies = (
+				D87E21571D139435AA826D5B /* SkyrCore */,
+			);
+			productName = SkyrMac;
+			productReference = 73F67107430ADA54D387DE22 /* SkyrMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9D5C811B60DFFAF239E86B3F /* SkyrWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 980142767B6EF32F780615BB /* Build configuration list for PBXNativeTarget "SkyrWidgets" */;
+			buildPhases = (
+				72813D8FCE12459969A40FC5 /* Sources */,
+				AD791E5AC852656CDB506594 /* Resources */,
+				BEB77F6EB57DDC4CF7C150B5 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SkyrWidgets;
+			packageProductDependencies = (
+				28E0FC34241746F2CB1AD89C /* SkyrShared */,
+			);
+			productName = SkyrWidgets;
+			productReference = 0383B42257D7C67DC50736B3 /* SkyrWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B2526C35C7C7C59CE3554C49 /* Skyr */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1C4309A5A76D8E75A4940206 /* Build configuration list for PBXNativeTarget "Skyr" */;
+			buildPhases = (
+				CFC7C775FDB9E1010E30E722 /* Sources */,
+				1D93A8F309BE739731A2F3FF /* Resources */,
+				D67848EFAA03314F4CD400F8 /* Frameworks */,
+				C9A5811D8D0E9A82EF8BE746 /* Embed Foundation Extensions */,
+				A7132838CB7A9F5B65C11685 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9713140F577ADF2893098799 /* PBXTargetDependency */,
+				53034C79DF8519C41DF64866 /* PBXTargetDependency */,
+			);
+			name = Skyr;
+			packageProductDependencies = (
+				1E33945F4953F33ADCEFE1E2 /* SkyrCore */,
+				8701BD207DCAC954D95C5238 /* SkyrShared */,
+			);
+			productName = Skyr;
+			productReference = A2F4443F474A757E2D313398 /* Skyr.app */;
+			productType = "com.apple.product-type.application";
+		};
+		FFFCA73D7B3D4C09DE89E8F0 /* SkyrTV */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 55B4B8DB2A96FFEEBC25CEB0 /* Build configuration list for PBXNativeTarget "SkyrTV" */;
+			buildPhases = (
+				5714FD1DAA9B680692002180 /* Sources */,
+				86AD36BA24D5ACC08E21AD0D /* Resources */,
+				B45B4799EA6FC56F18F92999 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SkyrTV;
+			packageProductDependencies = (
+				86852829474D95AE0BD47C4C /* SkyrCore */,
+			);
+			productName = SkyrTV;
+			productReference = C4779D6FF289985E8C4459BC /* SkyrTV.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CEDEEA3CF2950406745437F4 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					47D2429DA586FAB7F5E98932 = {
+						DevelopmentTeam = C6GW4A76XK;
+						ProvisioningStyle = Automatic;
+					};
+					4889E7884BB8545F7256FA89 = {
+						DevelopmentTeam = C6GW4A76XK;
+						ProvisioningStyle = Automatic;
+					};
+					9D5C811B60DFFAF239E86B3F = {
+						DevelopmentTeam = C6GW4A76XK;
+						ProvisioningStyle = Automatic;
+					};
+					B2526C35C7C7C59CE3554C49 = {
+						DevelopmentTeam = C6GW4A76XK;
+						ProvisioningStyle = Automatic;
+					};
+					FFFCA73D7B3D4C09DE89E8F0 = {
+						DevelopmentTeam = C6GW4A76XK;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 7B9F75FEBE2A26F91C0A48C6 /* Build configuration list for PBXProject "Skyr" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E8BFAAFFE5B563AB051F0BFC;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A7A866122BD94AFE1D650011 /* XCLocalSwiftPackageReference "Packages/SkyrCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B67E445C6E5B94AC2CC01402 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B2526C35C7C7C59CE3554C49 /* Skyr */,
+				9D5C811B60DFFAF239E86B3F /* SkyrWidgets */,
+				47D2429DA586FAB7F5E98932 /* SkyrWatch */,
+				4889E7884BB8545F7256FA89 /* SkyrMac */,
+				FFFCA73D7B3D4C09DE89E8F0 /* SkyrTV */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0530DD5A4719BA7C019DB480 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				284ED77622DE2134267CBDDE /* Assets.xcassets in Resources */,
+				9EB1CD3A4A578BC052D68F62 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1D93A8F309BE739731A2F3FF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				05FB9815D74D21AE4BFA4F67 /* Assets.xcassets in Resources */,
+				4862D7D34A823AF66A9BEA84 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		86AD36BA24D5ACC08E21AD0D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A9EE2E9028BE364C65FBDD6E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AD791E5AC852656CDB506594 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DBDCE5A3D91281EE1AC12C41 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F93EB9E3E909C48C28BE9CE0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DAD29E4964A4F229B487303F /* Assets.xcassets in Resources */,
+				D336492CFC599BFA51FFEA1F /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5714FD1DAA9B680692002180 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				53A19656B6869BA72C806FE1 /* AddToPlaylistSheet.swift in Sources */,
+				381935247CB6E48FC3EF2611 /* AlbumView.swift in Sources */,
+				73251E8FCE80585FADDDB948 /* ArtistView.swift in Sources */,
+				B4C8361B2467B9E6C975652E /* ArtistsListView.swift in Sources */,
+				9B192C196B10D3D8B02F30B8 /* ArtworkView.swift in Sources */,
+				9AD1C08127EA737A6A970505 /* Components.swift in Sources */,
+				2C4CFE124EE1401586E17735 /* ConnectSheet.swift in Sources */,
+				206A6D190DD9D65A82961675 /* DiagnosticsView.swift in Sources */,
+				E0B81D5A11A1B7972478DB5E /* DownloadButton.swift in Sources */,
+				C573C7D937326A37ACE38830 /* DownloadsView.swift in Sources */,
+				588D952890C3D53FBDB37840 /* FamilyView.swift in Sources */,
+				EBC55E3A2BC6F9D8EB5AE4BA /* FolderPickerView.swift in Sources */,
+				E8E2D1B8996C211979A9CBC0 /* GenreEditorSheet.swift in Sources */,
+				A8954A950EF55C5CF8354812 /* GenresView.swift in Sources */,
+				6FD18E850C91F03A1381C69F /* IndexingView.swift in Sources */,
+				60ED5E3EFA324EED03BB5B74 /* InviteSheet.swift in Sources */,
+				FB75E88CA7839052C19EDE95 /* JoinWithLinkSheet.swift in Sources */,
+				F6E15AEAAF259B7E6D9C9137 /* LibraryHomeView.swift in Sources */,
+				F6A250D78C1379618809F2AF /* LibraryView.swift in Sources */,
+				3DAC5B49DD42867EB1E93C72 /* LoginSheet.swift in Sources */,
+				F8D31C9D59591C2079D006B5 /* NowPlayingView.swift in Sources */,
+				6F22CD743533E7DCAA316409 /* OnboardingView.swift in Sources */,
+				5940B62E4C1F31FB656BF1FC /* PINEntryView.swift in Sources */,
+				464D44582379E45B2BDD0990 /* Permissions.swift in Sources */,
+				DB53E0B2E0133AC6B510F69A /* Platform.swift in Sources */,
+				2AA5737BDDA573E3A0CD1A0E /* PlaylistsView.swift in Sources */,
+				CB977DD49E073C5ACA2D37C4 /* ProfileAvatarView.swift in Sources */,
+				44EAC9DDFA95176B583E8D6C /* ProfileEditorSheet.swift in Sources */,
+				931CC821F47238C49AEFE877 /* ProfilePickerView.swift in Sources */,
+				24D3D174048F901E1A41C693 /* ReleaseNotesView.swift in Sources */,
+				7EA13D39C9FC899DE575CBE8 /* RemoteAccessGuide.swift in Sources */,
+				A7B56B6652D814E3281B3D51 /* RootView.swift in Sources */,
+				0F55C995EFC7CB078C49B6E4 /* SearchView.swift in Sources */,
+				1865BF2AF32431EC768C731A /* ServerDiscoveryView.swift in Sources */,
+				965AEAEDF041CF21FD5DA850 /* SettingsView.swift in Sources */,
+				B64963A171FD00C0CABCE0E6 /* SetupPage.swift in Sources */,
+				AA55B3E1EC4150521888AB62 /* SkyrTVApp.swift in Sources */,
+				68246BB1E37EA128E6586A19 /* TVRootView.swift in Sources */,
+				511890FC241E0EF5E8ACA162 /* Theme.swift in Sources */,
+				6BA74B326F33641D0BD942F6 /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		72813D8FCE12459969A40FC5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01F0B72AE8638DDFCF5A8771 /* DownloadLiveActivity.swift in Sources */,
+				04517348ABB438716EDEE913 /* DownloadsWidget.swift in Sources */,
+				A7C19D0C9C1870775094A1E7 /* PlaybackIntents.swift in Sources */,
+				79AB09648F40C7538D23183B /* PlaylistsWidget.swift in Sources */,
+				2B57D6A227345CEBF3AED2F3 /* RediscoverWidget.swift in Sources */,
+				0079364E9532D8C4FECDA213 /* SkyrHomeWidget.swift in Sources */,
+				A0732CF36FC3AA339239C5B2 /* SkyrWidgetsBundle.swift in Sources */,
+				9AD2451CD489F9710B6CABAB /* WidgetPieces.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9136C2318AED29D4F0915DBF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F7D665A823FE69E54B16540F /* AddToPlaylistSheet.swift in Sources */,
+				32ABDCC9D4307AF6BD9E050B /* AlbumView.swift in Sources */,
+				2BB30932586C729F1929B329 /* ArtistView.swift in Sources */,
+				C3B836D3111C5881731A3BBA /* ArtistsListView.swift in Sources */,
+				DD26C096599F207141DECDD1 /* ArtworkView.swift in Sources */,
+				FC3B2DD9F53B7C6B65D3841B /* Components.swift in Sources */,
+				7DC58CFF77E4AD615CBBF991 /* ConnectSheet.swift in Sources */,
+				C361FE619B9AC39BCC0C42B3 /* DiagnosticsView.swift in Sources */,
+				987D9D902702E816C21063FA /* DownloadButton.swift in Sources */,
+				826C657A5BDE0125809DED19 /* DownloadsView.swift in Sources */,
+				21823B828C8395C811753D97 /* FamilyView.swift in Sources */,
+				40909950FA30383C26FE3E17 /* FolderPickerView.swift in Sources */,
+				6A1C62D0123857DFB5CB2A5B /* GenreEditorSheet.swift in Sources */,
+				156AB1CFB5E9BE8418575A56 /* GenresView.swift in Sources */,
+				EE1B043F98BA68966345AE92 /* IndexingView.swift in Sources */,
+				31C78B1871DAA0DF7172894F /* InviteSheet.swift in Sources */,
+				A341DB6534420EB91CC81961 /* JoinWithLinkSheet.swift in Sources */,
+				C4F48A882E2F0ECCE7DF612F /* LibraryHomeView.swift in Sources */,
+				348B902A3731E164CEABD1A8 /* LibraryView.swift in Sources */,
+				69225495367BACC9A8566F96 /* LoginSheet.swift in Sources */,
+				EEFFDC1F4F8C32F1C1F0F48C /* MacNavigation.swift in Sources */,
+				6AFEE65D46CC8852AB7F4660 /* MacPlayerBar.swift in Sources */,
+				44E07C99829272FA4FEA9DA8 /* MacRootView.swift in Sources */,
+				12F7B27AE8D531F2C5FB83A9 /* MacSetupView.swift in Sources */,
+				BBA724B9A3B8AEF6FC4DE0B8 /* NowPlayingView.swift in Sources */,
+				3D41BEDA1FAD49FFA00BCB27 /* OnboardingView.swift in Sources */,
+				AE43D8ABD1FBA97DA7377089 /* PINEntryView.swift in Sources */,
+				8D800B621C7C0D52C2E605FC /* Permissions.swift in Sources */,
+				5D940A757AE2685205AAC1E4 /* Platform.swift in Sources */,
+				4A924109A6D66E2F3E7BC5D7 /* PlaylistsView.swift in Sources */,
+				09444DE2609B45746AA1FFB7 /* ProfileAvatarView.swift in Sources */,
+				6C827E240CC42B8B4564C224 /* ProfileEditorSheet.swift in Sources */,
+				8F3106315A5EC93C61205BE7 /* ProfilePickerView.swift in Sources */,
+				98875DE50DD7BEA58C4CA887 /* ReleaseNotesView.swift in Sources */,
+				C9A0B0A4D3C1A1E2DF049957 /* RemoteAccessGuide.swift in Sources */,
+				0500BAF15889E9E1A26640B4 /* RootView.swift in Sources */,
+				BF92161D2A516454CF34E9B5 /* SearchView.swift in Sources */,
+				6027A67DDF082E66E41222FD /* ServerDiscoveryView.swift in Sources */,
+				11D88606EB129C89906DACB6 /* SettingsView.swift in Sources */,
+				13DE8CB82C6F13042D14095F /* SetupPage.swift in Sources */,
+				BECDC4D9C8BA42FC84A82656 /* SkyrMacApp.swift in Sources */,
+				95E88304CFCC0F71F9545B71 /* Theme.swift in Sources */,
+				0BAB43F8EE4459C1C0A2A783 /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9988DC8A176E69921BDA2682 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59675305C271743889344CCB /* PlaylistDetailView.swift in Sources */,
+				673D1EBBC06AD5ECA3DDE8A6 /* PlaylistsListView.swift in Sources */,
+				9DBF2499BADA63DF28EFC40A /* SkyrWatchApp.swift in Sources */,
+				D0589918808720A97BFE9F41 /* WatchDownloads.swift in Sources */,
+				E8B61B9C128B83D89AB53EC4 /* WatchPlayer.swift in Sources */,
+				60EF1DDAEBBFFC8485FFE889 /* WatchRootView.swift in Sources */,
+				7434850786AA8A9470C493BF /* WatchStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CFC7C775FDB9E1010E30E722 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4CF4356C3536D19021D7D030 /* AddToPlaylistSheet.swift in Sources */,
+				65BAF229909129B9039159FB /* AlbumView.swift in Sources */,
+				FE5BAFFB9A5BEE2FE5D2808D /* ArtistView.swift in Sources */,
+				F8CCC54C8648F1E89308A107 /* ArtistsListView.swift in Sources */,
+				35F5226C6042EB5BB29A74D3 /* ArtworkView.swift in Sources */,
+				8B867D715DE5C35DCB890BE0 /* CarPlaySceneDelegate.swift in Sources */,
+				32F9DA7ED5FF5D23D7A606C2 /* Components.swift in Sources */,
+				0B8C97FD24280ADCB6DB5FFB /* ConnectSheet.swift in Sources */,
+				E8ED3A0140B1E90B3DE84D74 /* DiagnosticsView.swift in Sources */,
+				CE65845714C213D939242747 /* DownloadButton.swift in Sources */,
+				003880528CB5B68DCCAADFB9 /* DownloadsView.swift in Sources */,
+				E99BACF8C0C1398047A4B6CC /* FamilyView.swift in Sources */,
+				F72FA379588F9C53F6406B40 /* FolderPickerView.swift in Sources */,
+				E228B680BD53782F243ED4A0 /* GenreEditorSheet.swift in Sources */,
+				13B33E3F6C1BFE7E5BC09890 /* GenresView.swift in Sources */,
+				A1CBECBD80990B213A1BB685 /* IndexingView.swift in Sources */,
+				B214A7CC1C0AB3F9D145F8EA /* InviteSheet.swift in Sources */,
+				D75F9C60213A00BEB79BC38E /* JoinWithLinkSheet.swift in Sources */,
+				E0CCB5F5E6F7BD50EC76CF2F /* LibraryHomeView.swift in Sources */,
+				73321F54A26921D51251883B /* LibraryView.swift in Sources */,
+				81963E1B55CF02988239421C /* LoginSheet.swift in Sources */,
+				577CE8B71092831570408C70 /* MainTabView.swift in Sources */,
+				1FEB38BAD1784CD2322FF724 /* MiniPlayerView.swift in Sources */,
+				E4F1B663851D1B7D5FE8B0BF /* NowPlayingView.swift in Sources */,
+				87D43A1BA9344675A91D1735 /* OnboardingView.swift in Sources */,
+				A025AFB6A780B3A86E6CCD66 /* PINEntryView.swift in Sources */,
+				8E21D611D88A8D4623ACDDEE /* Permissions.swift in Sources */,
+				4723F99031CC95BE835285A8 /* Platform.swift in Sources */,
+				A36DCE5C657239B4D7F3E3DB /* PlaybackIntents.swift in Sources */,
+				6B4722C4C9C2E2F846F05CFF /* PlaylistsView.swift in Sources */,
+				BE62E6965994097D1CA76B49 /* ProfileAvatarView.swift in Sources */,
+				62AC9DEF5FE3E449B76292E6 /* ProfileEditorSheet.swift in Sources */,
+				F111D831F910411152A31CA3 /* ProfilePickerView.swift in Sources */,
+				518BAE5E9D358FD33C2C8A01 /* ReleaseNotesView.swift in Sources */,
+				4EB7547F4107CA85A6CC1178 /* RemoteAccessGuide.swift in Sources */,
+				C41C409DBDF21CFF525D3624 /* RootView.swift in Sources */,
+				940F339C19AF57D790372029 /* SearchView.swift in Sources */,
+				39577BF3A8D2106736D6FDDE /* ServerDiscoveryView.swift in Sources */,
+				8B173EE31F045681361E91AF /* SettingsView.swift in Sources */,
+				484736C65B6216E6E364F909 /* SetupPage.swift in Sources */,
+				84122FDFB453823FB6ED67A4 /* SkyrApp.swift in Sources */,
+				19807B05F9747C976EA493CF /* Theme.swift in Sources */,
+				54075CF5F402084C79ECBE6D /* WatchBridge.swift in Sources */,
+				44708B8A991BEB766B38E61F /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		53034C79DF8519C41DF64866 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 47D2429DA586FAB7F5E98932 /* SkyrWatch */;
+			targetProxy = 4F135B445C3C9186404EA3E7 /* PBXContainerItemProxy */;
+		};
+		9713140F577ADF2893098799 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9D5C811B60DFFAF239E86B3F /* SkyrWidgets */;
+			targetProxy = B645E7BC236BB6109EA5554A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0E6F8D6CDC4798020F499FDE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SkyrMac/SkyrMac.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = SkyrMac/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Debug;
+		};
+		475612CC15C9BF93E82F2188 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		4C4F56F94C169077A22136C0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = TVIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				CODE_SIGN_ENTITLEMENTS = SkyrTV/SkyrTV.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = SkyrTV/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = appletvos;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		5C584D05C9E0654603289117 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = TVIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				CODE_SIGN_ENTITLEMENTS = SkyrTV/SkyrTV.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = SkyrTV/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = appletvos;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		63312A1B790FA5B9D2FCFCE5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SkyrWidgets/SkyrWidgets.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = SkyrWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr.widgets;
+				PRODUCT_NAME = SkyrWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		676BBAA0328B462E83EE46C7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Skyr/Skyr.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = Skyr/Info.plist;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7089FF5EFF6332A57799631C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Skyr/Skyr.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = Skyr/Info.plist;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		7D05D6D306F57531FDBF042D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		8B4E9A7EA2BA986C529F022C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SkyrWidgets/SkyrWidgets.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = SkyrWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr.widgets;
+				PRODUCT_NAME = SkyrWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		ACFA20F69727CCCC323F5702 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = SkyrWatch/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr.watchkitapp;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		CB0F447976337EFB1CACE43E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SkyrMac/SkyrMac.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = SkyrMac/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Release;
+		};
+		F1CE2BD974BFDAD0DD05D1D1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6GW4A76XK;
+				INFOPLIST_FILE = SkyrWatch/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelvoltolini.skyr.watchkitapp;
+				PRODUCT_NAME = Skyr;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		12D8C6958B4F1A2552F6CE4F /* Build configuration list for PBXNativeTarget "SkyrMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0E6F8D6CDC4798020F499FDE /* Debug */,
+				CB0F447976337EFB1CACE43E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1C4309A5A76D8E75A4940206 /* Build configuration list for PBXNativeTarget "Skyr" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				676BBAA0328B462E83EE46C7 /* Debug */,
+				7089FF5EFF6332A57799631C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		41687C5A079B1764C5DA4255 /* Build configuration list for PBXNativeTarget "SkyrWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ACFA20F69727CCCC323F5702 /* Debug */,
+				F1CE2BD974BFDAD0DD05D1D1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		55B4B8DB2A96FFEEBC25CEB0 /* Build configuration list for PBXNativeTarget "SkyrTV" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4C4F56F94C169077A22136C0 /* Debug */,
+				5C584D05C9E0654603289117 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7B9F75FEBE2A26F91C0A48C6 /* Build configuration list for PBXProject "Skyr" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				475612CC15C9BF93E82F2188 /* Debug */,
+				7D05D6D306F57531FDBF042D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		980142767B6EF32F780615BB /* Build configuration list for PBXNativeTarget "SkyrWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				63312A1B790FA5B9D2FCFCE5 /* Debug */,
+				8B4E9A7EA2BA986C529F022C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A7A866122BD94AFE1D650011 /* XCLocalSwiftPackageReference "Packages/SkyrCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SkyrCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1E33945F4953F33ADCEFE1E2 /* SkyrCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkyrCore;
+		};
+		28E0FC34241746F2CB1AD89C /* SkyrShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkyrShared;
+		};
+		5A4B1E470A924AA870DBA618 /* SkyrCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkyrCore;
+		};
+		86852829474D95AE0BD47C4C /* SkyrCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkyrCore;
+		};
+		8701BD207DCAC954D95C5238 /* SkyrShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkyrShared;
+		};
+		D87E21571D139435AA826D5B /* SkyrCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkyrCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = CEDEEA3CF2950406745437F4 /* Project object */;
+}
