@@ -1,0 +1,154 @@
+{
+  "issue": 21,
+  "baselineCommit": "a9f202b3de8e5327f6fff052dedb199b27ff9fb2",
+  "patchSHA256": "80569e7776f5992feb24135058c1f406726055f983e39dfd7e6133e9433cdbc1",
+  "sourceHashes": {
+    "Packages/SkyrCore/Sources/SkyrCore/State/CatalogueCache.swift": "b3bc269333b86df58fb82ea5f7681f5ddd71bf66139a82cf6a01485b17ddb696",
+    "Packages/SkyrCore/Sources/SkyrCore/State/LibraryStore.swift": "753389b6859403f9ed81dc6da3e29002400b9cd0ec1a99fe1c9f2b92dff8b6be",
+    "Packages/SkyrCore/Tests/SkyrCoreTests/CatalogueCacheTests.swift": "2c229b24c3c3122ed267310aade7084518e355dccb6cf5044d34440e4e520183"
+  },
+  "observedBeforeFix": {
+    "scenario": "Older fully staged save finishes after newer completed save",
+    "visibleRoot": "/new",
+    "savedRoot": "/old"
+  },
+  "packageTests": {
+    "configuration": "Release",
+    "normalTestsPassed": 225,
+    "suites": 12,
+    "additionalFixtureEntrypointsIncluded": false,
+    "isolation": "Only AppDirectories.support redirected to temporary support storage; normal cache implementation unchanged"
+  },
+  "processTests": {
+    "scenariosPassed": 8,
+    "phasesPassed": 16,
+    "isolation": "Synthetic RemoteDrive and ConnectionServices; temporary support/defaults; writer uses _exit and reader starts fresh; no provider requests",
+    "results": [
+      {
+        "scenario": "quit",
+        "mode": "write",
+        "returncode": 0,
+        "success": true,
+        "result": "writer verified quit"
+      },
+      {
+        "scenario": "quit",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified quit"
+      },
+      {
+        "scenario": "cancel",
+        "mode": "write",
+        "returncode": 0,
+        "success": true,
+        "result": "writer verified cancel"
+      },
+      {
+        "scenario": "cancel",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified cancel"
+      },
+      {
+        "scenario": "scan-failure",
+        "mode": "write",
+        "returncode": 0,
+        "success": true,
+        "result": "writer verified scan-failure"
+      },
+      {
+        "scenario": "scan-failure",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified scan-failure"
+      },
+      {
+        "scenario": "successful",
+        "mode": "write",
+        "returncode": 0,
+        "success": true,
+        "result": "writer verified successful"
+      },
+      {
+        "scenario": "successful",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified successful"
+      },
+      {
+        "scenario": "other-port",
+        "mode": "write",
+        "returncode": 0,
+        "success": true,
+        "result": "writer verified other-port"
+      },
+      {
+        "scenario": "other-port",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified other-port"
+      },
+      {
+        "scenario": "other-account",
+        "mode": "write",
+        "returncode": 0,
+        "success": true,
+        "result": "writer verified other-account"
+      },
+      {
+        "scenario": "other-account",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified other-account"
+      },
+      {
+        "scenario": "stale-save",
+        "mode": "stale-save",
+        "returncode": 0,
+        "success": true,
+        "result": "stale staged save discarded; visible root /new, disk root /new"
+      },
+      {
+        "scenario": "stale-save",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified stale-save"
+      },
+      {
+        "scenario": "staged-exit",
+        "mode": "staged-exit",
+        "returncode": 0,
+        "success": true,
+        "result": "exit after complete staging retained previous committed cache"
+      },
+      {
+        "scenario": "staged-exit",
+        "mode": "read",
+        "returncode": 0,
+        "success": true,
+        "result": "reader verified staged-exit"
+      }
+    ]
+  },
+  "builds": {
+    "macOS": "Release unsigned passed",
+    "tvOS": "Release unsigned passed",
+    "iOSIncludingWatchAndWidgets": "Release unsigned passed"
+  },
+  "cleanup": "Only validated cache-specific staging files from a confirmed exited writer; live, unknown and reused PIDs retained",
+  "limits": [
+    "Process-termination recovery, not power-loss/fsync durability",
+    "Synthetic NAS and isolated process acceptance; final signed device/provider matrix remains issue 12"
+  ],
+  "uploadPerformed": false,
+  "marketingVersion": "1.0",
+  "sourceBuild": "202609142150"
+}
