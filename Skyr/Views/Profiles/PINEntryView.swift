@@ -4,13 +4,16 @@ import SwiftUI
 /// Four dots and a keypad. `submit` gets the four digits and returns false to shake and start over.
 struct PINEntryView: View {
     let submit: (String) -> Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var digits = ""
     @State private var shakes = 0
     @State private var isBusy = false
+    @State private var isInvalid = false
 
     private let keys: [String] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"]
 
     var body: some View {
+        let motionReduced = reduceMotion
         VStack(spacing: 30) {
             HStack(spacing: 18) {
                 ForEach(0..<4, id: \.self) { index in
@@ -22,7 +25,7 @@ struct PINEntryView: View {
                 }
             }
             .keyframeAnimator(initialValue: 0.0, trigger: shakes) { view, offset in
-                view.offset(x: offset)
+                view.offset(x: motionReduced ? 0 : offset)
             } keyframes: { _ in
                 KeyframeTrack {
                     CubicKeyframe(-14, duration: 0.07)
@@ -31,6 +34,12 @@ struct PINEntryView: View {
                     CubicKeyframe(5, duration: 0.05)
                     CubicKeyframe(0, duration: 0.05)
                 }
+            }
+            if isInvalid {
+                Text("That PIN didn’t match. Try again.")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .accessibilityAddTraits(.updatesFrequently)
             }
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(76), spacing: 22), count: 3), spacing: 16) {
                 ForEach(keys, id: \.self) { key in
@@ -66,6 +75,8 @@ struct PINEntryView: View {
     }
 
     private func tap(_ key: String) {
+        guard !isBusy else { return }
+        isInvalid = false
         if key == "⌫" {
             if !digits.isEmpty { digits.removeLast() }
             return
@@ -79,6 +90,7 @@ struct PINEntryView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(120))
             if !submit(entered) {
+                isInvalid = true
                 shakes += 1
                 try? await Task.sleep(for: .milliseconds(350))
                 digits = ""
@@ -138,7 +150,6 @@ struct PINSetupSheet: View {
 /// A locked profile: its PIN, or the device's own biometrics when the profile allows them here.
 struct UnlockSheet: View {
     let profile: Profile
-    let onUnlock: () -> Void
     @Environment(ProfileStore.self) private var profiles
     @Environment(\.dismiss) private var dismiss
     /// Switched on here, the PIN entered now is the last one this device asks for.
@@ -157,9 +168,8 @@ struct UnlockSheet: View {
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 22)
                 PINEntryView { pin in
-                    guard profiles.verify(pin: pin, for: profile) else { return false }
+                    guard profiles.activate(profile, pin: pin) else { return false }
                     if enableBiometrics { profiles.setBiometrics(true, for: profile) }
-                    onUnlock()
                     dismiss()
                     return true
                 }
@@ -168,7 +178,6 @@ struct UnlockSheet: View {
                         Button("Use \(biometry)", systemImage: biometry == "Face ID" ? "faceid" : "touchid") {
                             Task {
                                 if await profiles.unlockWithBiometrics(profile) {
-                                    onUnlock()
                                     dismiss()
                                 }
                             }

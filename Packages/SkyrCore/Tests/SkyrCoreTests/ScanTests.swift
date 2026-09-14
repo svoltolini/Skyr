@@ -31,10 +31,14 @@ private func entry(_ path: String, directory: Bool) -> RemoteEntry {
     for album in albums {
         tree[album] = (1...4).map { entry("\(album)/0\($0) Song.m4a", directory: false) }
     }
-    let indexer = LibraryIndexer()
+    let indexer = LibraryIndexer(recordDiagnostics: { _ in })
+    defer { indexer.cancel() }
     var received: Catalogue?
     indexer.start(drive: FakeDrive(tree: tree), rootPath: root, serverName: "Fake", existing: nil) { catalogue in
-        if received == nil { received = catalogue }
+        if received == nil {
+            received = catalogue
+            indexer.cancel()
+        }
     }
     // Wait for the scan to settle one way or the other, then report what it did.
     for _ in 0..<50 {

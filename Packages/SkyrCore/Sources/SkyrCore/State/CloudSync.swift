@@ -301,7 +301,7 @@ public final class CloudSync {
         }
         for standIn in standIns where profiles.profiles.count > 1 {
             diagnostics("Removing the stand-in profile “\(standIn.name)”: this iCloud account already has a profile")
-            profiles.delete(standIn)
+            profiles.discardStandIn(standIn)
         }
     }
 
@@ -336,10 +336,8 @@ public final class CloudSync {
         }
         if let user = currentUserRecordName, !profiles.profiles.contains(where: { $0.userRecordName == user }), let active = profiles.active {
             // The profile in use becomes this iCloud user's own, so their other devices open it directly.
-            var bound = active
-            bound.userRecordName = user
-            profiles.update(bound, echo: false)
-            if let stored = profiles.profiles.first(where: { $0.id == bound.id }) {
+            profiles.bindActiveProfile(to: user)
+            if let stored = profiles.profiles.first(where: { $0.id == active.id }) {
                 toSave.removeAll { $0.recordID.recordName == stored.id }
                 toSave.append(record(for: stored))
             }
@@ -719,7 +717,7 @@ public final class CloudSync {
     }
 }
 
-private extension ProfileState {
+extension ProfileState {
     /// Nothing favourited, played or made: the profile was never used.
     var isPristine: Bool {
         libraries.values.allSatisfy { $0.favourites.isEmpty && $0.playlists.isEmpty && $0.played.isEmpty }

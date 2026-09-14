@@ -93,3 +93,36 @@ struct ConnectSheet: View {
         }
     }
 }
+
+private struct ReauthenticationSheet: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content.sheet(item: Binding(
+            get: { model.stage == .ready ? model.pendingServer : nil },
+            set: { if $0 == nil { model.cancelSignIn() } }
+        )) { server in
+            LoginSheet(server: server)
+        }
+    }
+}
+
+private struct DownloadErrorAlert: ViewModifier {
+    @Environment(DownloadManager.self) private var downloads
+
+    func body(content: Content) -> some View {
+        content.alert("Download couldn't finish", isPresented: Binding(
+            get: { downloads.lastError != nil },
+            set: { if !$0 { downloads.clearError() } }
+        )) {
+            Button("OK") { downloads.clearError() }
+        } message: {
+            Text(downloads.lastError ?? "Reconnect to your NAS and try again.")
+        }
+    }
+}
+
+extension View {
+    func reauthenticationSheet() -> some View { modifier(ReauthenticationSheet()) }
+    func downloadErrorAlert() -> some View { modifier(DownloadErrorAlert()) }
+}

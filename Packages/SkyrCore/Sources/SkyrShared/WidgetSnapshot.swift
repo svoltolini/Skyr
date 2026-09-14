@@ -179,47 +179,177 @@ public nonisolated enum WidgetStore {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupIdentifier)
     }
 
-    private static var snapshotURL: URL? { containerURL?.appending(path: "widget-snapshot.json") }
-    private static var coversURL: URL? { containerURL?.appending(path: "widget-covers", directoryHint: .isDirectory) }
+    private static let storage = Storage(directory: containerURL)
 
-    public static func load() -> WidgetSnapshot? {
-        guard let url = snapshotURL, let data = try? Data(contentsOf: url) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(WidgetSnapshot.self, from: data)
+    public static func load() -> WidgetSnapshot? { storage.load() }
+    public static func coverURL(key: String, pixels: Int) -> URL? { storage.coverURL(key: key, pixels: pixels) }
+    public static func resetAuthorization() { storage.resetAuthorization() }
+    @discardableResult public static func setSession(_ sessionID: UUID?) -> Bool { storage.setSession(sessionID) }
+    public static func publication(for sessionID: UUID) -> Publication? { storage.publication(for: sessionID) }
+    public static func write(_ snapshot: WidgetSnapshot, publication: Publication, coverSources: [String: URL], heroKeys: Set<String>) async -> Bool {
+        await storage.write(snapshot, publication: publication, coverSources: coverSources, heroKeys: heroKeys)
     }
 
-    public static func coverURL(key: String, pixels: Int) -> URL? {
-        guard let url = coversURL?.appending(path: "\(key)-\(pixels).jpg") else { return nil }
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    fileprivate nonisolated struct Authorization: Codable, Equatable, Sendable {
+        let sessionID: UUID?
+        let generation: UUID
     }
 
-    /// Writes the snapshot and makes sure every cover it names exists in the sizes the widgets use,
-    /// resizing from the app's cover files. Copies nothing needs any more are deleted.
-    public static func write(_ snapshot: WidgetSnapshot, coverSources: [String: URL], heroKeys: Set<String>) {
-        guard let snapshotURL, let coversURL else { return }
-        try? FileManager.default.createDirectory(at: coversURL, withIntermediateDirectories: true)
-        var wanted: Set<String> = []
-        for (key, source) in coverSources {
-            var sizes = [tilePixels]
-            if heroKeys.contains(key) { sizes.append(heroPixels) }
-            for pixels in sizes {
-                let destination = coversURL.appending(path: "\(key)-\(pixels).jpg")
-                wanted.insert(destination.lastPathComponent)
-                if !FileManager.default.fileExists(atPath: destination.path) {
-                    resize(source, maxPixels: pixels, to: destination)
+    private nonisolated struct Envelope: Codable, Sendable {
+        let authorization: Authorization
+        let snapshot: WidgetSnapshot
+    }
+
+    /// A request belongs to one authenticated opening and one refresh. It cannot be reused after
+    /// a newer refresh, a lock, a profile switch, or a fresh launch of the app.
+    public nonisolated struct Publication: Sendable {
+        fileprivate let authorization: Authorization
+        fileprivate let revision: UInt64
+    }
+
+    /// The widget extension reads the same authorization marker as the publisher. Missing, older,
+    /// malformed, or revoked markers fail closed. An injected directory keeps tests out of App Group.
+    public nonisolated final class Storage: @unchecked Sendable {
+        private let directory: URL?
+        private let lock = NSLock()
+        private let writer = DispatchQueue(label: "com.samuelvoltolini.skyr.widget-publication", qos: .utility)
+        // Only the small authorization update and final snapshot commit hold this lock. Cover
+        // decoding and deletion run on the utility queue, so locking a profile does not wait on them.
+        private var authorization = Authorization(sessionID: nil, generation: UUID())
+        private var revision: UInt64 = 0
+
+        public init(directory: URL?) { self.directory = directory }
+
+        private var authorizationURL: URL? { directory?.appending(path: "widget-authorization.json") }
+        private var snapshotURL: URL? { directory?.appending(path: "widget-snapshot.json") }
+        private var coversURL: URL? { directory?.appending(path: "widget-covers", directoryHint: .isDirectory) }
+
+        public func resetAuthorization() { updateSession(nil, force: true) }
+
+        @discardableResult public func setSession(_ sessionID: UUID?) -> Bool { updateSession(sessionID, force: false) }
+
+        @discardableResult private func updateSession(_ sessionID: UUID?, force: Bool) -> Bool {
+            lock.withLock {
+                guard force || authorization.sessionID != sessionID else { return false }
+                authorization = Authorization(sessionID: sessionID, generation: UUID())
+                revision &+= 1
+                // Persist the boundary before returning to the profile picker. The single, small
+                // atomic marker write is synchronous; all expensive filesystem work stays off main.
+                if let authorizationURL {
+                    do {
+                        if let directory { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+                        try JSONEncoder().encode(authorization).write(to: authorizationURL, options: .atomic)
+                    } catch {
+                        // A failed write must not leave a previous opening authorized.
+                        try? FileManager.default.removeItem(at: authorizationURL)
+                    }
+                }
+                writer.async { [self] in purgeRevokedFiles() }
+                return true
+            }
+        }
+
+        public func publication(for sessionID: UUID) -> Publication? {
+            lock.withLock {
+                guard authorization.sessionID == sessionID, readAuthorization() == authorization else { return nil }
+                revision &+= 1
+                return Publication(authorization: authorization, revision: revision)
+            }
+        }
+
+        public func load() -> WidgetSnapshot? {
+            guard let envelope = authorizedEnvelope() else { return nil }
+            return envelope.snapshot
+        }
+
+        public func coverURL(key: String, pixels: Int) -> URL? {
+            guard safeKey(key), let envelope = authorizedEnvelope(), let coversURL else { return nil }
+            let url = coversURL.appending(path: envelope.authorization.generation.uuidString, directoryHint: .isDirectory)
+                .appending(path: "\(key)-\(pixels).jpg")
+            guard FileManager.default.fileExists(atPath: url.path), readAuthorization() == envelope.authorization else { return nil }
+            return url
+        }
+
+        private func authorizedEnvelope() -> Envelope? {
+            guard let access = readAuthorization(), access.sessionID != nil,
+                  let snapshotURL, let data = try? Data(contentsOf: snapshotURL) else { return nil }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            guard let envelope = try? decoder.decode(Envelope.self, from: data), envelope.authorization == access,
+                  readAuthorization() == access else { return nil }
+            return envelope
+        }
+
+        private func readAuthorization() -> Authorization? {
+            guard let authorizationURL, let data = try? Data(contentsOf: authorizationURL) else { return nil }
+            return try? JSONDecoder().decode(Authorization.self, from: data)
+        }
+
+        private func accepts(_ publication: Publication) -> Bool {
+            lock.withLock { acceptsUnderLock(publication) }
+        }
+
+        private func acceptsUnderLock(_ publication: Publication) -> Bool {
+            publication.authorization.sessionID != nil && publication.authorization == authorization
+                && publication.revision == revision && readAuthorization() == authorization
+        }
+
+        /// A serial writer avoids overlapping cover cleanup and publication. The revision is checked
+        /// again at the commit so cancelling a delayed task cannot allow an old snapshot to reappear.
+        public func write(_ snapshot: WidgetSnapshot, publication: Publication, coverSources: [String: URL], heroKeys: Set<String>) async -> Bool {
+            await withCheckedContinuation { continuation in
+                writer.async { [self] in
+                    continuation.resume(returning: publish(snapshot, publication: publication, coverSources: coverSources, heroKeys: heroKeys))
                 }
             }
         }
-        if let files = try? FileManager.default.contentsOfDirectory(at: coversURL, includingPropertiesForKeys: nil) {
-            for file in files where !wanted.contains(file.lastPathComponent) {
-                try? FileManager.default.removeItem(at: file)
+
+        private func publish(_ snapshot: WidgetSnapshot, publication: Publication, coverSources: [String: URL], heroKeys: Set<String>) -> Bool {
+            guard accepts(publication), let snapshotURL, let coversURL else { return false }
+            let copies = coversURL.appending(path: publication.authorization.generation.uuidString, directoryHint: .isDirectory)
+            do { try FileManager.default.createDirectory(at: copies, withIntermediateDirectories: true) } catch { return false }
+            var wanted: Set<String> = []
+            for (key, source) in coverSources where safeKey(key) {
+                var sizes = [WidgetStore.tilePixels]
+                if heroKeys.contains(key) { sizes.append(WidgetStore.heroPixels) }
+                for pixels in sizes {
+                    guard accepts(publication) else { return false }
+                    let destination = copies.appending(path: "\(key)-\(pixels).jpg")
+                    wanted.insert(destination.lastPathComponent)
+                    if !FileManager.default.fileExists(atPath: destination.path) {
+                        WidgetStore.resize(source, maxPixels: pixels, to: destination)
+                    }
+                }
             }
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            guard let data = try? encoder.encode(Envelope(authorization: publication.authorization, snapshot: snapshot)) else { return false }
+            let published = lock.withLock {
+                guard acceptsUnderLock(publication) else { return false }
+                do { try data.write(to: snapshotURL, options: .atomic); return true } catch { return false }
+            }
+            guard published else { return false }
+            if let files = try? FileManager.default.contentsOfDirectory(at: copies, includingPropertiesForKeys: nil) {
+                for file in files where !wanted.contains(file.lastPathComponent) { try? FileManager.default.removeItem(at: file) }
+            }
+            return true
         }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(snapshot) {
-            try? data.write(to: snapshotURL, options: .atomic)
+
+        private func purgeRevokedFiles() {
+            let access = readAuthorization()
+            if authorizedEnvelope() == nil, let snapshotURL { try? FileManager.default.removeItem(at: snapshotURL) }
+            guard let coversURL, let files = try? FileManager.default.contentsOfDirectory(at: coversURL, includingPropertiesForKeys: nil) else { return }
+            let allowedDirectory = access?.sessionID == nil ? nil : access?.generation.uuidString
+            for file in files where file.lastPathComponent != allowedDirectory { try? FileManager.default.removeItem(at: file) }
+        }
+
+        private func safeKey(_ key: String) -> Bool {
+            !key.isEmpty && key.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 || $0 == 95 }
+        }
+
+        /// Waits for copies and revocation cleanup already submitted to this store.
+        public func flush() async {
+            await withCheckedContinuation { continuation in writer.async { continuation.resume() } }
         }
     }
 

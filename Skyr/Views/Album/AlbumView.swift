@@ -7,6 +7,7 @@ struct AlbumView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
     @Environment(DownloadManager.self) private var downloads
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The album as the library has it now: colours, tags and track order can change after the page opens.
     private var live: Album { library.album(id: album.id) ?? album }
@@ -27,7 +28,7 @@ struct AlbumView: View {
                     .shadow(color: .black.opacity(0.4), radius: 28, y: 18)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.spring(duration: 0.7, bounce: 0.18)) { isFlipped.toggle() }
+                        withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.7, bounce: 0.18)) { isFlipped.toggle() }
                     }
                     .sensoryFeedback(.impact(weight: .light), trigger: isFlipped)
                     .accessibilityAddTraits(.isButton)
@@ -120,7 +121,7 @@ struct AlbumView: View {
         return DownloadButton(state: downloads.state(for: owner)) {
             switch downloads.state(for: owner) {
             case .none:
-                downloads.download(owner, driveID: library.catalogue.driveID) { track in
+                downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) { track in
                     library.streamURL(for: track, quality: .original)
                 }
             case .downloading:
@@ -201,6 +202,7 @@ struct TrackRow: View {
     @Environment(PlayerModel.self) private var player
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadManager.self) private var downloads
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAddingToPlaylist = false
 
     private var isCurrent: Bool { player.isCurrent(track: track) }
@@ -215,6 +217,7 @@ struct TrackRow: View {
                         if isCurrent {
                             Image(systemName: "speaker.wave.2.fill")
                                 .symbolEffect(.variableColor.iterative, isActive: player.isPlaying)
+                                .symbolEffectsRemoved(reduceMotion)
                                 .foregroundStyle(album.primaryColor)
                         } else {
                             Text(track.number, format: .number)

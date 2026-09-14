@@ -10,6 +10,7 @@ struct NowPlayingView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAddingToPlaylist = false
     @State private var previousTaps = 0
     @State private var nextTaps = 0
@@ -44,7 +45,7 @@ struct NowPlayingView: View {
                     if let album = player.album {
                         ArtworkView(album: album, cornerRadius: 16, size: .hero)
                             .id(album.id)
-                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                     } else {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(.quaternary)
@@ -54,8 +55,8 @@ struct NowPlayingView: View {
                 .animation(.easeInOut(duration: 0.35), value: player.album?.id)
                 .frame(maxWidth: artworkWidth)
                 .shadow(color: .black.opacity(0.45), radius: 36, y: 24)
-                .scaleEffect(player.isPlaying ? 1 : 0.86)
-                .animation(.spring(response: 0.55, dampingFraction: 0.8), value: player.isPlaying)
+                .scaleEffect(player.isPlaying || reduceMotion ? 1 : 0.86)
+                .animation(reduceMotion ? nil : .spring(response: 0.55, dampingFraction: 0.8), value: player.isPlaying)
                 .padding(.horizontal, 4)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: openAlbum)
@@ -70,7 +71,7 @@ struct NowPlayingView: View {
                         Image(systemName: library.isFavourite(track) ? "heart.fill" : "heart")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(library.isFavourite(track) ? Color.red : Color.primary)
-                            .contentTransition(.symbolEffect(.replace))
+                            .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
@@ -193,7 +194,7 @@ struct NowPlayingView: View {
                         Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
                             .font(.body.weight(.semibold))
                             .foregroundStyle(player.repeatMode == .off ? .secondary : .primary)
-                            .contentTransition(.symbolEffect(.replace))
+                            .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -209,6 +210,7 @@ struct NowPlayingView: View {
             .padding(.top, 36)
             .padding(.bottom, 44)
             .frame(maxWidth: .infinity)
+            .symbolEffectsRemoved(reduceMotion)
             .presentationDragIndicator(.visible)
             .presentationBackground {
                 ZStack {

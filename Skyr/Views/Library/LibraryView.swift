@@ -28,6 +28,17 @@ struct LibraryView: View {
                     if isEmptyLibrary {
                         emptyState
                     } else {
+                        if model.indexingFailure != nil {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Library update incomplete", systemImage: "exclamationmark.triangle")
+                                    .font(.headline)
+                                Text("Your previous library has been kept. " + emptyDescription)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Button("Retry Update") { model.rescan() }
+                            }
+                            .padding(20)
+                        }
                         #if !os(macOS)
                         LibraryFacetHeader()
                             .padding(.bottom, 8)

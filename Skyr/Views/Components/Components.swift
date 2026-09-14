@@ -163,6 +163,7 @@ struct QualityBars: View {
 
 /// A card with two faces that turns over around its vertical axis; the back is shown once the turn passes halfway.
 struct FlipView<Front: View, Back: View>: View, Animatable {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var angle: Double
     let front: Front
     let back: Back
@@ -184,15 +185,16 @@ struct FlipView<Front: View, Back: View>: View, Animatable {
                 front
             } else {
                 // Mirrored in advance so it reads correctly once the card has turned.
-                back.rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+                back.rotation3DEffect(.degrees(reduceMotion ? 0 : 180), axis: (x: 0, y: 1, z: 0))
             }
         }
-        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
+        .rotation3DEffect(.degrees(reduceMotion ? 0 : angle), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
     }
 }
 
 /// Press feedback for full-width rows: a faint highlight while the finger is down.
 struct RowPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(tvOS)
     @Environment(\.isFocused) private var isFocused
     #endif
@@ -204,7 +206,7 @@ struct RowPressStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.primary.opacity(isFocused ? 0.14 : 0))
             )
-            .scaleEffect(isFocused ? 1.02 : 1)
+            .scaleEffect(isFocused && !reduceMotion ? 1.02 : 1)
             .animation(.easeOut(duration: 0.18), value: isFocused)
         #else
         configuration.label
@@ -219,6 +221,7 @@ struct RowPressStyle: ButtonStyle {
 
 /// Press feedback for transport controls: a quick shrink and dim while the finger is down.
 struct TransportButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(tvOS)
     @Environment(\.isFocused) private var isFocused
     #endif
@@ -226,28 +229,30 @@ struct TransportButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         #if os(tvOS)
         configuration.label
-            .scaleEffect(isFocused ? 1.15 : 1)
+            .scaleEffect(isFocused && !reduceMotion ? 1.15 : 1)
             .shadow(color: .black.opacity(isFocused ? 0.35 : 0), radius: 20, y: 12)
-            .animation(.spring(duration: 0.28, bounce: 0.25), value: isFocused)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.28, bounce: 0.25), value: isFocused)
         #else
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.85 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.85 : 1)
             .opacity(configuration.isPressed ? 0.55 : 1)
-            .animation(.spring(duration: 0.28, bounce: 0.3), value: configuration.isPressed)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.28, bounce: 0.3), value: configuration.isPressed)
         #endif
     }
 }
 
 /// Play / pause glyph that morphs between states.
 struct PlayPauseGlyph: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let isPlaying: Bool
     var size: CGFloat = 16
 
     var body: some View {
         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
             .font(.system(size: size, weight: .semibold))
-            .contentTransition(.symbolEffect(.replace))
-            .animation(.snappy(duration: 0.25), value: isPlaying)
+            .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.25), value: isPlaying)
+            .symbolEffectsRemoved(reduceMotion)
     }
 }
 
@@ -326,13 +331,14 @@ private struct ArtworkSourceModifier: ViewModifier {
 private struct ArtworkZoomModifier: ViewModifier {
     let sourceID: String
     @Environment(\.artworkNamespace) private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         #if os(macOS)
         // The Mac pushes pages without a zoom; the matched source still marks the origin for later.
         content
         #else
-        if let namespace {
+        if let namespace, !reduceMotion {
             content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
         } else {
             content

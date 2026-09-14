@@ -11,6 +11,8 @@ struct RootView: View {
         ZStack {
             if model.stage == .ready {
                 MainTabView()
+                    .allowsHitTesting(!profiles.isLocked)
+                    .accessibilityHidden(profiles.isLocked)
                     .transition(.blurReplace)
             } else {
                 ConnectFlowView()

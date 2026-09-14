@@ -125,6 +125,7 @@ struct SkyrApp: App {
         let player = PlayerModel()
         AppDelegate.player = player
         let downloads = DownloadManager()
+        downloads.driveIDProvider = { [library] in library.catalogue.driveID }
         // Downloads from before profiles existed belong to the first profile.
         if !UserDefaults.standard.bool(forKey: "downloads.ownersScoped"), let owner = profiles.owner {
             downloads.adoptLegacyOwners(into: owner.id)
@@ -154,7 +155,12 @@ struct SkyrApp: App {
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
             widgetFeed.refresh()
         }
-        profiles.onDeactivate = { [player] in player.stop() }
+        profiles.onDeactivate = { [player, library, downloads, widgetFeed] in
+            player.stop()
+            downloads.activeProfileID = "locked"
+            library.loadProfileState()
+            widgetFeed.refresh()
+        }
         // The document changed on another device: show it.
         profiles.onRemoteState = { [library, model, player, profiles, widgetFeed] in
             library.loadProfileState()
@@ -173,22 +179,24 @@ struct SkyrApp: App {
             }
         }
         profiles.openAutomaticallyIfPossible()
-        widgetFeed.start(library: library, player: player, downloads: downloads)
+        widgetFeed.start(library: library, player: player, downloads: downloads, profiles: profiles)
         cloud.start()
         // A paired Apple Watch gets the active profile's playlists and its own way into the server.
         watchBridge.provider = { [library, model, profiles] in
-            guard model.stage == .ready else { return nil }
-            let profileName = profiles.profiles.first { $0.id == profiles.lastActiveID }?.name
+            guard model.stage == .ready, let active = profiles.active else { return nil }
+            let profileName = active.name
             let catalogue = library.watchCatalogue(serverName: model.connection?.name ?? "Skyr", profileName: profileName)
             return (catalogue, model.watchCredentials())
         }
         // Play tapped on a widget cover: the system performs the intent inside the app, in the
         // background when it has to launch it for that.
-        PlaybackIntentBridge.handler = { [library, player, model, downloads, widgetFeed] albumID in
-            guard let album = library.album(id: albumID) else { return }
+        PlaybackIntentBridge.handler = { [library, player, model, downloads, widgetFeed, profiles] albumID in
+            guard let sessionID = profiles.sessionID, let album = library.album(id: albumID) else { return }
+            let driveID = library.catalogue.driveID
             if downloads.state(for: downloads.owner(for: album)) != .downloaded {
                 await model.waitForDrive(upTo: .seconds(8))
             }
+            guard profiles.sessionID == sessionID, library.catalogue.driveID == driveID else { return }
             if player.album?.id == album.id, player.hasTrack {
                 player.togglePlayPause()
             } else {
@@ -220,6 +228,8 @@ struct SkyrApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .reauthenticationSheet()
+                .downloadErrorAlert()
                 .scrollIndicators(.hidden)
                 .onOpenURL { url in
                     // Something tapped on a Home Screen widget.
@@ -266,4 +276,3 @@ struct SkyrApp: App {
         }
     }
 }
-

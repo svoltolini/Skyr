@@ -4,6 +4,7 @@ import SwiftUI
 /// The album or playlist download control: an arrow at rest, a progress ring while files come down, and a check
 /// once everything is there. Completion implodes the ring, pops the check out and fires a small burst.
 struct DownloadButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let state: DownloadState
     let action: () -> Void
     @State private var celebration = 0
@@ -24,10 +25,10 @@ struct DownloadButton: View {
                 case .none:
                     Image(systemName: "arrow.down")
                         .font(.body.weight(.bold))
-                        .transition(.scale(scale: 0.5).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
                 case .downloading(let fraction, _, _):
                     ProgressRing(fraction: fraction)
-                        .transition(.asymmetric(
+                        .transition(reduceMotion ? .opacity : .asymmetric(
                             insertion: .scale(scale: 0.5).combined(with: .opacity),
                             removal: .scale(scale: 0.15).combined(with: .opacity)
                         ))
@@ -36,7 +37,7 @@ struct DownloadButton: View {
                         .font(.body.weight(.bold))
                         .foregroundStyle(Palette.onInk)
                         .symbolEffect(.bounce, options: .speed(1.1), value: celebration)
-                        .transition(.scale(scale: 0.3).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.3).combined(with: .opacity))
                 }
             }
             .frame(width: 50, height: 50)
@@ -44,14 +45,17 @@ struct DownloadButton: View {
                 Circle()
                     .fill(Palette.ink)
                     .opacity(phase == .downloaded ? 1 : 0)
-                    .scaleEffect(phase == .downloaded ? 1 : 0.3)
+                    .scaleEffect(phase == .downloaded || reduceMotion ? 1 : 0.3)
             }
             .glassEffect(.regular.interactive(), in: Circle())
-            .overlay { Burst(trigger: celebration) }
-            .animation(.spring(duration: 0.5, bounce: 0.38), value: phase)
+            .overlay {
+                if !reduceMotion { Burst(trigger: celebration) }
+            }
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.5, bounce: 0.38), value: phase)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .symbolEffectsRemoved(reduceMotion)
         .onChange(of: state) { old, new in
             // Also celebrate when every song was already here and the download finished at once.
             if old != .downloaded, new == .downloaded { celebration += 1 }

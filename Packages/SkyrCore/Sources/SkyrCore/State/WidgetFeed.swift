@@ -43,22 +43,31 @@ public final class WidgetFeed {
     private var library: LibraryStore?
     private var player: PlayerModel?
     private var downloads: DownloadManager?
+    private var profiles: ProfileStore?
     private var pending: Task<Void, Never>?
 
-    public init() {}
+    public init() {
+        // A saved widget is not evidence that the profile opened in this app launch.
+        WidgetStore.resetAuthorization()
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
+    }
 
-    public func start(library: LibraryStore, player: PlayerModel, downloads: DownloadManager) {
+    public func start(library: LibraryStore, player: PlayerModel, downloads: DownloadManager, profiles: ProfileStore) {
         self.library = library
         self.player = player
         self.downloads = downloads
+        self.profiles = profiles
         observe()
         refresh()
     }
 
     private func observe() {
-        guard let library, let player, let downloads else { return }
+        guard let library, let player, let downloads, let profiles else { return }
         withObservationTracking {
             _ = Signature(library: library, player: player, downloads: downloads)
+            _ = profiles.sessionID
         } onChange: { [weak self] in
             // Fires before the change lands; the hop lets it finish before anything is read.
             Task { @MainActor in
@@ -71,7 +80,16 @@ public final class WidgetFeed {
 
     /// Writes a fresh snapshot shortly after being called; repeated calls within the delay coalesce.
     public func refresh() {
-        guard let library, let player, let downloads else { return }
+        pending?.cancel()
+        guard let library, let player, let downloads, let profiles else { return }
+        let sessionID = profiles.sessionID
+        let changed = WidgetStore.setSession(sessionID)
+        if changed {
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
+        guard let sessionID, let publication = WidgetStore.publication(for: sessionID) else { return }
         var sources: [String: URL] = [:]
         var heroKeys: Set<String> = []
         func describe(_ album: Album) -> WidgetSnapshot.Album {
@@ -126,13 +144,11 @@ public final class WidgetFeed {
         }
         let coverSources = sources
         let heroes = heroKeys
-        pending?.cancel()
         pending = Task {
             try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled else { return }
-            await Task.detached(priority: .utility) {
-                WidgetStore.write(snapshot, coverSources: coverSources, heroKeys: heroes)
-            }.value
+            guard !Task.isCancelled, profiles.sessionID == sessionID else { return }
+            let published = await WidgetStore.write(snapshot, publication: publication, coverSources: coverSources, heroKeys: heroes)
+            guard published else { return }
             #if canImport(WidgetKit)
             WidgetCenter.shared.reloadAllTimelines()
             #endif

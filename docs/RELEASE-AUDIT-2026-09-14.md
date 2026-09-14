@@ -8,6 +8,8 @@ Audit baseline: `73f85b74ab60a9707de2f744161b172d21ef5b4e`
 
 Repository: [svoltolini/Skyr](https://github.com/svoltolini/Skyr) (private)
 
+Follow-up: the owner approved remediation and the six private security issue payloads. See the [first remediation batch](REMEDIATION-2026-09-14.md) for current implementation, verification, and the missing scan-artifact publication blocker. The findings and results below preserve the original audit checkpoint.
+
 ## Release assessment
 
 Skyr is not ready for an unrestricted public 1.0 release at this checkpoint. The source compiles in Release configuration, the signed iPhone and Apple TV simulator experiences are visually coherent, and the app architecture is suitable for the intended product. The audit found failures in Watch downloads, offline download truthfulness, NAS/cache identity, interrupted indexing, two-factor reconnection, CloudKit convergence, profile authorization, and distribution validation.

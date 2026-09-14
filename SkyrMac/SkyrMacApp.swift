@@ -66,6 +66,7 @@ struct SkyrMacApp: App {
         let player = PlayerModel()
         MacAppDelegate.player = player
         let downloads = DownloadManager()
+        downloads.driveIDProvider = { [library] in library.catalogue.driveID }
         if !UserDefaults.standard.bool(forKey: "downloads.ownersScoped"), let owner = profiles.owner {
             downloads.adoptLegacyOwners(into: owner.id)
             UserDefaults.standard.set(true, forKey: "downloads.ownersScoped")
@@ -93,7 +94,11 @@ struct SkyrMacApp: App {
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
         }
-        profiles.onDeactivate = { [player] in player.stop() }
+        profiles.onDeactivate = { [player, library, downloads] in
+            player.stop()
+            downloads.activeProfileID = "locked"
+            library.loadProfileState()
+        }
         profiles.onRemoteState = { [library, model, player, profiles] in
             library.loadProfileState()
             model.applyProfileSettings()
@@ -120,7 +125,7 @@ struct SkyrMacApp: App {
 
     var body: some Scene {
         WindowGroup("Skyr", id: "main") {
-            wired(MacRootView())
+            wired(MacRootView().reauthenticationSheet().downloadErrorAlert())
                 .onAppear { MacSetupSnapshots.runIfRequested(model: model) }
                 .onChange(of: scenePhase) { _, phase in
                     model.scenePhaseChanged(phase)

@@ -11,7 +11,7 @@ struct Permissions {
 
     init(profiles: ProfileStore, cloud: CloudSync) {
         let active = profiles.active
-        isHost = cloud.isOwner && active?.role == .owner
+        isHost = profiles.canManageProfiles
         isSelf = active?.userRecordName != nil && active?.userRecordName == cloud.currentUserRecordName
     }
 
@@ -25,6 +25,6 @@ struct Permissions {
     var canLeave: Bool { isHost || isSelf }
 
     func canEdit(_ profile: Profile, profiles: ProfileStore) -> Bool {
-        canManageProfiles || profile.id == profiles.activeID
+        profiles.canEdit(profile)
     }
 }

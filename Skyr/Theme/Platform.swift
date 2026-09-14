@@ -60,12 +60,13 @@ extension View {
 /// behind the whole button, boxing in the title beneath the cover.
 struct CoverFocusStyle: ButtonStyle {
     @Environment(\.isFocused) private var isFocused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(isFocused ? 1.08 : 1)
+            .scaleEffect(isFocused && !reduceMotion ? 1.08 : 1)
             .shadow(color: .black.opacity(isFocused ? 0.45 : 0), radius: 24, y: 16)
-            .animation(.spring(duration: 0.3, bounce: 0.2), value: isFocused)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.3, bounce: 0.2), value: isFocused)
     }
 }
 #endif
