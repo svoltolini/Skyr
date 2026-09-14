@@ -114,7 +114,8 @@ struct DownloadRestorationTests {
         try await callbacksHaveRun()
         #expect(!backgroundCompleted)
         #expect(harness.manager.records.isEmpty)
-        #expect(FileManager.default.fileExists(atPath: destination.path))
+        #expect(FileManager.default.fileExists(atPath: harness.directory.appending(path: job.incomingFileName).path))
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
 
         // Finished tasks may already be absent from URLSession's active-task enumeration.
         harness.restoreWithoutActiveTasks()

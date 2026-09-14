@@ -73,6 +73,7 @@ struct DownloadsView: View {
 private struct DownloadedAlbumTile: View {
     let album: Album
     @Environment(DownloadManager.self) private var downloads
+    @Environment(LibraryStore.self) private var library
     @State private var isConfirmingRemoval = false
 
     var body: some View {
@@ -88,6 +89,13 @@ private struct DownloadedAlbumTile: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            if state != .downloaded && !state.isDownloading {
+                Button("Retry Missing Songs", systemImage: "arrow.clockwise") {
+                    downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                        library.streamURL(for: $0, quality: .original)
+                    }
+                }
+            }
             Button("Remove Download", systemImage: "trash", role: .destructive) { isConfirmingRemoval = true }
         }
         .confirmationDialog("Remove “\(album.title)” from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
@@ -103,6 +111,7 @@ private struct DownloadedAlbumTile: View {
 private struct DownloadedPlaylistTile: View {
     let playlist: Playlist
     @Environment(DownloadManager.self) private var downloads
+    @Environment(LibraryStore.self) private var library
     @State private var isConfirmingRemoval = false
 
     var body: some View {
@@ -118,6 +127,13 @@ private struct DownloadedPlaylistTile: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            if state != .downloaded && !state.isDownloading {
+                Button("Retry Missing Songs", systemImage: "arrow.clockwise") {
+                    downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                        library.streamURL(for: $0, quality: .original)
+                    }
+                }
+            }
             Button("Remove Download", systemImage: "trash", role: .destructive) { isConfirmingRemoval = true }
         }
         .confirmationDialog("Remove “\(playlist.name)” from your \(Device.noun)?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
@@ -140,11 +156,20 @@ private struct DownloadTileLabel<Cover: View>: View {
         VStack(alignment: .leading, spacing: 2) {
             cover()
                 .overlay(alignment: .bottomTrailing) {
-                    if case .downloading(let fraction, _, _) = state {
+                    switch state {
+                    case .downloading(let fraction, _, _):
                         MiniProgressRing(fraction: fraction)
                             .padding(6)
                             .background(.thinMaterial, in: Circle())
                             .padding(8)
+                    case .failed, .partial, .cancelled:
+                        Image(systemName: "arrow.clockwise")
+                            .font(.footnote.weight(.semibold))
+                            .padding(8)
+                            .background(.thinMaterial, in: Circle())
+                            .padding(8)
+                    case .none, .downloaded:
+                        EmptyView()
                     }
                 }
                 .padding(.bottom, 8)
@@ -165,6 +190,9 @@ private extension DownloadState {
         case .downloading(_, let done, let total): "Downloading \(done + 1) of \(total)"
         case .downloaded: complete
         case .none: "\(downloaded) of \(total) songs"
+        case .failed: "Download failed · Retry available"
+        case .partial(let done, let total, _): "\(done) of \(total) saved · Retry available"
+        case .cancelled(let done, let total): "Cancelled · \(done) of \(total) saved"
         }
     }
 }

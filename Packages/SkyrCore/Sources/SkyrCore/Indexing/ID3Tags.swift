@@ -13,29 +13,34 @@ public nonisolated enum ID3Tags {
         var media = ProbedMedia()
         var audioStart = 0
         var hasTag = false
-        if b.count >= 10, b[0] == 0x49, b[1] == 0x44, b[2] == 0x33, b[3] >= 3 {
+        if b.count >= 10, b[0] == 0x49, b[1] == 0x44, b[2] == 0x33 {
             let major = b[3]
+            guard major == 3 || major == 4 else { return nil }
             let flags = b[5]
             let size = syncsafe(b, 6)
-            let total = 10 + size + (flags & 0x10 != 0 ? 10 : 0)
-            if total + 4096 > b.count, Int64(total) <= maximumTag {
+            let total = 10 + size + (major == 4 && flags & 0x10 != 0 ? 10 : 0)
+            guard Int64(total) <= maximumTag else { return nil }
+            if total + 4096 > b.count {
                 b = [UInt8](try await read(0..<Int64(total + 4096)))
             }
-            parseFrames(b, major: major, tagFlags: flags, end: min(10 + size, b.count), into: &media)
+            guard total <= b.count else { return nil }
+            parseFrames(b, major: major, tagFlags: flags, end: 10 + size, into: &media)
             audioStart = total
             hasTag = true
         }
         guard let frame = firstFrame(b, from: audioStart) else { return hasTag ? media : nil }
         media.codec = "mp3"
         media.sampleRate = frame.sampleRate
-        let audioBytes = fileSize.map { max(0, $0 - Int64(audioStart)) }
+        let audioBytes = fileSize.map { $0 > Int64(audioStart) ? $0 - Int64(audioStart) : 0 }
         if let frames = frame.xingFrames, frame.sampleRate > 0 {
             let duration = Double(frames) * Double(frame.samplesPerFrame) / Double(frame.sampleRate)
             media.duration = duration
-            if let audioBytes, duration > 0 { media.bitrate = Int(Double(audioBytes * 8) / duration) }
+            if let audioBytes, duration > 0 {
+                media.bitrate = MediaBounds.bitrate(bytes: audioBytes, duration: duration)
+            }
         } else if frame.bitrate > 0 {
             media.bitrate = frame.bitrate
-            if let audioBytes { media.duration = Double(audioBytes * 8) / Double(frame.bitrate) }
+            if let audioBytes { media.duration = Double(audioBytes) * 8 / Double(frame.bitrate) }
         }
         return media
     }
@@ -44,28 +49,35 @@ public nonisolated enum ID3Tags {
 
     private static func parseFrames(_ b: [UInt8], major: UInt8, tagFlags: UInt8, end: Int, into media: inout ProbedMedia) {
         var position = 10
-        if tagFlags & 0x40 != 0, position + 4 <= end {
+        if tagFlags & 0x40 != 0 {
+            guard MediaBounds.contains(position, 4, end: end) else { return }
             // An extended header; its size counts itself in v2.4 and not in v2.3.
-            position += major == 4 ? syncsafe(b, position) : Int(MP4Tags.u32(b, position)) + 4
+            let length = major == 4 ? syncsafe(b, position) : Int(MP4Tags.u32(b, position)) + 4
+            guard length >= (major == 4 ? 6 : 10), MediaBounds.contains(position, length, end: end) else { return }
+            position += length
         }
-        while position + 10 <= end {
+        while MediaBounds.contains(position, 10, end: end) {
             let id = String(bytes: b[position..<position + 4], encoding: .isoLatin1) ?? ""
             if b[position] == 0 { break }   // padding
             let size = major == 4 ? syncsafe(b, position + 4) : Int(MP4Tags.u32(b, position + 4))
             let frameFlags = Int(b[position + 8]) << 8 | Int(b[position + 9])
-            var start = position + 10
-            let frameEnd = min(start + size, end)
-            position = start + size
-            guard size > 0, start < frameEnd else { continue }
+            let start = position + 10
+            guard MediaBounds.contains(start, size, end: end) else { return }
+            let frameEnd = start + size
+            position = frameEnd
+            guard size > 0 else { continue }
             let compressed = major == 4 ? frameFlags & 0x0008 != 0 : frameFlags & 0x0080 != 0
             let encrypted = major == 4 ? frameFlags & 0x0004 != 0 : frameFlags & 0x0040 != 0
             if compressed || encrypted { continue }
-            if major == 3, frameFlags & 0x0020 != 0 { start += 1 }
-            if major == 4, frameFlags & 0x0001 != 0 { start += 4 }
             var payload = Array(b[start..<frameEnd])
             if (major == 4 && frameFlags & 0x0002 != 0) || (major == 3 && tagFlags & 0x80 != 0) {
                 payload = unsynchronised(payload)
             }
+            let groupLength = (major == 3 ? frameFlags & 0x0020 : frameFlags & 0x0040) != 0 ? 1 : 0
+            let indicatorLength = major == 4 && frameFlags & 0x0001 != 0 ? 4 : 0
+            let prefixLength = groupLength + indicatorLength
+            guard MediaBounds.contains(0, prefixLength, end: payload.count) else { continue }
+            payload.removeFirst(prefixLength)
             switch id {
             case "TIT2": media.title = textFrame(payload)
             case "TPE1": media.artist = textFrame(payload)
@@ -142,7 +154,7 @@ public nonisolated enum ID3Tags {
     }
 
     static func syncsafe(_ b: [UInt8], _ at: Int) -> Int {
-        guard at + 4 <= b.count else { return 0 }
+        guard MediaBounds.contains(at, 4, end: b.count) else { return 0 }
         return Int(b[at] & 0x7F) << 21 | Int(b[at + 1] & 0x7F) << 14 | Int(b[at + 2] & 0x7F) << 7 | Int(b[at + 3] & 0x7F)
     }
 
@@ -159,9 +171,10 @@ public nonisolated enum ID3Tags {
     private static let bitratesMPEG2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]
 
     private static func firstFrame(_ b: [UInt8], from start: Int) -> Frame? {
+        guard MediaBounds.contains(start, 4, end: b.count) else { return nil }
         var position = start
-        let limit = min(b.count - 4, start + 64 * 1024)
-        while position < limit {
+        let limit = start + min(b.count - start - 4, 64 * 1024)
+        while position <= limit {
             defer { position += 1 }
             guard b[position] == 0xFF, b[position + 1] & 0xE0 == 0xE0 else { continue }
             let versionBits = (b[position + 1] >> 3) & 0x03

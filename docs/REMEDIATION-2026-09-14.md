@@ -2,6 +2,8 @@
 
 Date: 14 September 2026
 
+This report records the first batch. See the [second remediation batch](REMEDIATION-2026-09-14-BATCH-2.md) for subsequent CloudKit, download, media, and Axiom-informed interface work and its verification.
+
 Base: `1f77fdb7fa9b5a4175931738f6865df2dcfeed6c`
 
 Branch: `codex/release-blockers`

@@ -21,7 +21,8 @@ private func singleTrackAlbum() -> Album {
     manager.driveIDProvider = { "nas-a" }
     let owner = manager.owner(for: singleTrackAlbum())
     manager.download(owner, driveID: "nas-a") { _ in nil }
-    #expect(manager.state(for: owner) == .none)
+    if case .failed(let message) = manager.state(for: owner) { #expect(message.contains("Connect to your NAS")) }
+    else { Issue.record("An offline download should expose a retryable failure") }
     #expect(manager.records.isEmpty)
     #expect(manager.pendingByOwner.isEmpty)
     #expect(manager.lastError?.contains("Connect to your NAS") == true)
@@ -78,7 +79,7 @@ private func singleTrackAlbum() -> Album {
         if manager.state(for: second) == .downloaded { break }
         try await Task.sleep(for: .milliseconds(100))
     }
-    #expect(manager.state(for: first) == .none)
+    #expect(manager.state(for: first) == .cancelled(done: 0, total: 1))
     #expect(manager.state(for: second) == .downloaded)
     #expect(manager.records.values.first?.owners == [second.id])
     let saved = try JSONDecoder().decode([DownloadRecord].self, from: Data(contentsOf: directory.appending(path: "downloads.json")))

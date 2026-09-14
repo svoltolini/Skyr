@@ -491,7 +491,9 @@ public final class LibraryIndexer {
                 updated.sampleRate = info.sampleRate ?? updated.sampleRate
                 updated.bitDepth = info.bitsPerSample
                 if let duration = info.duration { updated.duration = duration }
-                if let size = track.fileSize, updated.duration > 0 { updated.bitrate = Int(Double(size * 8) / updated.duration) }
+                if let size = track.fileSize, let bitrate = MediaBounds.bitrate(bytes: size, duration: updated.duration) {
+                    updated.bitrate = bitrate
+                }
                 if let title = info.tag("TITLE") { updated.title = title }
                 if let number = info.number("TRACKNUMBER") { updated.number = number }
                 if let disc = info.number("DISCNUMBER"), disc > 0 { updated.disc = disc }
@@ -525,8 +527,9 @@ public final class LibraryIndexer {
         if let bits = probe.bitsPerChannel, bits > 0 { updated.bitDepth = bits }
         if let bitrate = probe.bitrate {
             updated.bitrate = bitrate
-        } else if let size = track.fileSize, let duration = probe.duration, duration > 0 {
-            updated.bitrate = Int(Double(size * 8) / duration)
+        } else if let size = track.fileSize, let duration = probe.duration,
+                  let bitrate = MediaBounds.bitrate(bytes: size, duration: duration) {
+            updated.bitrate = bitrate
         }
         if let title = probe.title?.trimmingCharacters(in: .whitespaces), !title.isEmpty { updated.title = title }
         if let number = probe.trackNumber, number > 0 { updated.number = number }

@@ -12,7 +12,7 @@ struct DownloadButton: View {
     private enum Phase { case idle, downloading, downloaded }
     private var phase: Phase {
         switch state {
-        case .none: .idle
+        case .none, .failed, .partial, .cancelled: .idle
         case .downloading: .downloading
         case .downloaded: .downloaded
         }
@@ -26,6 +26,10 @@ struct DownloadButton: View {
                     Image(systemName: "arrow.down")
                         .font(.body.weight(.bold))
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
+                case .failed, .partial, .cancelled:
+                    Image(systemName: "arrow.clockwise")
+                        .font(.body.weight(.bold))
+                        .transition(.opacity)
                 case .downloading(let fraction, _, _):
                     ProgressRing(fraction: fraction)
                         .transition(reduceMotion ? .opacity : .asymmetric(
@@ -69,6 +73,9 @@ struct DownloadButton: View {
         case .none: "Download"
         case .downloading(_, let done, let total): "Downloading, \(done) of \(total) songs, tap to cancel"
         case .downloaded: "Downloaded, tap to remove"
+        case .failed(let message): "Download failed. \(message). Tap to retry missing songs"
+        case .partial(let done, let total, _): "\(done) of \(total) songs saved, tap to retry missing songs"
+        case .cancelled(let done, let total): "Download cancelled, \(done) of \(total) songs saved, tap to retry"
         }
     }
 }

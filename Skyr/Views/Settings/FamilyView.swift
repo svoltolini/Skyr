@@ -40,8 +40,8 @@ struct FamilyView: View {
                 }
 
                 #if !os(tvOS)
-                if cloud.isActive, cloud.isOwner, !cloud.isShared {
-                    SettingsGroup(title: "Joining someone else's family", footer: "Invitations are icloud.com/share links made in Skyr. Opening one on this device normally joins straight away; if it opened in a browser instead, paste it here. Any Apple Account can join, wherever it lives; Family Sharing is not needed.") {
+                if (cloud.isActive && cloud.isOwner && !cloud.isShared) || cloud.needsFamilyInvitation {
+                    SettingsGroup(title: cloud.needsFamilyInvitation ? "Reconnect with your family" : "Joining someone else's family", footer: "Invitations are icloud.com/share links made in Skyr. Opening one on this device normally joins straight away; if it opened in a browser instead, paste it here. Any Apple Account can join, wherever it lives; Family Sharing is not needed.") {
                         SettingsButtonRow(symbol: "link", tint: .blue, title: "Join with an invitation link") {
                             isJoiningWithLink = true
                         }

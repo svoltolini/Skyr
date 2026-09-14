@@ -8,6 +8,12 @@ public nonisolated struct Profile: Codable, Identifiable, Hashable, Sendable {
         case owner, member
     }
 
+    /// Local bookkeeping only; omitted from CloudKit records. Optional for older profile files.
+    public nonisolated enum LocalOrigin: Codable, Hashable, Sendable {
+        case created
+        case recovery(account: String?)
+    }
+
     public var id: String
     public var name: String
     public var avatar: ProfileAvatar
@@ -18,6 +24,7 @@ public nonisolated struct Profile: Codable, Identifiable, Hashable, Sendable {
     public var updatedAt: Date
     /// The iCloud user this profile belongs to, once it has synced from a device signed in as them.
     public var userRecordName: String? = nil
+    public var localOrigin: LocalOrigin? = nil
 
     public var isLocked: Bool { pin != nil }
 

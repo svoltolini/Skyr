@@ -120,7 +120,7 @@ struct AlbumView: View {
         let owner = downloads.owner(for: album)
         return DownloadButton(state: downloads.state(for: owner)) {
             switch downloads.state(for: owner) {
-            case .none:
+        case .none, .failed, .partial, .cancelled:
                 downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) { track in
                     library.streamURL(for: track, quality: .original)
                 }

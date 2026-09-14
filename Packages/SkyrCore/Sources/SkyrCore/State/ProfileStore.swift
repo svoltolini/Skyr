@@ -59,8 +59,10 @@ public final class ProfileStore {
         self.defaults = defaults
         self.log = log
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        profiles = loadProfiles()
-        if profiles.isEmpty {
+        if let stored = loadProfiles() {
+            profiles = stored.isEmpty ? [Self.recoveryProfile(isOwner: true, account: nil)] : stored
+            if stored.isEmpty { saveProfiles() }
+        } else {
             profiles = [migrateLegacyData()]
             saveProfiles()
         }
@@ -127,13 +129,16 @@ public final class ProfileStore {
     public func create(name: String, avatar: ProfileAvatar, pin: String?) -> Profile? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, canAddProfile, canManageProfiles else { return nil }
-        let profile = Profile(
+        var profile = Profile(
             id: UUID().uuidString, name: trimmed, avatar: avatar, pin: pin.map(PINRecord.make),
             role: profiles.isEmpty ? .owner : .member, createdAt: .now, updatedAt: .now
         )
-        profiles.append(profile)
-        saveProfiles()
-        writeState(ProfileState(), id: profile.id)
+        profile.localOrigin = .created
+        guard sync?.prepareProfileCreation(profile) != false else { return nil }
+        var updated = profiles
+        updated.append(profile)
+        guard writeState(ProfileState(), id: profile.id), saveProfiles(updated) else { return nil }
+        profiles = updated
         sync?.profileChanged(profile)
         return profile
     }
@@ -143,6 +148,7 @@ public final class ProfileStore {
         guard canEdit(profile), let current = profiles.first(where: { $0.id == profile.id }),
               current.updatedAt == profile.updatedAt,
               profile.role == current.role, profile.createdAt == current.createdAt,
+              profile.localOrigin == current.localOrigin,
               profile.userRecordName == current.userRecordName else { return false }
         var updated = profile
         updated.name = updated.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -173,13 +179,19 @@ public final class ProfileStore {
     }
 
     @discardableResult
-    private func removeStoredProfile(id: String) -> Bool {
-        guard profiles.count > 1, let index = profiles.firstIndex(where: { $0.id == id }) else { return false }
+    private func removeStoredProfile(id: String, allowLast: Bool = false, replacementAccount: String? = nil, replacementIsOwner: Bool = true) -> Bool {
+        guard (allowLast || profiles.count > 1), let index = profiles.firstIndex(where: { $0.id == id }) else { return false }
         let profile = profiles[index]
+        if !isApplyingRemote, let sync, !sync.prepareProfileDeletion(id: profile.id) { return false }
+        var remaining = profiles
+        remaining.remove(at: index)
+        if remaining.isEmpty, allowLast {
+            remaining = [Self.recoveryProfile(isOwner: replacementIsOwner, account: replacementAccount)]
+        }
+        if !isApplyingRemote, !remaining.isEmpty, remaining.contains(where: { $0.role == .owner }) == false { remaining[0].role = .owner }
+        guard saveProfiles(remaining) else { return false }
         if activeID == profile.id { lock() }
-        profiles.remove(at: index)
-        if profiles.contains(where: { $0.role == .owner }) == false { profiles[0].role = .owner }
-        saveProfiles()
+        profiles = remaining
         try? FileManager.default.removeItem(at: stateURL(id: profile.id))
         try? FileManager.default.removeItem(at: storageDirectory.appending(path: "\(profile.id)-photo.jpg"))
         defaults.removeObject(forKey: Self.biometricsKey(profile.id))
@@ -204,6 +216,7 @@ public final class ProfileStore {
     @discardableResult
     public func bindToCurrentUser(_ profile: Profile) -> Bool {
         guard canEdit(profile), let user = sync?.currentUserRecordName,
+              sync?.containsProfileInCurrentAccount(profile.id) == true,
               var current = profiles.first(where: { $0.id == profile.id }) else { return false }
         current.userRecordName = user
         saveUpdated(current)
@@ -242,14 +255,20 @@ public final class ProfileStore {
     }
 
     /// A photo that arrived from iCloud for a profile.
-    public func storeRemotePhoto(at source: URL?, for id: String) {
+    @discardableResult
+    public func storeRemotePhoto(at source: URL?, for id: String) -> Bool {
         let url = storageDirectory.appending(path: "\(id)-photo.jpg")
-        guard let source else {
-            try? FileManager.default.removeItem(at: url)
-            return
+        do {
+            if let source {
+                // Atomic replacement keeps the prior photo when writing fails.
+                try Data(contentsOf: source).write(to: url, options: .atomic)
+            } else if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+            return true
+        } catch {
+            return false
         }
-        try? FileManager.default.removeItem(at: url)
-        try? FileManager.default.copyItem(at: source, to: url)
     }
 
     nonisolated private static func jpeg(from data: Data, maxPixels: Int) -> Data? {
@@ -270,51 +289,96 @@ public final class ProfileStore {
     // MARK: Changes arriving from iCloud
 
     /// A profile as another device has it; the newer copy wins.
-    public func applyRemote(_ profile: Profile) {
+    @discardableResult
+    public func applyRemote(_ profile: Profile) -> Bool {
         isApplyingRemote = true
         defer { isApplyingRemote = false }
+        var updated = profiles
+        var incoming = profile
         if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
-            guard profile.updatedAt > profiles[index].updatedAt else { return }
+            guard profile.updatedAt > profiles[index].updatedAt else { return true }
+            incoming.localOrigin = profiles[index].localOrigin
+            updated[index] = incoming
+        } else {
+            // A real profile arriving from another device is never a local first-launch stand-in.
+            incoming.localOrigin = .created
+            updated.append(incoming)
+        }
+        guard saveProfiles(updated) else { return false }
+        if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
             if profile.pin != profiles[index].pin {
                 defaults.removeObject(forKey: Self.biometricsKey(profile.id))
                 authenticationGeneration = UUID()
                 if activeID == profile.id { lock() }
             }
-            profiles[index] = profile
-        } else {
-            profiles.append(profile)
         }
-        saveProfiles()
+        profiles = updated
+        return true
     }
 
     /// A profile's document as another device has it.
-    public func applyRemote(_ remote: ProfileState, id: String) {
+    @discardableResult
+    public func applyRemote(_ remote: ProfileState, id: String) -> Bool {
         if id == activeID {
-            guard remote.updatedAt > state.updatedAt else { return }
+            guard remote.updatedAt > state.updatedAt else { return true }
+            guard writeState(remote, id: id) else { return false }
             saveTask?.cancel()
             state = remote
-            writeState(remote, id: id)
             onRemoteState?()
         } else {
-            guard remote.updatedAt > loadState(id: id).updatedAt else { return }
-            writeState(remote, id: id)
+            guard remote.updatedAt > loadState(id: id).updatedAt else { return true }
+            guard writeState(remote, id: id) else { return false }
         }
+        return true
     }
 
-    public func removeRemote(id: String) {
-        guard let profile = profiles.first(where: { $0.id == id }), profiles.count > 1 else { return }
+    @discardableResult
+    public func removeRemote(id: String, replacementAccount: String? = nil, replacementIsOwner: Bool = true) -> Bool {
+        guard let profile = profiles.first(where: { $0.id == id }) else { return true }
         isApplyingRemote = true
         defer { isApplyingRemote = false }
-        removeStoredProfile(id: profile.id)
+        return removeStoredProfile(id: profile.id, allowLast: true, replacementAccount: replacementAccount, replacementIsOwner: replacementIsOwner)
+    }
+
+    /// A completed pull may legitimately remove the last local profile. Keep the picker usable
+    /// without importing old legacy settings again or recreating the deleted record's identifier.
+    func ensureProfileAfterSync(isOwner: Bool) -> Profile? {
+        guard profiles.isEmpty else { return nil }
+        let profile = Self.recoveryProfile(isOwner: isOwner, account: sync?.currentUserRecordName)
+        guard saveProfiles([profile]) else { return nil }
+        profiles = [profile]
+        return profile
+    }
+
+    private static func recoveryProfile(isOwner: Bool, account: String?) -> Profile {
+        var profile = Profile(id: UUID().uuidString, name: "Me", avatar: .random(), pin: nil,
+                              role: isOwner ? .owner : .member, createdAt: .now, updatedAt: .now)
+        profile.localOrigin = .recovery(account: account)
+        return profile
+    }
+
+    /// Bind the local recovery marker once, durably, before any account snapshot adopts its ID.
+    func bindUnassignedRecoveryProfile(id: String, to account: String) -> Bool {
+        guard let index = profiles.firstIndex(where: { $0.id == id }),
+              profiles[index].localOrigin == .recovery(account: nil) else { return false }
+        var updated = profiles
+        updated[index].localOrigin = .recovery(account: account)
+        guard saveProfiles(updated) else { return false }
+        profiles = updated
+        return true
     }
 
     /// Joining another family: nobody here is the owner any more.
-    public func markAllAsMembers() {
-        for index in profiles.indices where profiles[index].role == .owner {
-            profiles[index].role = .member
-            profiles[index].updatedAt = .now
+    @discardableResult
+    public func markAllAsMembers(in ids: Set<String>) -> Bool {
+        var updated = profiles
+        for index in updated.indices where ids.contains(updated[index].id) && updated[index].role == .owner {
+            updated[index].role = .member
+            updated[index].updatedAt = .now
         }
-        saveProfiles()
+        guard saveProfiles(updated) else { return false }
+        profiles = updated
+        return true
     }
 
     /// A profile's document as saved on this device, for uploading.
@@ -420,7 +484,7 @@ public final class ProfileStore {
         saveTask?.cancel()
         guard let activeID else { return }
         writeState(state, id: activeID)
-        sync?.stateChanged(state, id: activeID)
+        if !isApplyingRemote { sync?.stateChanged(state, id: activeID) }
     }
 
     // MARK: Files
@@ -447,14 +511,19 @@ public final class ProfileStore {
         return decoder
     }
 
-    private func loadProfiles() -> [Profile] {
-        guard let data = try? Data(contentsOf: profilesURL) else { return [] }
-        return (try? Self.decoder.decode([Profile].self, from: data)) ?? []
+    private func loadProfiles() -> [Profile]? {
+        guard let data = try? Data(contentsOf: profilesURL) else { return nil }
+        return try? Self.decoder.decode([Profile].self, from: data)
     }
 
-    private func saveProfiles() {
-        if let data = try? Self.encoder.encode(profiles) {
-            try? data.write(to: profilesURL, options: .atomic)
+    @discardableResult
+    private func saveProfiles(_ value: [Profile]? = nil) -> Bool {
+        do {
+            try Self.encoder.encode(value ?? profiles).write(to: profilesURL, options: .atomic)
+            return true
+        } catch {
+            log("The profiles could not be saved on this device.")
+            return false
         }
     }
 
@@ -463,9 +532,14 @@ public final class ProfileStore {
         return (try? Self.decoder.decode(ProfileState.self, from: data)) ?? ProfileState()
     }
 
-    private func writeState(_ state: ProfileState, id: String) {
-        if let data = try? Self.encoder.encode(state) {
-            try? data.write(to: stateURL(id: id), options: .atomic)
+    @discardableResult
+    private func writeState(_ state: ProfileState, id: String) -> Bool {
+        do {
+            try Self.encoder.encode(state).write(to: stateURL(id: id), options: .atomic)
+            return true
+        } catch {
+            log("The profile's library and settings could not be saved on this device.")
+            return false
         }
     }
 
