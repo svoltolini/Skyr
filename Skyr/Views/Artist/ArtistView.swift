@@ -4,6 +4,23 @@ import SwiftUI
 struct ArtistView: View {
     let artist: Artist
     @Environment(LibraryStore.self) private var library
+
+    var body: some View {
+        Group {
+            if let current = library.artist(named: artist.name), !current.albums.isEmpty {
+                ArtistDetailContent(artist: current)
+            } else {
+                ContentUnavailableView("Artist Unavailable", systemImage: "person.crop.circle", description: Text("This artist is no longer in the current library."))
+                    .inlineTitle()
+                    .windowTitle("Artist Unavailable")
+            }
+        }
+    }
+}
+
+private struct ArtistDetailContent: View {
+    let artist: Artist
+    @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
     @State private var pull: CGFloat = 0
 
@@ -16,8 +33,10 @@ struct ArtistView: View {
                 hero
 
                 PlayActions {
+                    guard library.artist(named: artist.name) == artist else { return }
                     player.play(queue: artist.albums.flatMap(\.tracks), startingAt: 0, title: artist.name)
                 } shuffle: {
+                    guard library.artist(named: artist.name) == artist else { return }
                     player.play(queue: artist.albums.flatMap(\.tracks).shuffled(), startingAt: 0, title: artist.name)
                 }
                 .padding(.horizontal, 24)
@@ -59,8 +78,8 @@ struct ArtistView: View {
                     .padding(.top, 26)
                 CardList(data: artist.topTracks, separatorInset: 70) { track in
                     Button {
-                        if let album = library.album(for: track) {
-                            player.play(album: album, startingAt: track.index)
+                        if let album = library.album(for: track), let index = album.tracks.firstIndex(where: { $0.id == track.id }) {
+                            player.play(album: album, startingAt: index)
                         }
                     } label: {
                         HStack(spacing: 14) {

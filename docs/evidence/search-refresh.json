@@ -1,0 +1,548 @@
+{
+  "issue": 25,
+  "fixtureBaseCommit": "a9f202b3de8e5327f6fff052dedb199b27ff9fb2",
+  "integratedBaseCommit": "f2f78b3a6d72daf0b236253b984fb988779c7b35",
+  "patchSHA256": "3b3312eced3b8b7f03d3d210f5c0b696550c3f936298fab831f0b4b266ac6821",
+  "sourceHashes": {
+    "Skyr/Views/Album/AlbumView.swift": "538d1f01889ebbbcfd76e61a1ea63760c1a2fdce625a5299c08dcce112e22f17",
+    "Skyr/Views/Artist/ArtistView.swift": "543a7241d7665308e70b9e64018d9f18689b68b8fbcf20a210478fc9ddbaede6",
+    "SkyrMac/MacCollectionViews.swift": "fc5eda5341d6404f8fe39048040d5cca2e38d40b7e744905808fb5d572a23acf"
+  },
+  "checks": {
+    "mac-before-fix": {
+      "sourceProfileSessionStable": true,
+      "lastRecordByStage": {
+        "0": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 1,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 0
+        },
+        "1": {
+          "albums": [
+            "Signal Anchor",
+            "Signal Arrival"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 2,
+          "songs": [
+            "Signal Anchor Song",
+            "Signal Arrival Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 1
+        },
+        "2": {
+          "albums": [
+            "Signal Arrival"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 3,
+          "songs": [
+            "Signal Arrival Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 2
+        },
+        "3": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 4,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 3
+        },
+        "4": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 8,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 4
+        },
+        "5": {
+          "albums": [
+            "Signal Anchor Updated"
+          ],
+          "artists": [
+            "Signal Updated Artist"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 6,
+          "songs": [
+            "Signal Updated Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 5
+        },
+        "6": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 7,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 6
+        },
+        "7": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "Signal Anchor Song",
+          "playingTrackID": "demo_0_0",
+          "query": "Signal",
+          "revision": 9,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 7
+        }
+      }
+    },
+    "iphone-before-fix": {
+      "sourceProfileSessionStable": true,
+      "lastRecordByStage": {
+        "0": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 1,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 0
+        },
+        "1": {
+          "albums": [
+            "Signal Anchor",
+            "Signal Arrival"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 2,
+          "songs": [
+            "Signal Anchor Song",
+            "Signal Arrival Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 1
+        },
+        "2": {
+          "albums": [
+            "Signal Arrival"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 3,
+          "songs": [
+            "Signal Arrival Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 2
+        },
+        "3": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 4,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 3
+        },
+        "4": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "Signal Updated Song",
+          "playingTrackID": "demo_0_0",
+          "query": "Signal",
+          "revision": 8,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 4
+        },
+        "5": {
+          "albums": [
+            "Signal Anchor Updated"
+          ],
+          "artists": [
+            "Signal Updated Artist"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 6,
+          "songs": [
+            "Signal Updated Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 5
+        },
+        "6": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "Signal Updated Song",
+          "playingTrackID": "demo_0_0",
+          "query": "Signal",
+          "revision": 7,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 6
+        },
+        "7": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 1,
+          "playingTitle": "Signal Anchor Song",
+          "playingTrackID": "demo_0_0",
+          "query": "Signal",
+          "revision": 9,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 7
+        }
+      }
+    },
+    "mac-fixed": {
+      "sourceProfileSessionStable": true,
+      "lastRecordByStage": {
+        "4": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 1,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 4
+        },
+        "5": {
+          "albums": [
+            "Signal Anchor Updated"
+          ],
+          "artists": [
+            "Signal Updated Artist"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 2,
+          "songs": [
+            "Signal Updated Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 5
+        },
+        "6": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 3,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 6
+        },
+        "1": {
+          "albums": [
+            "Signal Anchor",
+            "Signal Arrival"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 4,
+          "songs": [
+            "Signal Anchor Song",
+            "Signal Arrival Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 1
+        },
+        "8": {
+          "albums": [
+            "Signal Anchor",
+            "Signal Arrival Updated"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 5,
+          "songs": [
+            "Signal Anchor Song",
+            "Signal Arrival Updated Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 8
+        },
+        "3": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 6,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 3
+        }
+      }
+    },
+    "iphone-fixed": {
+      "sourceProfileSessionStable": true,
+      "lastRecordByStage": {
+        "4": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 1,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 4
+        },
+        "5": {
+          "albums": [
+            "Signal Anchor Updated"
+          ],
+          "artists": [
+            "Signal Updated Artist"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 2,
+          "songs": [
+            "Signal Updated Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 5
+        },
+        "6": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 3,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 6
+        },
+        "1": {
+          "albums": [
+            "Signal Anchor",
+            "Signal Arrival"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 4,
+          "songs": [
+            "Signal Anchor Song",
+            "Signal Arrival Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 1
+        },
+        "8": {
+          "albums": [
+            "Signal Anchor",
+            "Signal Arrival Updated"
+          ],
+          "artists": [
+            "Signal Guests"
+          ],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 5,
+          "songs": [
+            "Signal Anchor Song",
+            "Signal Arrival Updated Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 8
+        },
+        "3": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 6,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 3
+        }
+      }
+    },
+    "iphone-guards": {
+      "sourceProfileSessionStable": true,
+      "lastRecordByStage": {
+        "4": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 0,
+          "playingTitle": "none",
+          "playingTrackID": "none",
+          "query": "Signal",
+          "revision": 1,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 4
+        },
+        "7": {
+          "albums": [
+            "Signal Anchor"
+          ],
+          "artists": [],
+          "playingIndex": 1,
+          "playingTitle": "Signal Anchor Song",
+          "playingTrackID": "demo_0_0",
+          "query": "Signal",
+          "revision": 2,
+          "songs": [
+            "Signal Anchor Song"
+          ],
+          "source": "isolated-search-source",
+          "stage": 7
+        },
+        "6": {
+          "albums": [],
+          "artists": [],
+          "playingIndex": 1,
+          "playingTitle": "Signal Anchor Song",
+          "playingTrackID": "demo_0_0",
+          "query": "Signal",
+          "revision": 3,
+          "songs": [],
+          "source": "isolated-search-source",
+          "stage": 6
+        }
+      }
+    }
+  },
+  "integratedReleaseBuilds": {
+    "iOSIncludingWatchWidgets": "passed",
+    "macOS": "passed",
+    "tvOS": "passed"
+  },
+  "limits": [
+    "Synthetic catalogue changes in actual Mac/iPhone views; no provider or real audio requests",
+    "iPhone field focus checked visually; spoken VoiceOver and physical input not audited",
+    "Download-removal dialog across scope changes source-reviewed, not replayed",
+    "Mac collection filtering source-reviewed and compiled; not separately navigated"
+  ],
+  "uploadPerformed": false,
+  "marketingVersion": "1.0",
+  "sourceBuild": "202609142150"
+}
