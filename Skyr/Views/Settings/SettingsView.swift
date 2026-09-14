@@ -131,6 +131,11 @@ struct SettingsView: View {
                     .buttonStyle(RowPressStyle())
                 }
 
+                SettingsGroup(title: "Privacy", footer: ArtworkLookup.disclosure) {
+                    ArtworkPrivacyControl()
+                        .padding(16)
+                }
+
                 SettingsGroup(title: "Playback") {
                     SettingsRow(symbol: "waveform", tint: .mint, title: "Gapless playback") {
                         Toggle("Gapless playback", isOn: $model.gapless).labelsHidden()

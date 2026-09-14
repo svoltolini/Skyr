@@ -100,7 +100,7 @@ targets:
         SUPPORTS_MACCATALYST: "NO"
         INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "202609142035"
+        CURRENT_PROJECT_VERSION: "202609142150"
   SkyrWidgets:
     type: app-extension
     platform: iOS
@@ -134,7 +134,7 @@ targets:
         SUPPORTS_MACCATALYST: "NO"
         SKIP_INSTALL: "YES"
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "202609142035"
+        CURRENT_PROJECT_VERSION: "202609142150"
   SkyrWatch:
     type: application
     platform: watchOS
@@ -169,7 +169,7 @@ targets:
         SUPPORTED_PLATFORMS: "watchos watchsimulator"
         SKIP_INSTALL: "YES"
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "202609142035"
+        CURRENT_PROJECT_VERSION: "202609142150"
   SkyrMac:
     type: application
     platform: macOS
@@ -227,7 +227,7 @@ targets:
         ENABLE_HARDENED_RUNTIME: "YES"
         COMBINE_HIDPI_IMAGES: "YES"
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "202609142035"
+        CURRENT_PROJECT_VERSION: "202609142150"
   SkyrTV:
     type: application
     platform: tvOS
@@ -276,4 +276,4 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SUPPORTED_PLATFORMS: "appletvos appletvsimulator"
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "202609142035"
+        CURRENT_PROJECT_VERSION: "202609142150"

@@ -51,10 +51,15 @@ public final class LibraryIndexer {
     private var task: Task<Void, Never>?
     private var currentRun: IndexingRun?
     private let recordDiagnostics: @Sendable (String) -> Void
+    private let artworkLookup: ArtworkLookup
 
-    public init() { recordDiagnostics = { diagnostics($0) } }
+    public init(artworkLookup: ArtworkLookup = .shared) {
+        self.artworkLookup = artworkLookup
+        recordDiagnostics = { diagnostics($0) }
+    }
 
-    init(recordDiagnostics: @escaping @Sendable (String) -> Void) {
+    init(recordDiagnostics: @escaping @Sendable (String) -> Void, artworkLookup: ArtworkLookup = .shared) {
+        self.artworkLookup = artworkLookup
         self.recordDiagnostics = recordDiagnostics
     }
 
@@ -396,7 +401,7 @@ public final class LibraryIndexer {
     }
 
     /// Fetches a cover for every album that still lacks one, from its folder image or its own tracks.
-    /// When an artist's albums all carry the same picture, or none, the store catalogue is asked instead.
+    /// With this device's permission, missing or repeated pictures can be looked up through Apple.
     private func runCoverPass(catalogue: Catalogue, drive: any RemoteDrive, run: IndexingRun) async throws {
         try checkActive(run)
         // Albums that had no cover anywhere last time are looked at again after a week, not on every refresh.
@@ -404,7 +409,8 @@ public final class LibraryIndexer {
         var resting = 0
         let missing = catalogue.albums.filter { album in
             guard !CoverStore.hasCover(for: album.id) else { return false }
-            if let tried = CoverStore.missingCoverDate(for: album.id), now.timeIntervalSince(tried) < 7 * 24 * 3600 {
+            if let tried = CoverStore.missingCoverDate(for: album.id), now.timeIntervalSince(tried) < 7 * 24 * 3600,
+               !artworkLookup.shouldRetryMissingCover(after: tried) {
                 resting += 1
                 return false
             }
@@ -433,7 +439,8 @@ public final class LibraryIndexer {
                 let embeddedHash = found.map { ArtworkLookup.hash($0.0) }
                 let isDuplicate = embeddedHash.map { seenHashes[artistKey, default: []].contains($0) } ?? false
                 if found == nil || isDuplicate {
-                    if let online = await ArtworkLookup.itunesCover(artist: album.artist, album: album.title) {
+                    if let result = await artworkLookup.itunesCover(artist: album.artist, album: album.title),
+                       let online = artworkLookup.acceptedData(from: result) {
                         chosen = (online, isDuplicate ? "iTunes Store, because the files share one picture" : "iTunes Store")
                     }
                     try checkActive(run)

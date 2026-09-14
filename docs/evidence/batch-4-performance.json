@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-09-14",
+  "baseline_commit": "0595808f7f0a93d35f393dfd8c9774f3baa593c2",
+  "hardware": {
+    "model_identifier": "Mac17,6",
+    "chip": "Apple M5 Max",
+    "macos": "26.6.2"
+  },
+  "method": {
+    "build_configuration": "Release, temporary isolated native Mac fixture",
+    "data": "Synthetic 5,000- or 15,000-track catalogue, one large playlist, ordinary silent local WAV; CloudKit mocked and no live NAS",
+    "interaction": "After a four-second startup wait, 48 iterations select a library section and call player.next, with a requested 500 ms delay between iterations. Sections: Recently Added, Artists, Genres, Playlists, large playlist, Search.",
+    "timing": "Synchronous updateLibrary, flushSave and combined selection/player.next elapsed calls, measured with Date; first seeding mutation and flush omitted. Command timing is not end-to-end display latency.",
+    "statistics": "Values retained from the four measured-summary.json files only. Median is sorted[n//2]; p95 is sorted[min(n-1,int(n*0.95))].",
+    "instrument": "Instruments SwiftUI template recorded Hitches and Time Profiler; SwiftUI view-body detail was unavailable."
+  },
+  "limits": [
+    "Candidate fixture was captured before final error wording, UI-only fixes and the CloudSync account-change/decode-error guard. Persistence preparation is unchanged; the documented CloudSync correctness change was reviewed and tested separately.",
+    "Raw hitch counts are not a controlled baseline/candidate comparison: trace/loop durations, mutation and flush counts, startup and window/compositor activity differ.",
+    "Synchronous command samples do not measure complete frame rendering or prove smooth navigation. Candidate traces still contain stalls up to 1,333.332416 ms.",
+    "Routine persistence is the measured fix. Cold profile activation, incoming remote merges and remaining navigation work need separate investigation.",
+    "One development Mac, synthetic data and local audio do not establish NAS/CloudKit, iPhone/iPad, Watch, TV or CarPlay acceptance, nor power-loss durability."
+  ],
+  "candidate_final_source_comparison": [
+    {
+      "file": "Packages/SkyrCore/Sources/SkyrCore/State/ProfilePersistence.swift",
+      "fixture_sha256": "324daf50901af3fc396b2ec56f17d070fadf203151bfb9a8093011fca51aed12",
+      "final_workspace_sha256": "324daf50901af3fc396b2ec56f17d070fadf203151bfb9a8093011fca51aed12",
+      "byte_identical": true,
+      "expected_differences": [],
+      "matches_after_removing_expected_fixture_differences": true,
+      "unexpected_differences": false
+    },
+    {
+      "file": "Packages/SkyrCore/Sources/SkyrCore/State/ProfileStateEdit.swift",
+      "fixture_sha256": "c5a6ce7f9eeec2ddb3518084e070e49181593b3893b4665a42e6b895965dac7e",
+      "final_workspace_sha256": "c5a6ce7f9eeec2ddb3518084e070e49181593b3893b4665a42e6b895965dac7e",
+      "byte_identical": true,
+      "expected_differences": [],
+      "matches_after_removing_expected_fixture_differences": true,
+      "unexpected_differences": false
+    },
+    {
+      "file": "Packages/SkyrCore/Sources/SkyrCore/State/ProfileCloudPreparation.swift",
+      "fixture_sha256": "d71e1d1ecf4b45ed97aa1f715cf5cbf87a510a7a08728ccddd02143f2d355d0d",
+      "final_workspace_sha256": "d71e1d1ecf4b45ed97aa1f715cf5cbf87a510a7a08728ccddd02143f2d355d0d",
+      "byte_identical": true,
+      "expected_differences": [],
+      "matches_after_removing_expected_fixture_differences": true,
+      "unexpected_differences": false
+    },
+    {
+      "file": "Packages/SkyrCore/Sources/SkyrCore/State/ProfileStore.swift",
+      "fixture_sha256": "c5088f0b9b683eccadb6677f51dafde6716b0e7d2325b758060e691586fa7d17",
+      "final_workspace_sha256": "3bfa1dcc919ea8d50236429ea4c4c7388b62b9b5521785659c5adce5b8abec49",
+      "byte_identical": false,
+      "expected_differences": [
+        "Temporary synchronous updateLibrary and flushSave timing probes",
+        "Final snapshot-retry error wording"
+      ],
+      "matches_after_removing_expected_fixture_differences": true,
+      "unexpected_differences": false
+    },
+    {
+      "file": "Packages/SkyrCore/Sources/SkyrCore/State/CloudSync.swift",
+      "fixture_sha256": "c1ecd35c549cce708432ad9786520f8ca7850ab2bd66adbdb2c6867930eb36e1",
+      "final_workspace_sha256": "0591a9f7540e1c4a6c935210105f811a4cc6f137261b686768c87f18b790ab40",
+      "byte_identical": false,
+      "expected_differences": [
+        "Temporary no-account CloudKit service initializer",
+        "Final checks of account generation before each record, after asynchronous decode failure, and before deletions",
+        "Final internal injectable decoder closure, defaulting to the same detached ProfileCloudPreparation.decode worker"
+      ],
+      "matches_after_removing_expected_fixture_differences": false,
+      "unexpected_differences": false,
+      "comparison_status": "Fixture predates the final account-isolation correction; complete diff reviewed, no unexpected difference. Routine persistence timings do not execute CloudKit because this fixture has no cloud account."
+    }
+  ],
+  "cases": [
+    {
+      "case": "baseline-5000-measured",
+      "loop_seconds": 25.498728036880493,
+      "mutation": {
+        "count": 46,
+        "median_ms": 47.62399196624756,
+        "p95_ms": 59.198975563049316,
+        "max_ms": 63.57097625732422
+      },
+      "flush": {
+        "count": 8,
+        "median_ms": 45.94004154205322,
+        "p95_ms": 47.06692695617676,
+        "max_ms": 47.06692695617676
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 2.0509958267211914,
+        "p95_ms": 60.32693386077881,
+        "max_ms": 66.70606136322021
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "source_summary": "/tmp/skyr-remediation-4/performance/baseline-5000-measured-summary.json",
+      "source_summary_sha256": "fdf7988cf9cf917da6bc933efb164f2ad4aacc56da1c246b88a169513675df38",
+      "track_count": 5000,
+      "hitches": {
+        "scope": "Whole recorded trace; not limited to the timed navigation loop",
+        "count": 226,
+        "maximum_duration_ms": 549.999875,
+        "count_at_least_100_ms": 19
+      }
+    },
+    {
+      "case": "candidate-5000-measured",
+      "loop_seconds": 24.885987043380737,
+      "mutation": {
+        "count": 46,
+        "median_ms": 0.5120038986206055,
+        "p95_ms": 0.8090734481811523,
+        "max_ms": 3.09598445892334
+      },
+      "flush": {
+        "count": 22,
+        "median_ms": 0.009059906005859375,
+        "p95_ms": 0.011920928955078125,
+        "max_ms": 0.01800060272216797
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 2.102017402648926,
+        "p95_ms": 4.287958145141602,
+        "max_ms": 5.348086357116699
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "source_summary": "/tmp/skyr-remediation-4/performance/candidate-5000-measured-summary.json",
+      "source_summary_sha256": "b028f66a4bf2b5cde8a3a9991ace8b67ddd8df09ea3eafeb03a5ce2dafb03645",
+      "track_count": 5000,
+      "hitches": {
+        "scope": "Whole recorded trace; not limited to the timed navigation loop",
+        "count": 684,
+        "maximum_duration_ms": 516.666208,
+        "count_at_least_100_ms": 17
+      }
+    },
+    {
+      "case": "baseline-15000-measured",
+      "loop_seconds": 36.66700208187103,
+      "mutation": {
+        "count": 38,
+        "median_ms": 147.22394943237305,
+        "p95_ms": 162.5429391860962,
+        "max_ms": 166.77498817443848
+      },
+      "flush": {
+        "count": 8,
+        "median_ms": 141.8370008468628,
+        "p95_ms": 143.69702339172363,
+        "max_ms": 143.69702339172363
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 1.8700361251831055,
+        "p95_ms": 151.84402465820312,
+        "max_ms": 166.0170555114746
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "source_summary": "/tmp/skyr-remediation-4/performance/baseline-15000-measured-summary.json",
+      "source_summary_sha256": "5deb5571357e233150bb0228a5fec3b8b39d93732ea2923437a5f0d1a919a25f",
+      "track_count": 15000,
+      "hitches": {
+        "scope": "Whole recorded trace; not limited to the timed navigation loop",
+        "count": 221,
+        "maximum_duration_ms": 1291.6665,
+        "count_at_least_100_ms": 54
+      }
+    },
+    {
+      "case": "candidate-15000-measured",
+      "loop_seconds": 34.29308295249939,
+      "mutation": {
+        "count": 38,
+        "median_ms": 0.5059242248535156,
+        "p95_ms": 0.7110834121704102,
+        "max_ms": 0.7200241088867188
+      },
+      "flush": {
+        "count": 22,
+        "median_ms": 0.010013580322265625,
+        "p95_ms": 0.012993812561035156,
+        "max_ms": 0.02205371856689453
+      },
+      "commands": {
+        "count": 48,
+        "median_ms": 1.7620325088500977,
+        "p95_ms": 3.2259225845336914,
+        "max_ms": 4.198908805847168
+      },
+      "instrument_warning": "No SwiftUI detail data; Hitches/Time Profiler captured",
+      "source_summary": "/tmp/skyr-remediation-4/performance/candidate-15000-measured-summary.json",
+      "source_summary_sha256": "272c5335af5de0bfc99e879b02fe29abbafe44d6691870acad4ba4ba6acdbb21",
+      "track_count": 15000,
+      "hitches": {
+        "scope": "Whole recorded trace; not limited to the timed navigation loop",
+        "count": 1684,
+        "maximum_duration_ms": 1333.332416,
+        "count_at_least_100_ms": 17
+      }
+    }
+  ]
+}

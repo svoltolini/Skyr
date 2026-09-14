@@ -232,6 +232,7 @@ struct SkyrApp: App {
             RootView()
                 .reauthenticationSheet()
                 .downloadErrorAlert()
+                .profileSaveErrorAlert()
                 .scrollIndicators(.hidden)
                 .onOpenURL { url in
                     // Something tapped on a Home Screen widget.

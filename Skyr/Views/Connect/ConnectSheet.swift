@@ -122,7 +122,23 @@ private struct DownloadErrorAlert: ViewModifier {
     }
 }
 
+private struct ProfileSaveErrorAlert: ViewModifier {
+    @Environment(ProfileStore.self) private var profiles
+
+    func body(content: Content) -> some View {
+        content.alert("Profile couldn't be saved", isPresented: Binding(
+            get: { profiles.persistenceError != nil },
+            set: { if !$0 { profiles.dismissPersistenceError() } }
+        )) {
+            Button("OK") { profiles.dismissPersistenceError() }
+        } message: {
+            Text(profiles.persistenceError ?? "Check the available storage on this device and try again.")
+        }
+    }
+}
+
 extension View {
     func reauthenticationSheet() -> some View { modifier(ReauthenticationSheet()) }
     func downloadErrorAlert() -> some View { modifier(DownloadErrorAlert()) }
+    func profileSaveErrorAlert() -> some View { modifier(ProfileSaveErrorAlert()) }
 }

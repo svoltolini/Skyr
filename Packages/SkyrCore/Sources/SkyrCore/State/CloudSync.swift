@@ -50,6 +50,7 @@ public final class CloudSync {
     @ObservationIgnored private lazy var container = CKContainer(identifier: CloudSync.containerID)
     private let services: CloudServices
     private let persistence: CloudPersistence
+    private let decodeProfileDocument: (Data) async throws -> (state: ProfileState, digest: String)
     private var accountState: CloudAccountState?
     private var generation = UUID()
     private var zoneOwnerName: String
@@ -89,9 +90,11 @@ public final class CloudSync {
         self.init(services: .live(container: CKContainer(identifier: Self.containerID)), persistence: CloudPersistence(directory: Self.directory))
     }
 
-    init(services: CloudServices, persistence: CloudPersistence) {
+    init(services: CloudServices, persistence: CloudPersistence,
+         decodeProfileDocument: @escaping (Data) async throws -> (state: ProfileState, digest: String) = { try await ProfileCloudPreparation.decode($0) }) {
         self.services = services
         self.persistence = persistence
+        self.decodeProfileDocument = decodeProfileDocument
         // Legacy global metadata has no verifiable account owner. Refetch instead of adopting it.
         membership = .owner
         zoneOwnerName = CKCurrentUserDefaultName
@@ -315,15 +318,23 @@ public final class CloudSync {
         }
         var failures = 0
         for result in page.records {
+            try check(expected)
             do {
                 let record = try result.get()
                 guard record.recordID.zoneID == activeScope.zoneID else { throw SyncFailure.message("An iCloud record arrived for a different family.") }
-                try apply(record)
+                try await apply(record)
+                try check(expected)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
+                // Decoding can fail after suspension too. Do not continue an old account's
+                // page merely because its worker threw before the success-path generation check.
+                try check(expected)
                 failures += 1
                 services.log("iCloud: a changed record could not be applied: \(Self.describe(error))")
             }
         }
+        try check(expected)
         for deletion in page.deletions {
             do {
                 guard deletion.id.zoneID == activeScope.zoneID else { throw SyncFailure.message("An iCloud deletion arrived for a different family.") }
@@ -363,7 +374,8 @@ public final class CloudSync {
         try persistState()
     }
 
-    private func apply(_ record: CKRecord) throws {
+    private func apply(_ record: CKRecord) async throws {
+        let expected = generation
         switch record.recordType {
         case "Profile":
             guard let profile = Self.profile(from: record) else { throw SyncFailure.message("A profile from iCloud is incomplete.") }
@@ -379,13 +391,16 @@ public final class CloudSync {
             remoteStamps[record.recordID.recordName] = profile.updatedAt
             accountState?.profileIDs.insert(profile.id)
         case "ProfileState":
-            guard let data = record["document"] as? Data, let state = try? ProfileCloudDocument.decode(data),
+            guard let data = record["document"] as? Data,
                   let profileID = record["profileID"] as? String,
                   record.recordID.recordName == "state-\(profileID)" else { throw SyncFailure.message("A profile's iCloud document is incomplete.") }
             if isTombstoned(profileID) { try retainDeletionForReturnedRecord(profileID); return }
-            guard let profiles, profiles.applyRemote(state, id: profileID) else { throw SyncFailure.message("A profile's iCloud document could not be saved on this device.") }
-            remoteStamps[record.recordID.recordName] = state.updatedAt
-            remoteStateDigests[record.recordID.recordName] = state.syncDigest
+            let decoded = try await decodeProfileDocument(data)
+            try check(expected)
+            if isTombstoned(profileID) { try retainDeletionForReturnedRecord(profileID); return }
+            guard let profiles, profiles.applyRemote(decoded.state, id: profileID) else { throw SyncFailure.message("A profile's iCloud document could not be saved on this device.") }
+            remoteStamps[record.recordID.recordName] = decoded.state.updatedAt
+            remoteStateDigests[record.recordID.recordName] = decoded.digest
         case "Family":
             let info = FamilyInfo(
                 name: record["name"] as? String ?? "Family",
@@ -465,6 +480,7 @@ public final class CloudSync {
 
     private func pushLocal() async throws {
         guard let profiles else { return }
+        let expected = generation
         var toSave: [CKRecord] = []
         var newProfiles = 0
         let remoteProfileCount = remoteStamps.keys.filter { !$0.hasPrefix("state-") && $0 != "family" }.count
@@ -482,8 +498,10 @@ public final class CloudSync {
                 toSave.append(record(for: profile))
             }
             let state = profiles.storedState(id: profile.id)
-            if state.updatedAt > .distantPast, remoteStateDigests["state-\(profile.id)"] != state.syncDigest {
-                toSave.append(try record(for: state, profileID: profile.id))
+            if state.updatedAt > .distantPast {
+                let prepared = try await ProfileCloudPreparation.prepare(state, acknowledgedDigest: remoteStateDigests["state-\(profile.id)"])
+                try check(expected)
+                if containsProfileInCurrentAccount(profile.id), let record = record(for: prepared, profileID: profile.id) { toSave.append(record) }
             }
         }
         if membership == .owner, let active = profiles.active, accountState?.profileIDs.contains(active.id) == true,
@@ -501,6 +519,10 @@ public final class CloudSync {
                 toSave.removeAll { $0.recordID.recordName == stored.id }
                 toSave.append(record(for: stored))
             }
+        }
+        toSave.removeAll { record in
+            let id = record.recordType == "Profile" ? record.recordID.recordName : record["profileID"] as? String
+            return id.map { !containsProfileInCurrentAccount($0) } ?? false
         }
         guard !toSave.isEmpty else { return }
         try await save(toSave)
@@ -667,7 +689,10 @@ public final class CloudSync {
         guard accountState?.profileIDs.contains(id) == true, !isTombstoned(id) else { return }
         schedule(key: "state-\(id)") { [weak self] in
             guard let self, let profiles, containsProfileInCurrentAccount(id) else { return }
-            let record = try record(for: profiles.storedState(id: id), profileID: id)
+            let expected = generation
+            let prepared = try await ProfileCloudPreparation.prepare(profiles.storedState(id: id), acknowledgedDigest: remoteStateDigests["state-\(id)"])
+            try check(expected)
+            guard containsProfileInCurrentAccount(id), let record = record(for: prepared, profileID: id) else { return }
             try await save([record])
         }
     }
@@ -701,6 +726,13 @@ public final class CloudSync {
         guard records.allSatisfy({ $0.recordID.zoneID == activeScope.zoneID }) else { throw CancellationError() }
         let result = try await services.modify(activeScope, records, [])
         guard generation == expected else { throw CancellationError() }
+        var acknowledgedDigests: [CKRecord.ID: String] = [:]
+        for (id, outcome) in result.saved {
+            if case .success(let saved) = outcome, saved.recordType == "ProfileState", let data = saved["document"] as? Data {
+                acknowledgedDigests[id] = try await decodeProfileDocument(data).digest
+                try check(expected)
+            }
+        }
         var returnedDeletedRecord = false
         for record in records {
             let profileID = record.recordType == "Profile" ? record.recordID.recordName : record["profileID"] as? String
@@ -718,16 +750,16 @@ public final class CloudSync {
         var heldBack: [CKRecord] = []
         var problem: (any Error)?
         for record in records {
+            try check(expected)
             let id = record.recordID
+            let profileID = record.recordType == "Profile" ? id.recordName : record["profileID"] as? String
+            if let profileID, isTombstoned(profileID) { try retainDeletionForReturnedRecord(profileID); continue }
             let outcome = result.saved[id] ?? .failure(SyncFailure.message("iCloud did not acknowledge a saved record."))
             switch outcome {
             case .success(let saved):
                 remember(saved)
                 if let stamp = saved["updatedAt"] as? Date { remoteStamps[id.recordName] = stamp }
-                if saved.recordType == "ProfileState", let data = saved["document"] as? Data,
-                   let state = try? ProfileCloudDocument.decode(data) {
-                    remoteStateDigests[id.recordName] = state.syncDigest
-                }
+                if let digest = acknowledgedDigests[id] { remoteStateDigests[id.recordName] = digest }
             case .failure(let error):
                 guard let ours = records.first(where: { $0.recordID == id }) else { throw error }
                 let ckError = error as? CKError
@@ -736,16 +768,19 @@ public final class CloudSync {
                     if ours.recordType == "ProfileState" {
                         // Applying merges into the newest durable local state, including edits made
                         // while this request was suspended. Retry with the server's current tag.
-                        try apply(server)
+                        try await apply(server)
                         guard let profileID = ours["profileID"] as? String, let profiles else {
                             throw SyncFailure.message("The profile is unavailable for iCloud reconciliation.")
                         }
                         let latest = profiles.storedState(id: profileID)
-                        if latest.syncDigest != remoteStateDigests[id.recordName] {
+                        let prepared = try await ProfileCloudPreparation.prepare(latest, acknowledgedDigest: remoteStateDigests[id.recordName])
+                        try check(expected)
+                        if isTombstoned(profileID) { try retainDeletionForReturnedRecord(profileID); continue }
+                        if let merged = self.record(for: prepared, profileID: profileID) {
                             if conflictAttempt >= 3 {
                                 problem = SyncFailure.message("iCloud changes are still arriving. Saved changes will be reconciled on the next sync.")
                             } else {
-                                retry.append(try self.record(for: latest, profileID: profileID))
+                                retry.append(merged)
                             }
                         }
                         continue
@@ -756,7 +791,7 @@ public final class CloudSync {
                         for key in ours.allKeys() { server[key] = ours[key] }
                         retry.append(server)
                     } else {
-                        try apply(server)
+                        try await apply(server)
                     }
                 } else if ckError?.code == .batchRequestFailed, records.count > 1 {
                     heldBack.append(ours)
@@ -820,8 +855,8 @@ public final class CloudSync {
         return record
     }
 
-    private func record(for state: ProfileState, profileID: String) throws -> CKRecord {
-        let data = try ProfileCloudDocument.encode(state)
+    private func record(for state: PreparedProfileCloudState, profileID: String) -> CKRecord? {
+        guard let data = state.document else { return nil }
         let record = baseRecord(named: "state-\(profileID)", type: "ProfileState")
         record["document"] = data
         record["profileID"] = profileID

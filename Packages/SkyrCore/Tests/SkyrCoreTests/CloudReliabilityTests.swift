@@ -26,6 +26,9 @@ private final class CloudFixture {
     var heldSave: CheckedContinuation<CloudModifyResult, any Error>?
     var heldSaveResult: CloudModifyResult?
     var didRequestHeldSave: CheckedContinuation<Void, Never>?
+    var shouldHoldDecode = false
+    var heldDecode: CheckedContinuation<(state: ProfileState, digest: String), any Error>?
+    var didRequestHeldDecode: CheckedContinuation<Void, Never>?
     var sync: CloudSync!
 
     init() throws {
@@ -72,7 +75,16 @@ private final class CloudFixture {
                 }
                 return result
             }
-        ), persistence: persistence)
+        ), persistence: persistence, decodeProfileDocument: { data in
+            if self.shouldHoldDecode {
+                return try await withCheckedThrowingContinuation { continuation in
+                    self.heldDecode = continuation
+                    self.didRequestHeldDecode?.resume()
+                    self.didRequestHeldDecode = nil
+                }
+            }
+            return try await ProfileCloudPreparation.decode(data)
+        })
     }
 
     func relaunch(restoreProfiles: Bool = false) {
@@ -195,6 +207,45 @@ private final class CloudFixture {
     await fixture.sync.refresh(reason: "new account")
     #expect(fixture.sync.currentUserRecordName == "B")
     #expect(fixture.requests.last?.1 == nil)
+}
+
+@Test @MainActor func cloudAccountChangeDuringFailingDecodeDiscardsRemainingRecordsAndDeletions() async throws {
+    let fixture = try CloudFixture()
+    defer { fixture.cleanUp() }
+    let (owner, member) = try fixture.ownerAndMember()
+    fixture.pages = [.init(records: [], token: Data("before".utf8))]
+    await fixture.sync.refresh(reason: "A baseline")
+    let zone = CKRecordZone.ID(zoneName: "Family", ownerName: CKCurrentUserDefaultName)
+    let stateRecord = CKRecord(recordType: "ProfileState", recordID: .init(recordName: "state-\(owner.id)", zoneID: zone))
+    stateRecord["profileID"] = owner.id
+    stateRecord["document"] = try ProfileCloudDocument.encode(fixture.profiles.storedState(id: owner.id))
+    let oldProfile = fixture.profileRecord("old-page-profile")
+    let deletion = CloudChangePage.Deletion(id: .init(recordName: member.id, zoneID: zone), type: "Profile")
+    fixture.pages = [.init(records: [.success(stateRecord), .success(oldProfile)], deletions: [deletion], token: Data("stale".utf8))]
+    fixture.shouldHoldDecode = true
+    let started = Task { await fixture.sync.refresh(reason: "A decoding") }
+    await withCheckedContinuation { continuation in
+        if fixture.heldDecode != nil { continuation.resume() }
+        else { fixture.didRequestHeldDecode = continuation }
+    }
+    fixture.sync.accountChanged()
+    fixture.account = "B"
+    fixture.shouldHoldDecode = false
+    // Inject an ordinary worker failure after suspension; the document itself is valid.
+    fixture.heldDecode?.resume(throwing: CocoaError(.fileReadUnknown))
+    fixture.heldDecode = nil
+    await started.value
+    #expect(fixture.profiles.profiles.contains { $0.id == member.id })
+    #expect(fixture.profiles.profiles.allSatisfy { $0.id != oldProfile.recordID.recordName })
+    #expect(fixture.sync.currentUserRecordName == nil)
+    #expect(try fixture.persistence.load(account: "A", defaultOwner: CKCurrentUserDefaultName).zones[CKCurrentUserDefaultName]?.changeToken == Data("before".utf8))
+    await fixture.sync.refresh(reason: "B after old decode failed")
+    let current = try fixture.persistence.load(account: "B", defaultOwner: CKCurrentUserDefaultName)
+    #expect(fixture.sync.currentUserRecordName == "B")
+    #expect(current.profileIDs.isEmpty)
+    #expect(current.zones[CKCurrentUserDefaultName]?.systemFields.isEmpty == true)
+    #expect(fixture.requests.last?.1 == nil)
+    await fixture.profiles.drainPersistence()
 }
 
 @Test @MainActor func cloudOfflineDeletionIsDurableBeforeLocalRemovalAndRetriesBothRecordsAfterRelaunch() async throws {

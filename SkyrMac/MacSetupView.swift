@@ -84,7 +84,7 @@ private struct SetupRail: View {
             .padding(.horizontal, 14)
             .padding(.top, 34)
             Spacer()
-            Text("Nothing leaves your network.")
+            Text("Your music streams straight from your NAS.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(24)
@@ -188,29 +188,35 @@ private struct MacWelcomeStep: View {
 
     var body: some View {
         StepPage(title: "Your library, from your NAS.", subtitle: "Skyr plays the music on the Synology you already own, straight from the server, on every screen in the house.") {
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(OnboardingPage.privacy) { page in
-                    HStack(alignment: .top, spacing: 14) {
-                        Image(systemName: symbol(for: page.id))
-                            .font(.title3.weight(.medium))
-                            .foregroundStyle(Palette.brand)
-                            .frame(width: 26)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(page.title.replacingOccurrences(of: "\n", with: " "))
-                                .font(.headline)
-                            Text(page.text)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(OnboardingPage.privacy) { page in
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: symbol(for: page.id))
+                                .font(.title3.weight(.medium))
+                                .foregroundStyle(Palette.brand)
+                                .frame(width: 26)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(page.title.replacingOccurrences(of: "\n", with: " "))
+                                    .font(.headline)
+                                Text(page.text)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if page.id == 3 {
+                                    ArtworkPrivacyControl()
+                                        .padding(.top, 8)
+                                }
+                            }
                         }
                     }
+                    if let family = cloud.family, family.isReachable {
+                        familyNote(family)
+                            .padding(.top, 6)
+                    }
                 }
-                if let family = cloud.family, family.isReachable {
-                    familyNote(family)
-                        .padding(.top, 6)
-                }
+                .frame(maxWidth: 500, alignment: .leading)
             }
-            .frame(maxWidth: 500, alignment: .leading)
         } buttons: {
             if cloud.family?.isReachable != true {
                 Button("Join with a Link…") { isJoiningWithLink = true }
@@ -244,6 +250,7 @@ private struct MacWelcomeStep: View {
         switch page {
         case 0: "externaldrive.fill"
         case 1: "key.fill"
+        case 3: "photo"
         default: "person.2.fill"
         }
     }
