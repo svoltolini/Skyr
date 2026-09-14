@@ -1,4 +1,5 @@
 import Foundation
+import SkyrShared
 
 /// A folder on the drive that holds audio files, as found by the scan.
 public nonisolated struct ScannedFolder: Sendable, Hashable {
@@ -15,6 +16,36 @@ public nonisolated struct Catalogue: Codable, Sendable {
     /// The folder that was indexed, e.g. "/music".
     public var rootPath: String
     public var driveID: String
+    public private(set) var artworkPolicyVersion: Int
+
+    init(serverName: String, albums: [Album], indexedAt: Date, rootPath: String, driveID: String) {
+        self.serverName = serverName
+        self.albums = albums
+        self.indexedAt = indexedAt
+        self.rootPath = rootPath
+        self.driveID = driveID
+        artworkPolicyVersion = ArtworkPolicy.version
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        serverName = try values.decode(String.self, forKey: .serverName)
+        albums = try values.decode([Album].self, forKey: .albums)
+        indexedAt = try values.decode(Date.self, forKey: .indexedAt)
+        rootPath = try values.decode(String.self, forKey: .rootPath)
+        driveID = try values.decode(String.self, forKey: .driveID)
+        let storedPolicy = try? values.decode(Int.self, forKey: .artworkPolicyVersion)
+        if storedPolicy != ArtworkPolicy.version {
+            // Older JSON does not establish where its colours came from. Keep all music metadata
+            // and reset only those colours; source-cache palettes are reapplied by LibraryStore.
+            for index in albums.indices {
+                let colours = ArtPalette.pair(for: albums[index].id)
+                albums[index].colorA = colours.0
+                albums[index].colorB = colours.1
+            }
+        }
+        artworkPolicyVersion = ArtworkPolicy.version
+    }
 
     public nonisolated static let empty = Catalogue(serverName: "", albums: [], indexedAt: .distantPast, rootPath: "", driveID: "")
 

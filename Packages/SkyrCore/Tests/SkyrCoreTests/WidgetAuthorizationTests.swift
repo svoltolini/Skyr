@@ -128,3 +128,28 @@ private nonisolated struct WidgetFixture {
     #expect(fixture.store.publication(for: session) == nil)
     #expect(!(await fixture.store.write(.sample, publication: publication, coverSources: [:], heroKeys: [])))
 }
+
+@Test(arguments: [nil, 0, 999] as [Int?])
+nonisolated func widgetRejectsUnprovenancedArtworkBeforeTheAppRuns(version: Int?) async throws {
+    let fixture = try WidgetFixture()
+    defer { fixture.cleanUp() }
+    let session = UUID()
+    fixture.store.setSession(session)
+    let publication = try #require(fixture.store.publication(for: session))
+    let image = try fixture.image()
+    #expect(await fixture.store.write(.sample, publication: publication, coverSources: ["cover": image], heroKeys: []))
+    let copy = try #require(fixture.store.coverURL(key: "cover", pixels: WidgetStore.tilePixels))
+    let url = fixture.directory.appending(path: "widget-snapshot.json")
+    var envelope = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    if let version { envelope["artworkPolicyVersion"] = version }
+    else { envelope.removeValue(forKey: "artworkPolicyVersion") }
+    try JSONSerialization.data(withJSONObject: envelope).write(to: url, options: .atomic)
+    // A fresh extension reader has not reset the app's old valid authorization marker.
+    let reader = WidgetStore.Storage(directory: fixture.directory)
+    #expect(reader.load() == nil)
+    #expect(reader.coverURL(key: "cover", pixels: WidgetStore.tilePixels) == nil)
+    #expect(FileManager.default.fileExists(atPath: copy.path))
+    #expect(await fixture.store.write(.sample, publication: publication, coverSources: ["cover": image], heroKeys: []))
+    #expect(reader.load() != nil)
+    #expect(reader.coverURL(key: "cover", pixels: WidgetStore.tilePixels) != nil)
+}

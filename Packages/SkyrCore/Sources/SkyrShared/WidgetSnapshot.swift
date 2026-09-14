@@ -198,6 +198,7 @@ public nonisolated enum WidgetStore {
     private nonisolated struct Envelope: Codable, Sendable {
         let authorization: Authorization
         let snapshot: WidgetSnapshot
+        let artworkPolicyVersion: Int?
     }
 
     /// A request belongs to one authenticated opening and one refresh. It cannot be reused after
@@ -276,6 +277,7 @@ public nonisolated enum WidgetStore {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             guard let envelope = try? decoder.decode(Envelope.self, from: data), envelope.authorization == access,
+                  envelope.artworkPolicyVersion == ArtworkPolicy.version,
                   readAuthorization() == access else { return nil }
             return envelope
         }
@@ -323,7 +325,7 @@ public nonisolated enum WidgetStore {
             }
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
-            guard let data = try? encoder.encode(Envelope(authorization: publication.authorization, snapshot: snapshot)) else { return false }
+            guard let data = try? encoder.encode(Envelope(authorization: publication.authorization, snapshot: snapshot, artworkPolicyVersion: ArtworkPolicy.version)) else { return false }
             let published = lock.withLock {
                 guard acceptsUnderLock(publication) else { return false }
                 do { try data.write(to: snapshotURL, options: .atomic); return true } catch { return false }
