@@ -100,4 +100,53 @@ struct NASTransportTests {
             Issue.record("Expected a transport choice, got \(error)")
         }
     }
+
+    @Test func homeAddressClassifiesRFC1918AndLinkLocalAsHome() {
+        #expect(ServerConnection.isHomeAddress("10.0.0.1"))
+        #expect(ServerConnection.isHomeAddress("10.255.255.254"))
+        #expect(ServerConnection.isHomeAddress("192.168.0.1"))
+        #expect(ServerConnection.isHomeAddress("192.168.255.254"))
+        #expect(ServerConnection.isHomeAddress("172.16.0.1"))
+        #expect(ServerConnection.isHomeAddress("172.31.255.254"))
+        #expect(ServerConnection.isHomeAddress("169.254.1.1"))
+        #expect(!ServerConnection.isHomeAddress("172.15.0.1"))
+        #expect(!ServerConnection.isHomeAddress("172.32.0.1"))
+    }
+
+    @Test func homeAddressClassifiesTailscaleCGNATAsHome() {
+        #expect(ServerConnection.isHomeAddress("100.64.0.1"))
+        #expect(ServerConnection.isHomeAddress("100.64.255.255"))
+        #expect(ServerConnection.isHomeAddress("100.100.50.25"))
+        #expect(ServerConnection.isHomeAddress("100.127.255.254"))
+        #expect(!ServerConnection.isHomeAddress("100.63.255.255"))
+        #expect(!ServerConnection.isHomeAddress("100.128.0.1"))
+        #expect(!ServerConnection.isHomeAddress("101.64.0.1"))
+    }
+
+    @Test func homeAddressClassifiesMagicDNSAsHome() {
+        #expect(ServerConnection.isHomeAddress("nas.tailnet.ts.net"))
+        #expect(ServerConnection.isHomeAddress("diskstation.user.ts.net"))
+        #expect(ServerConnection.isHomeAddress("my-nas.ts.net"))
+        #expect(ServerConnection.isHomeAddress("NAS.TAILNET.TS.NET"))
+        #expect(!ServerConnection.isHomeAddress("ts.net"))
+        #expect(!ServerConnection.isHomeAddress("fake-ts.net.example.com"))
+        #expect(!ServerConnection.isHomeAddress("tsxnet"))
+    }
+
+    @Test func homeAddressClassifiesBonjourAndLocalhostAsHome() {
+        #expect(ServerConnection.isHomeAddress("diskstation.local"))
+        #expect(ServerConnection.isHomeAddress("NAS.LOCAL"))
+        #expect(ServerConnection.isHomeAddress("localhost"))
+        #expect(ServerConnection.isHomeAddress("LOCALHOST"))
+        #expect(ServerConnection.isHomeAddress("diskstation"))
+        #expect(ServerConnection.isHomeAddress("my-nas"))
+    }
+
+    @Test func homeAddressRejectsPublicAddresses() {
+        #expect(!ServerConnection.isHomeAddress("203.0.113.50"))
+        #expect(!ServerConnection.isHomeAddress("8.8.8.8"))
+        #expect(!ServerConnection.isHomeAddress("nas.example.com"))
+        #expect(!ServerConnection.isHomeAddress("mynas.synology.me"))
+        #expect(!ServerConnection.isHomeAddress("1.2.3.4"))
+    }
 }
