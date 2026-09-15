@@ -3,7 +3,8 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Album or playlist download progress on the lock screen and in the Dynamic Island.
+/// Album or playlist download progress on the lock screen and in the Dynamic Island. A tap anywhere on it
+/// opens the player for the song playing, or the album or playlist being saved when nothing is playing.
 struct DownloadLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DownloadActivityAttributes.self) { context in
@@ -23,6 +24,7 @@ struct DownloadLiveActivity: Widget {
             .padding(16)
             .activityBackgroundTint(Color(red: 0.11, green: 0.106, blue: 0.102))
             .activitySystemActionForegroundColor(.white)
+            .widgetURL(context.attributes.openURL)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -62,6 +64,8 @@ struct DownloadLiveActivity: Widget {
                 DownloadRing(state: context.state, size: 18, lineWidth: 2.5)
             }
             .keylineTint(.white)
+            // The one link for the compact, minimal and expanded island alike.
+            .widgetURL(context.attributes.openURL)
         }
     }
 

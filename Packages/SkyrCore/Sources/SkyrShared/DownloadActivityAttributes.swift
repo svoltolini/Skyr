@@ -52,10 +52,17 @@ public nonisolated struct DownloadActivityAttributes: ActivityAttributes {
     public var title: String
     /// The artist for an album, "Playlist" for a playlist.
     public var subtitle: String
+    /// Where a tap on the activity lands: the player for the song playing now, otherwise the album or
+    /// playlist being saved. Optional so activities started by an earlier build still decode.
+    public var link: URL?
 
-    public init(title: String, subtitle: String) {
+    public init(title: String, subtitle: String, link: URL? = nil) {
         self.title = title
         self.subtitle = subtitle
+        self.link = link
     }
+
+    /// The link to open, with the plain player link for activities from before links were carried.
+    public var openURL: URL { link ?? WidgetLink.nowPlaying() }
 }
 #endif

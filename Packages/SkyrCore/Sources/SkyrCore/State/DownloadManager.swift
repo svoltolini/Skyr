@@ -70,6 +70,18 @@ public nonisolated struct DownloadOwner: Hashable, Sendable {
 
     /// Owner ids start with the profile they belong to.
     public static func scope(_ profileID: String) -> String { "profile:\(profileID)|" }
+
+    /// The album or playlist an owner id names, as a link into the app; nil for an id in neither form.
+    public static func destination(ownerID: String) -> WidgetLink.Destination? {
+        let item = ownerID.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).last.map(String.init) ?? ownerID
+        if item.hasPrefix(albumPrefix), item.count > albumPrefix.count {
+            return .album(String(item.dropFirst(albumPrefix.count)))
+        }
+        if item.hasPrefix(playlistPrefix), item.count > playlistPrefix.count {
+            return .playlist(String(item.dropFirst(playlistPrefix.count)))
+        }
+        return nil
+    }
 }
 
 /// What a download control should show.
@@ -1020,7 +1032,9 @@ public final class DownloadManager {
               let ownerID = pendingByOwner.keys.sorted().first(where: { pendingByOwner[$0]?.contains(job.cacheKey) == true }) else { return }
         let id = requestKey(ownerID: ownerID, driveID: job.driveID)
         guard let request = requests[id], let state = progressSnapshot(ownerID: ownerID, driveID: job.driveID) else { return }
-        let attributes = DownloadActivityAttributes(title: request.title, subtitle: request.subtitle)
+        // A tap on the activity opens the player when a song is playing, else the album or playlist being saved.
+        let attributes = DownloadActivityAttributes(title: request.title, subtitle: request.subtitle,
+                                                    link: WidgetLink.nowPlaying(fallback: DownloadOwner.destination(ownerID: ownerID)))
         guard let created = try? Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: nil)) else { return }
         activity = created
         activityOwnerID = ownerID
