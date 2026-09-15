@@ -7,7 +7,6 @@ struct MainTabView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
     @Environment(\.colorScheme) private var colorScheme
-    @State private var isShowingNowPlaying = false
 
     var body: some View {
         @Bindable var model = model
@@ -42,14 +41,16 @@ struct MainTabView: View {
         .toolbarColorScheme(colorScheme, for: .tabBar)
         .tabViewBottomAccessory(isEnabled: player.hasTrack) {
             MiniPlayerView {
-                isShowingNowPlaying = true
+                model.showNowPlaying()
             }
             // The accessory resolves its own scheme from the glass; keep its text on the app's scheme too.
             .environment(\.colorScheme, colorScheme)
         }
         // A plain sheet on purpose: a zoom out of the mini player crashes, because the tab bar
         // accessory is not always in the view hierarchy when the sheet comes back down.
-        .sheet(isPresented: $isShowingNowPlaying) {
+        // The model owns whether it is up, so a Live Activity or widget link and a return to the
+        // foreground while music plays can bring it up from outside the tabs.
+        .sheet(isPresented: $model.isNowPlayingPresented) {
             NowPlayingView()
                 .nowPlayingSheetSize()
         }
