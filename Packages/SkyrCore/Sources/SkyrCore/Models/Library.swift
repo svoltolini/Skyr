@@ -380,16 +380,17 @@ public nonisolated struct ServerConnection: Codable, Hashable, Sendable {
 
     public var host: String { baseURL.host() ?? baseURL.absoluteString }
 
-    /// A private IP or a Bonjour name: fine at home, unreachable from anywhere else.
+    /// A private IP, Bonjour name, or Tailscale address: fine at home or via Tailscale,
+    /// but not a public server that requires router port forwarding.
     public var isHomeOnly: Bool { Self.isHomeAddress(host) }
 
     public static func isHomeAddress(_ host: String) -> Bool {
         let name = host.lowercased()
-        if name.hasSuffix(".local") || name == "localhost" || !name.contains(".") { return true }
+        if name.hasSuffix(".local") || name.hasSuffix(".ts.net") || name == "localhost" || !name.contains(".") { return true }
         let parts = name.split(separator: ".").compactMap { Int($0) }
         guard parts.count == 4 else { return false }
         return parts[0] == 10 || (parts[0] == 192 && parts[1] == 168) || (parts[0] == 172 && (16...31).contains(parts[1]))
-            || (parts[0] == 169 && parts[1] == 254)
+            || (parts[0] == 169 && parts[1] == 254) || (parts[0] == 100 && (64...127).contains(parts[1]))
     }
     public var address: String {
         let port = baseURL.port.map { ":\($0)" } ?? ""
