@@ -121,3 +121,7 @@ Before making 1.0 public, record all of the following against the exact TestFlig
 6. Finish motion, accessibility, navigation, and copy work, then repeat focused regression passes.
 
 No product source fix was made during this audit. The only repository changes are Git setup, ignore rules, this README, and this audit record.
+
+## Related documentation
+
+- [App Store Packaging Validation](APP-STORE-PACKAGING-VALIDATION.md) — Concrete checklist for archive builds, entitlements, privacy manifests, TestFlight uploads, and remaining owner-action items for public release.
