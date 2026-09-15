@@ -384,7 +384,110 @@ public final class DownloadManager {
         return FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path) ? record : nil
     }
 
-    // MARK: Download membership for iCloud sync
+    // MARK: Download membership for iCloud sync and disk reconciliation
+
+    /// Scans the cache directory and returns a map of cacheKey -> fileURL for all existing download files.
+    /// Used to reconcile on-disk files with restored CloudKit membership after reinstall.
+    private func scanDiskCache() -> [String: URL] {
+        var found: [String: URL] = [:]
+        guard let contents = try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return found
+        }
+        for url in contents {
+            let filename = url.lastPathComponent
+            // Skip non-download files (manifest, pending, intent, incoming)
+            guard !filename.hasSuffix(".json"),
+                  !filename.hasPrefix("incoming-"),
+                  filename.count >= 64 else { continue }
+            // Extract the cacheKey (the SHA256 hash, first 64 hex chars)
+            let cacheKey = String(filename.prefix(64))
+            // Validate it's a hex string
+            guard cacheKey.count == 64, cacheKey.allSatisfy({ $0.isHexDigit }) else { continue }
+            found[cacheKey] = url
+        }
+        return found
+    }
+    
+    /// Returns file size for a URL, or nil if not accessible.
+    private func fileSize(at url: URL) -> Int64? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64 else { return nil }
+        return size
+    }
+    
+    /// Reconciles on-disk files with the given owner, reusing valid files without re-downloading.
+    /// Returns the number of files reused from disk.
+    @discardableResult
+    private func reconcileWithDisk(_ owner: DownloadOwner, driveID: String, diskFiles: [String: URL]) -> Int {
+        var reused = 0
+        for track in owner.tracks {
+            let key = Self.cacheKey(trackID: track.id, driveID: driveID)
+            // Already have a record for this track
+            guard records[key] == nil else { continue }
+            // Check if file exists on disk
+            guard let fileURL = diskFiles[key] else { continue }
+            guard let bytes = fileSize(at: fileURL), bytes > 0 else { continue }
+            // Validate file size matches expected (if known)
+            if let expected = track.fileSize, expected > 0, bytes != expected {
+                // Size mismatch - file may be corrupt or from different version, skip reuse
+                continue
+            }
+            // File looks valid - create a record for it
+            let filename = fileURL.lastPathComponent
+            records[key] = DownloadRecord(
+                trackID: track.id,
+                driveID: driveID,
+                fileName: filename,
+                bytes: bytes,
+                owners: [owner.id]
+            )
+            reused += 1
+        }
+        return reused
+    }
+    
+    /// Removes orphaned files from the cache directory - files that exist on disk but have no
+    /// corresponding record (not owned by any album or playlist).
+    /// Returns (removedCount, bytesFreed).
+    @discardableResult
+    public func cleanupOrphanedFiles() -> (count: Int, bytes: Int64) {
+        let diskFiles = scanDiskCache()
+        let recordedKeys = Set(records.keys)
+        var removed = 0
+        var bytesFreed: Int64 = 0
+        
+        for (cacheKey, url) in diskFiles where !recordedKeys.contains(cacheKey) {
+            if let size = fileSize(at: url) {
+                bytesFreed += size
+            }
+            do {
+                try FileManager.default.removeItem(at: url)
+                removed += 1
+                log("Removed orphaned download file: \(url.lastPathComponent)")
+            } catch {
+                log("Failed to remove orphan file \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        
+        if removed > 0 {
+            log("Cleaned up \(removed) orphaned files, freed \(bytesFreed / (1024 * 1024)) MB")
+        }
+        return (removed, bytesFreed)
+    }
+    
+    /// Returns info about orphaned files (files on disk not in any record).
+    public func orphanedFilesInfo() -> (count: Int, bytes: Int64) {
+        let diskFiles = scanDiskCache()
+        let recordedKeys = Set(records.keys)
+        var count = 0
+        var bytes: Int64 = 0
+        
+        for (cacheKey, url) in diskFiles where !recordedKeys.contains(cacheKey) {
+            count += 1
+            bytes += fileSize(at: url) ?? 0
+        }
+        return (count, bytes)
+    }
 
     /// Returns the current download membership (album and playlist IDs) for the active profile on the given drive.
     /// Membership survives reinstall via iCloud; files may need re-fetch from NAS.
@@ -571,9 +674,22 @@ public final class DownloadManager {
     /// Keeps every song of the album or playlist on the device. Songs already here are shared at once,
     /// songs already on their way for another owner are waited for, and the rest are queued to come
     /// down strictly one at a time. Only an explicitly selected sample library may simulate files.
+    ///
+    /// After reinstall, files may exist on disk without records (orphaned from previous install).
+    /// This method reconciles with disk before queueing, reusing valid files to avoid re-downloading.
     public func download(_ owner: DownloadOwner, driveID: String, isSample: Bool = false, url: (Track) -> URL?) {
         lastError = nil
         guard let session else { return }
+        
+        // Reconcile with disk: reuse files that already exist from before reinstall.
+        // This prevents re-download loops and reuses valid cached files.
+        let diskFiles = scanDiskCache()
+        let reused = reconcileWithDisk(owner, driveID: driveID, diskFiles: diskFiles)
+        if reused > 0 {
+            log("Reconciled \(reused) existing files on disk for "\(owner.title)"")
+            saveManifest()
+        }
+        
         let requestID = requestKey(ownerID: owner.id, driveID: driveID)
         requests[requestID] = OwnerRequest(ownerID: owner.id, driveID: driveID, title: owner.title, subtitle: owner.subtitle,
                                           keys: Set(owner.tracks.map { Self.cacheKey(trackID: $0.id, driveID: driveID) }), total: owner.tracks.count)
@@ -645,7 +761,11 @@ public final class DownloadManager {
         pendingByOwner[owner.id] = pending.isEmpty ? nil : pending
         saveManifest()
         savePendingOwners()
-        log("“\(owner.title)”: queued \(queued) songs, \(shared) already on this iPhone")
+        if reused > 0 {
+            log("“\(owner.title)”: queued \(queued) songs, \(shared) already on this device (\(reused) restored from disk)")
+        } else {
+            log("“\(owner.title)”: queued \(queued) songs, \(shared) already on this device")
+        }
         startNextIfIdle()
         refreshActivity(force: true)
         notifyMembershipChange(driveID: driveID)
