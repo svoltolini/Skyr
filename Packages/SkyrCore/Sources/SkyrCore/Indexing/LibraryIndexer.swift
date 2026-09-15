@@ -1,4 +1,5 @@
 import Foundation
+import SkyrShared
 
 /// Walks a drive to build the catalogue, then reads tags and covers in the background.
 @Observable
@@ -445,7 +446,7 @@ public final class LibraryIndexer {
 
     /// The cover image and a description of where it came from.
     public nonisolated static func fetchCover(for album: Album, drive: any RemoteDrive) async -> (Data, String)? {
-        if let coverPath = album.coverPath, let data = try? await drive.download(coverPath, maxBytes: 12 * 1024 * 1024), !data.isEmpty {
+        if let coverPath = album.coverPath, let data = try? await drive.download(coverPath, maxBytes: ArtworkPolicy.maxArtworkDownloadBytes), !data.isEmpty {
             return (data, "folder image \(coverPath)")
         }
         for track in album.tracks.prefix(3) {
@@ -467,7 +468,7 @@ public final class LibraryIndexer {
     nonisolated private static func enrich(track: Track, coverPath: String?, wantsEmbeddedArt: Bool, drive: any RemoteDrive) async -> EnrichmentResult {
         var updated = track
         var cover: Data?
-        if let coverPath, let data = try? await drive.download(coverPath, maxBytes: 12 * 1024 * 1024), !data.isEmpty {
+        if let coverPath, let data = try? await drive.download(coverPath, maxBytes: ArtworkPolicy.maxArtworkDownloadBytes), !data.isEmpty {
             cover = data
         }
         guard let path = track.path else {
