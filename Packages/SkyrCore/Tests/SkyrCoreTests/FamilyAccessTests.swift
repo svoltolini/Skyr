@@ -350,3 +350,102 @@ import Testing
     #expect(!f.model.isChangingFamilyAccess)
     #expect(f.model.familyAccess?.password == "verified-fixture")
 }
+
+// MARK: - CloudKit credential scoping (#57)
+
+@Test @MainActor func familyInfoFromCloudKitForDifferentNASDoesNotAffectCurrentCredentials() async {
+    let f = FamilyFixture()
+    defer { f.cleanUp() }
+    await f.connect("https://nas-a.example:5001", account: "owner-a")
+    await f.configureFamily()
+    let original = f.model.familyAccess
+    #expect(original != nil)
+    #expect(original?.account == "family-reader")
+    #expect(original?.password == "family-fixture")
+    
+    let foreignInfo = FamilyInfo(
+        name: "Other Family", serverName: "NAS-B", serverAccount: "owner-b",
+        musicPath: "/music", updatedAt: .now,
+        familyAccount: "foreign-family", familyPassword: "foreign-password",
+        address: "https://nas-b.example:5001"
+    )
+    f.model.familyArrived(foreignInfo)
+    
+    #expect(f.model.familyAccess == original)
+    #expect(f.model.familyAccess?.password == "family-fixture")
+    #expect(f.passwords["family-v2|" + f.model.connection!.sourceID + "|family-reader"] == "family-fixture")
+}
+
+@Test @MainActor func familyInfoFromCloudKitWithMismatchedPortDoesNotUpdatePassword() async {
+    let f = FamilyFixture()
+    defer { f.cleanUp() }
+    await f.connect("https://nas.example:5001", account: "family-reader")
+    f.passwords[f.model.connection!.keychainAccount] = "original-password"
+    
+    let mismatchedPortInfo = FamilyInfo(
+        name: "Family", serverName: "NAS", serverAccount: "owner",
+        musicPath: "/music", updatedAt: .now,
+        familyAccount: "family-reader", familyPassword: "rotated-password",
+        address: "https://nas.example:6001"
+    )
+    f.model.familyArrived(mismatchedPortInfo)
+    
+    #expect(f.passwords[f.model.connection!.keychainAccount] == "original-password")
+}
+
+@Test @MainActor func familyInfoFromCloudKitWithMismatchedSchemeDoesNotUpdatePassword() async {
+    let f = FamilyFixture()
+    defer { f.cleanUp() }
+    await f.connect("https://nas.example:5001", account: "family-reader")
+    f.passwords[f.model.connection!.keychainAccount] = "original-password"
+    
+    let mismatchedSchemeInfo = FamilyInfo(
+        name: "Family", serverName: "NAS", serverAccount: "owner",
+        musicPath: "/music", updatedAt: .now,
+        familyAccount: "family-reader", familyPassword: "rotated-password",
+        address: "http://nas.example:5001"
+    )
+    f.model.familyArrived(mismatchedSchemeInfo)
+    
+    #expect(f.passwords[f.model.connection!.keychainAccount] == "original-password")
+}
+
+@Test @MainActor func familyAccessOnlyOfferedForMatchingSourceID() async {
+    let f = FamilyFixture()
+    defer { f.cleanUp() }
+    await f.connect("https://nas-a.example:5001", account: "owner-a")
+    await f.configureFamily()
+    #expect(f.model.familyAccess?.account == "family-reader")
+    
+    await f.connect("https://nas-a.example:6001", account: "owner-a")
+    #expect(f.model.familyAccess == nil)
+    
+    await f.connect("https://nas-b.example:5001", account: "owner-a")
+    #expect(f.model.familyAccess == nil)
+    
+    await f.connect("https://nas-a.example:5001", account: "owner-b")
+    #expect(f.model.familyAccess == nil)
+    
+    await f.connect("https://nas-a.example:5001", account: "owner-a")
+    #expect(f.model.familyAccess?.account == "family-reader")
+}
+
+@Test func sourceIDDistinguishesCanonicalComponents() {
+    let base = URL(string: "https://nas.example:5001")!
+    let a = NASSource.identifier(baseURL: base, account: "reader")
+    
+    let sameOriginDifferentCase = URL(string: "https://NAS.Example:5001")!
+    #expect(NASSource.identifier(baseURL: sameOriginDifferentCase, account: "reader") == a)
+    
+    let differentPort = URL(string: "https://nas.example:5002")!
+    #expect(NASSource.identifier(baseURL: differentPort, account: "reader") != a)
+    
+    let differentScheme = URL(string: "http://nas.example:5001")!
+    #expect(NASSource.identifier(baseURL: differentScheme, account: "reader") != a)
+    
+    #expect(NASSource.identifier(baseURL: base, account: "other-reader") != a)
+    
+    let defaultHTTPSPort = URL(string: "https://nas.example:443")!
+    let implicitHTTPSPort = URL(string: "https://nas.example")!
+    #expect(NASSource.identifier(baseURL: defaultHTTPSPort, account: "reader") == NASSource.identifier(baseURL: implicitHTTPSPort, account: "reader"))
+}
