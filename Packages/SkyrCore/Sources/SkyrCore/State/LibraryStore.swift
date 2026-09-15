@@ -348,16 +348,16 @@ public final class LibraryStore {
     public func writeGenre(_ name: String, to newName: String) async -> MetadataWriteReport {
         let target = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != name else { return MetadataWriteReport() }
-        let tracks = tracks(shownUnderGenre: name)
+        let affected = tracks(shownUnderGenre: name)
         let sourceID = catalogue.driveID
-        let report = await writeTags(TagEdits(genre: target), to: tracks)
+        let report = await writeTags(TagEdits(genre: target), to: affected)
         guard catalogue.driveID == sourceID else { return report }
         // Failed songs, and songs never tried when the job was stopped, keep showing the asked-for
         // name through an alias of the tag their file still carries.
         var untouched = Set(report.failures.map(\.trackID))
         if report.wasCancelled {
             let tried = Set(report.written.map(\.id)).union(report.unchanged.map(\.id)).union(untouched)
-            untouched.formUnion(tracks.map(\.id).filter { !tried.contains($0) })
+            untouched.formUnion(affected.map(\.id).filter { !tried.contains($0) })
         }
         var fallbackTags: Set<String> = []
         for album in catalogue.albums {

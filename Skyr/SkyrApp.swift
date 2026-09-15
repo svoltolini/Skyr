@@ -284,13 +284,16 @@ struct SkyrApp: App {
                         }
                     }
                 }
-                // A long scan would stop the moment the phone locked; the screen stays on until it is done.
+                // A long scan or tag write would stop the moment the phone locked; the screen stays on until it is done.
                 .onChange(of: model.isScanning, initial: true) { _, scanning in
-                    UIApplication.shared.isIdleTimerDisabled = scanning && model.keepsScreenOnWhileScanning
+                    UIApplication.shared.isIdleTimerDisabled = (scanning || library.metadataWriter.isWriting) && model.keepsScreenOnWhileScanning
                     if !scanning { endScanAliveTask() }
                 }
+                .onChange(of: library.metadataWriter.isWriting) { _, writing in
+                    UIApplication.shared.isIdleTimerDisabled = (writing || model.isScanning) && model.keepsScreenOnWhileScanning
+                }
                 .onChange(of: model.keepsScreenOnWhileScanning) { _, keeps in
-                    UIApplication.shared.isIdleTimerDisabled = keeps && model.isScanning
+                    UIApplication.shared.isIdleTimerDisabled = keeps && (model.isScanning || library.metadataWriter.isWriting)
                 }
                 .onChange(of: library.playlists) { watchBridge.sync() }
                 .onChange(of: model.stage) { watchBridge.sync() }

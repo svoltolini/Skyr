@@ -173,13 +173,15 @@ extension SynologyDrive: WritableRemoteDrive {
         }
     }
 
-    /// File Station's upload: a multipart form whose last part is the file, the way DSM's own
-    /// interface sends it. The form is staged on disk so the song streams from there.
+    /// File Station's upload as its API guide shows it: the session in the query string, the call and
+    /// its parameters as form fields, and the file as the last part. The form is staged on disk so
+    /// the song streams from there.
     @concurrent public func upload(_ file: URL, toFolder folder: String, name: String, modified: Date?) async throws {
-        guard let url = session.url(api: "SYNO.FileStation.Upload", version: 2, method: "upload") else {
+        guard let (url, call) = session.form(api: "SYNO.FileStation.Upload", version: 2, method: "upload") else {
             throw RemoteWriteError.unsupported
         }
-        var fields = [("path", folder), ("create_parents", "false"), ("overwrite", "true")]
+        var fields = ["api", "version", "method"].compactMap { key in call[key].map { (key, $0) } }
+        fields += [("path", folder), ("create_parents", "false"), ("overwrite", "true")]
         if let modified { fields.append(("mtime", String(Int64(modified.timeIntervalSince1970 * 1000)))) }
         let boundary = "skyr-" + UUID().uuidString
         let body = FileManager.default.temporaryDirectory.appending(path: "skyr-upload-\(UUID().uuidString)")
@@ -198,8 +200,14 @@ extension SynologyDrive: WritableRemoteDrive {
         }
         guard let http = response as? HTTPURLResponse else { throw RemoteDriveError.http(0) }
         guard (200..<300).contains(http.statusCode) else { throw RemoteDriveError.http(http.statusCode) }
-        let result = try SynologyClient.decode(data, as: SynologyUploadResult.self, api: "SYNO.FileStation.Upload")
-        guard result.blSkip != true else { throw SynologyError.api(code: 1805, api: "SYNO.FileStation.Upload") }
+        // Some DSM builds answer with details, others with a bare success; only a refusal or a
+        // skipped file counts as failure.
+        _ = try SynologyClient.decode(data, as: SynologyEmpty.self, api: "SYNO.FileStation.Upload")
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        if let result = try? decoder.decode(SynologyEnvelope<SynologyUploadResult>.self, from: data), result.data?.blSkip == true {
+            throw SynologyError.api(code: 1805, api: "SYNO.FileStation.Upload")
+        }
     }
 
     public func rename(_ path: String, to name: String) async throws {

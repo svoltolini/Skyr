@@ -88,7 +88,13 @@ extension WritableRemoteDrive {
         let backupName = RemoteFileNames.backup(for: name)
         let temporary = folder + "/" + temporaryName
         let backup = folder + "/" + backupName
-        try await upload(file, toFolder: folder, name: temporaryName, modified: modified)
+        do {
+            try await upload(file, toFolder: folder, name: temporaryName, modified: modified)
+        } catch {
+            // A transfer that broke off may have left part of the copy behind.
+            try? await delete(temporary)
+            throw error
+        }
         let uploaded: RemoteEntry
         do {
             uploaded = try await info(temporary)
