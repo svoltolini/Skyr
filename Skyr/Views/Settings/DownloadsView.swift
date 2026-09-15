@@ -23,20 +23,36 @@ struct DownloadsView: View {
 
     @Environment(\.isWideLayout) private var isWide
     private var columns: [GridItem] { Grids.cards(wide: isWide) }
+    /// Listed downloads with songs neither saved nor on their way, offered as one bulk fetch.
+    @State private var missing: [DownloadOwner] = []
+
+    private struct MissingRequest: Equatable {
+        let revision: UInt64
+        let ownerIDs: [String]
+    }
 
     var body: some View {
         let listed = downloads.listedOwnerIDs
         let albums = library.albums.filter { listed.contains(downloads.owner(for: $0).id) }
         let playlists = ([library.favouritesPlaylist] + library.playlists).filter { listed.contains(downloads.owner(for: $0).id) }
+        let owners = playlists.map { downloads.owner(for: $0) } + albums.map { downloads.owner(for: $0) }
+        let unused = downloads.unusedStorage
         ScrollView {
             if albums.isEmpty && playlists.isEmpty {
-                EmptyStateView(
-                    title: "No Downloads",
-                    systemImage: "arrow.down.circle",
-                    message: "Use the download button on an album or playlist to keep it on this \(Device.noun) and play it without the server."
-                )
+                VStack(spacing: 0) {
+                    if !unused.isEmpty { DownloadsStorageCard(unused: unused, missing: []) }
+                    EmptyStateView(
+                        title: "No Downloads",
+                        systemImage: "arrow.down.circle",
+                        message: "Use the download button on an album or playlist to keep it on this \(Device.noun) and play it without the server.",
+                        centered: unused.isEmpty
+                    )
+                }
             } else {
                 VStack(alignment: .leading, spacing: 0) {
+                    if !unused.isEmpty || !missing.isEmpty {
+                        DownloadsStorageCard(unused: unused, missing: missing)
+                    }
                     if !playlists.isEmpty {
                         if !albums.isEmpty { Eyebrow(text: "Playlists") }
                         LazyVGrid(columns: columns, spacing: 18) {
@@ -67,6 +83,92 @@ struct DownloadsView: View {
         }
         .skyrBackground(player.tint)
         .navigationTitle("Downloads")
+        // The folder is read again each time the screen opens, so the figure matches what is there now.
+        .task { downloads.refreshUnusedStorage() }
+        // Manifest-only arithmetic, kept out of the body and redone when download state moves.
+        .task(id: MissingRequest(revision: downloads.stateRevision, ownerIDs: owners.map(\.id))) {
+            missing = owners.filter { downloads.missingCount(for: $0) > 0 }
+        }
+    }
+}
+
+/// What needs a decision before the grids: space no download here uses, and downloads restored from
+/// iCloud whose songs are not on this device yet. Absent when there is nothing to decide.
+private struct DownloadsStorageCard: View {
+    let unused: UnusedDownloadStorage
+    let missing: [DownloadOwner]
+    @Environment(DownloadManager.self) private var downloads
+    @Environment(LibraryStore.self) private var library
+    @State private var isConfirmingRemoval = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !unused.isEmpty {
+                row(symbol: "externaldrive.badge.xmark", tint: .orange,
+                    title: "\(ByteText.format(unused.bytes)) not in use",
+                    detail: unusedDetail) {
+                    Button("Remove", role: .destructive) { isConfirmingRemoval = true }
+                }
+            }
+            if !unused.isEmpty && !missing.isEmpty {
+                Divider().padding(.leading, 60)
+            }
+            if !missing.isEmpty {
+                row(symbol: "icloud.and.arrow.down", tint: .blue,
+                    title: missing.count == 1 ? "1 download is missing songs" : "\(missing.count) downloads are missing songs",
+                    detail: "Restored from iCloud. Songs already on this \(Device.noun) are kept; only the rest come down.") {
+                    Button("Download") { downloadMissing() }
+                }
+            }
+        }
+        .background(Color.groupedCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 24)
+        .padding(.top, 4)
+        .padding(.bottom, 18)
+        .confirmationDialog("Remove \(ByteText.format(unused.bytes)) not in use?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
+            Button("Remove Files", role: .destructive) { downloads.removeUnused() }
+        } message: {
+            Text("These files aren’t part of any download on this \(Device.noun). Anything a family profile or another library still needs can be downloaded again.")
+        }
+    }
+
+    private var unusedDetail: String {
+        var text = "Left behind by earlier downloads; no album or playlist here uses these files."
+        if unused.otherLibraryBytes > 0 {
+            text += " \(ByteText.format(unused.otherLibraryBytes)) belong to a library this \(Device.noun) isn’t signed in to."
+        }
+        return text
+    }
+
+    private func downloadMissing() {
+        for owner in missing {
+            downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                library.streamURL(for: $0, quality: .original)
+            }
+        }
+    }
+
+    private func row<Action: View>(symbol: String, tint: Color, title: String, detail: String, @ViewBuilder action: () -> Action) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: symbol)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            action()
+                .buttonStyle(.glass)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .accessibilityElement(children: .contain)
     }
 }
 
