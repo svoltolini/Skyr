@@ -163,6 +163,20 @@ nonisolated struct ProfilePlaylistSync: Codable, Sendable, Equatable {
     }
 }
 
+// Sync metadata is saved on every device and in every family member's iCloud copy, so a field
+// added by one release must decode from documents that predate it. Synthesized Decodable treats
+// every non-optional stored property as required, even one with a default value: the download
+// membership added in #74 made every earlier document unreadable (#94). These decoders live in
+// extensions so the memberwise initializers stay available.
+nonisolated extension ProfilePlaylistSync {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(ProfileRegister<String>.self, forKey: .name)
+        created = try container.decode(ProfileRegister<Date>.self, forKey: .created)
+        tracks = try container.decodeIfPresent(ProfileSequence.self, forKey: .tracks) ?? ProfileSequence()
+    }
+}
+
 nonisolated struct ProfileLibrarySync: Codable, Sendable, Equatable {
     var favourites = ProfileSequence()
     var playlistOrder = ProfileSequence()
@@ -221,6 +235,21 @@ nonisolated struct ProfileLibrarySync: Codable, Sendable, Equatable {
         result.downloadedAlbums = downloadedAlbums.values
         result.downloadedPlaylists = downloadedPlaylists.values
         return result
+    }
+}
+
+nonisolated extension ProfileLibrarySync {
+    /// A key an older release never wrote means that part of the library had no edits yet.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        favourites = try container.decodeIfPresent(ProfileSequence.self, forKey: .favourites) ?? ProfileSequence()
+        playlistOrder = try container.decodeIfPresent(ProfileSequence.self, forKey: .playlistOrder) ?? ProfileSequence()
+        playlists = try container.decodeIfPresent([String: ProfilePlaylistSync].self, forKey: .playlists) ?? [:]
+        played = try container.decodeIfPresent(ProfileHistorySync.self, forKey: .played) ?? ProfileHistorySync()
+        recentAlbums = try container.decodeIfPresent(ProfileHistorySync.self, forKey: .recentAlbums) ?? ProfileHistorySync()
+        searches = try container.decodeIfPresent(ProfileHistorySync.self, forKey: .searches) ?? ProfileHistorySync()
+        downloadedAlbums = try container.decodeIfPresent(ProfileSequence.self, forKey: .downloadedAlbums) ?? ProfileSequence()
+        downloadedPlaylists = try container.decodeIfPresent(ProfileSequence.self, forKey: .downloadedPlaylists) ?? ProfileSequence()
     }
 }
 
@@ -320,6 +349,16 @@ nonisolated struct ProfileStateSync: Codable, Sendable, Equatable {
         result.settings.repeatMode = settings["repeatMode"]?.value ?? "off"
         result.settings.shuffle = settings["shuffle"]?.value == "true"
         return result
+    }
+}
+
+nonisolated extension ProfileStateSync {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        clock = try container.decode(ProfileRevision.self, forKey: .clock)
+        settings = try container.decodeIfPresent([String: ProfileRegister<String>].self, forKey: .settings) ?? [:]
+        libraries = try container.decodeIfPresent([String: ProfileLibrarySync].self, forKey: .libraries) ?? [:]
+        recoveredLibraries = try container.decodeIfPresent([String: ProfileRevision].self, forKey: .recoveredLibraries)
     }
 }
 

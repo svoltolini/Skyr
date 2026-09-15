@@ -104,9 +104,12 @@ struct ProfilePickerView: View {
 
     private func pick(_ profile: Profile) {
         if profiles.activate(profile) { return }
+        // Without a PIN, only an unreadable document keeps a profile closed; the keypad cannot
+        // help with that, and the store's alert offers the way in.
+        guard profile.isLocked else { return }
         if profiles.biometricsEnabled(for: profile) {
             Task {
-                if !(await profiles.unlockWithBiometrics(profile)) {
+                if !(await profiles.unlockWithBiometrics(profile)), !profiles.canOpenWithoutSavedData(profile) {
                     unlocking = profile
                 }
             }

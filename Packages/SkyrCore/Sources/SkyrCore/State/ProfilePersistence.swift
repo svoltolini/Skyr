@@ -230,11 +230,49 @@ nonisolated final class ProfilePersistence: @unchecked Sendable {
         try context.lock.withLock {
             context.retired = true
             context.generation = UUID()
-            for url in [stateURL(id), journalURL(id)] where FileManager.default.fileExists(atPath: url.path) {
+            for url in [stateURL(id), journalURL(id)] + setAsideURLs(id) where FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
             }
         }
         workLock.withLock { _ = pending.removeValue(forKey: id) }
+    }
+
+    /// Moves a document that cannot be read, and its journal, next to where they were so the
+    /// profile can start again from nothing. Nothing is deleted: the files keep their bytes under a
+    /// name that says when they were set aside, for a later repair or a bug report.
+    /// Returns the destinations, or an empty list when there was nothing to move.
+    @discardableResult
+    func setAside(id: String) throws -> [URL] {
+        let context = context(id)
+        let moved = try context.lock.withLock { () -> [URL] in
+            guard !context.retired else { throw CocoaError(.fileNoSuchFile) }
+            let stamp = "\(Int(Date.now.timeIntervalSince1970))-\(UUID().uuidString.prefix(8))"
+            var destinations: [URL] = []
+            for source in [stateURL(id), journalURL(id)] where FileManager.default.fileExists(atPath: source.path) {
+                let destination = directory.appending(path: "\(id).\(Self.setAsideMarker)-\(stamp).\(source.pathExtension)")
+                try FileManager.default.moveItem(at: source, to: destination)
+                destinations.append(destination)
+            }
+            // The next read starts a fresh generation; a checkpoint still in flight for the old
+            // files is rejected by its stale generation rather than resurrecting them.
+            context.initialized = false
+            context.generation = UUID()
+            context.latest = 0
+            context.checkpoint = 0
+            context.hasSnapshot = false
+            return destinations
+        }
+        workLock.withLock { _ = pending.removeValue(forKey: id) }
+        return moved
+    }
+
+    private static let setAsideMarker = "unreadable"
+
+    /// Earlier documents of this profile that were set aside, oldest first.
+    func setAsideURLs(_ id: String) -> [URL] {
+        let prefix = "\(id).\(Self.setAsideMarker)-"
+        let contents = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        return contents.filter { $0.lastPathComponent.hasPrefix(prefix) }.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     func drain() async { await withCheckedContinuation { continuation in queue.async { continuation.resume() } } }

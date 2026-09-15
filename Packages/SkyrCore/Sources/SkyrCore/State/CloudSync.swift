@@ -296,9 +296,10 @@ public final class CloudSync {
     public func fetchChanges() async throws {
         let expected = generation
         let activeScope = try scope(expected)
+        let requested = changeToken
         let page: CloudChangePage
         do {
-            page = try await services.changes(activeScope, changeToken)
+            page = try await services.changes(activeScope, requested)
             try check(expected)
             needsFamilyInvitation = false
         } catch let error as CKError where error.code == .changeTokenExpired {
@@ -347,6 +348,12 @@ public final class CloudSync {
             let problem = SyncFailure.message("iCloud sync is incomplete: \(failures) change(s) will be retried.")
             status = .failed(problem.localizedDescription)
             throw problem
+        }
+        // A document set aside while this page was in flight asked for everything again. Moving
+        // past this page would skip the records that were meant to come back.
+        guard changeToken == requested else {
+            try await fetchChanges()
+            return
         }
         let previous = changeToken
         changeToken = page.token
@@ -683,6 +690,22 @@ public final class CloudSync {
             throw SyncFailure.message("The recovery profile's Apple Account could not be saved on this device.")
         }
         return true
+    }
+
+    /// This device set a profile's unreadable document aside and started it again from nothing.
+    /// Forget what iCloud last acknowledged for that document, so the next push is an insert that
+    /// iCloud answers with the family's copy to merge rather than overwriting it, and pull every
+    /// record again so that copy comes back without waiting for a push.
+    func documentSetAside(id: String) {
+        let name = "state-\(id)"
+        uploads[name]?.cancel()
+        uploads[name] = nil
+        systemFields[name] = nil
+        remoteStamps[name] = nil
+        remoteStateDigests[name] = nil
+        changeToken = nil
+        do { try persistState() } catch { return } // No verified account: nothing was acknowledged.
+        Task { await refresh(reason: "profile document set aside") }
     }
 
     public func stateChanged(_ state: ProfileState, id: String) {
