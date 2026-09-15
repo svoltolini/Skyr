@@ -241,6 +241,10 @@ struct DownloadRestorationTests {
         #expect(harness.manager.state(for: second) == .downloaded)
     }
 
+    /// The mirror image of `cancellationDuringRestorationRetainsOnlyTheOtherSavedOwner`: whichever of
+    /// the two saved owners cancels, the other keeps the file. A pending list from before the intent
+    /// document carries no request records, so the cancelled owner has nothing to show as
+    /// "cancelled" and simply leaves the Downloads list; the versioned document keeps that state.
     @Test func cancellingSecondOwnerDuringRestorationPreservesFirstOwner() async throws {
         let album = restorationAlbum()
         let first = DownloadOwner(album: album, profileID: "listener")
@@ -256,7 +260,10 @@ struct DownloadRestorationTests {
         #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
         #expect(harness.manager.records[job.cacheKey]?.owners == [first.id])
         #expect(harness.manager.state(for: first) == .downloaded)
-        #expect(harness.manager.state(for: second) == .cancelled(done: 0, total: 1))
+        #expect(harness.manager.state(for: second) == .none)
+        #expect(harness.manager.listedOwnerIDs.contains(first.id))
+        #expect(!harness.manager.listedOwnerIDs.contains(second.id))
+        #expect(FileManager.default.fileExists(atPath: harness.directory.appending(path: job.fileName).path))
     }
 
     @Test func cancellingBothOwnersBeforeRestorationDeletesIncomingFile() async throws {
