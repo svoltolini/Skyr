@@ -7,7 +7,9 @@ import Testing
 @MainActor
 private final class ReconcileHarness {
     let directory: URL
-    let delegate = DownloadDelegate()
+    /// One per launch, as in the app. Invalidating the previous session cancels its tasks, and that
+    /// cancellation must reach the manager that owned them, not the one a relaunch replaced it with.
+    private(set) var delegate: DownloadDelegate!
     private(set) var manager: DownloadManager!
     private(set) var started: [URLSessionDownloadTask] = []
     private var session: URLSession?
@@ -20,6 +22,7 @@ private final class ReconcileHarness {
     }
 
     func open() {
+        delegate = DownloadDelegate()
         manager = DownloadManager(directory: directory, configuration: .ephemeral, delegate: delegate,
                                   restoreTasks: { [weak self] session, completion in
             self?.session = session
