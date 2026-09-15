@@ -166,8 +166,10 @@ struct SkyrApp: App {
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
             widgetFeed.refresh()
         }
-        profiles.onDeactivate = { [player, library, downloads, widgetFeed, watchBridge] in
+        profiles.onDeactivate = { [model, player, library, downloads, widgetFeed, watchBridge] in
             player.stop()
+            // The picker must not have the player sheet, with its favourite and playlist buttons, over it.
+            model.isNowPlayingPresented = false
             downloads.activeProfileID = "locked"
             library.loadProfileState()
             widgetFeed.refresh()
@@ -243,6 +245,23 @@ struct SkyrApp: App {
         scanAliveTask = .invalid
     }
 
+    /// Where a widget or Live Activity link lands, whether the app was running or has just been launched for it.
+    private func open(_ destination: WidgetLink.Destination?) {
+        switch destination {
+        case .album(let id):
+            if let album = library.album(id: id) { model.showAlbum(album) }
+        case .playlist(let id):
+            if let playlist = library.playlist(id: id) { model.showPlaylist(playlist) }
+        case .tab(let name):
+            model.showTab(named: name)
+        case .nowPlaying(let fallback):
+            // After a cold start nothing is playing any more; the album or playlist the link came from stands in.
+            if player.hasTrack { model.showNowPlaying() } else { open(fallback) }
+        case nil:
+            break
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -251,17 +270,8 @@ struct SkyrApp: App {
                 .profileSaveErrorAlert()
                 .scrollIndicators(.hidden)
                 .onOpenURL { url in
-                    // Something tapped on a Home Screen widget.
-                    switch WidgetLink.destination(from: url) {
-                    case .album(let id):
-                        if let album = library.album(id: id) { model.showAlbum(album) }
-                    case .playlist(let id):
-                        if let playlist = library.playlist(id: id) { model.showPlaylist(playlist) }
-                    case .tab(let name):
-                        model.showTab(named: name)
-                    case nil:
-                        break
-                    }
+                    // Something tapped on a Home Screen widget or on the download Live Activity.
+                    open(WidgetLink.destination(from: url))
                 }
                 .environment(model)
                 .environment(library)
@@ -271,7 +281,7 @@ struct SkyrApp: App {
                 .environment(cloud)
                 .preferredColorScheme(model.appearance.colorScheme)
                 .onChange(of: scenePhase) { _, phase in
-                    model.scenePhaseChanged(phase)
+                    model.scenePhaseChanged(phase, isPlaying: player.isPlaying)
                     if phase == .active || phase == .background { watchBridge.sync() }
                     if phase == .active { Task { await cloud.refresh(reason: "foreground") } }
                     if phase == .background {
