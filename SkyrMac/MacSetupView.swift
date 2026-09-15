@@ -465,8 +465,15 @@ private struct MacSignInStep: View {
                 password = model.pendingFamilyPassword ?? ""
             } else if let connection = model.connection, let server, NASOrigin(url: connection.baseURL) == NASOrigin(url: server.baseURL) {
                 account = connection.account
+                if let storedPassword = model.pendingReconnectPassword {
+                    password = storedPassword
+                }
             }
-            focus = account.isEmpty ? .account : .password
+            if model.needsOTP, !password.isEmpty {
+                focus = .otp
+            } else {
+                focus = account.isEmpty ? .account : .password
+            }
         }
         .onChange(of: server?.id) {
             account = model.pendingFamilyAccount ?? ""

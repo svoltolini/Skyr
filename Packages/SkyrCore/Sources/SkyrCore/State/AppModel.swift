@@ -22,6 +22,8 @@ public final class AppModel {
     public private(set) var connection: ServerConnection?
     public private(set) var isRestoring = false
     public private(set) var isReconnecting = false
+    /// Password stored temporarily when 2FA is required during reconnect/restore, so the user only needs to enter the OTP code.
+    public private(set) var pendingReconnectPassword: String?
     private var session: DSMSession?
     private var connectionGeneration = UUID()
     private let defaults: UserDefaults
@@ -56,6 +58,7 @@ public final class AppModel {
         isRestoring = false
         isReconnecting = false
         isJoiningFamily = false
+        pendingReconnectPassword = nil
         indexer.cancel()
         return connectionGeneration
     }
@@ -100,6 +103,7 @@ public final class AppModel {
         beginConnectionChange()
         pendingServer = nil
         needsOTP = false
+        pendingReconnectPassword = nil
     }
 
     public func signIn(account: String, password: String, otpCode: String, remember: Bool) async {
@@ -136,6 +140,7 @@ public final class AppModel {
             services.log("Signed in to \(name) at \(server.address)")
             pendingServer = nil
             needsOTP = false
+            pendingReconnectPassword = nil
             discovery.stop()
             if library.catalogue.belongs(to: connection), !library.isEmpty {
                 library.drive = drive
@@ -184,6 +189,7 @@ public final class AppModel {
             signInError = nil
         } catch SynologyError.twoFactorRequired {
             guard isCurrent(generation) else { return }
+            pendingReconnectPassword = password
             requestReauthentication(connection, needsOTP: true)
         } catch let error as NASTransportError {
             guard isCurrent(generation) else { return }
@@ -200,10 +206,12 @@ public final class AppModel {
         pendingServer = DiscoveredServer(name: saved.name, baseURL: saved.baseURL, model: nil)
         self.needsOTP = needsOTP
         if needsOTP {
-            signInError = "Enter your password and the code from your authenticator app to reconnect."
+            if pendingReconnectPassword != nil {
+                signInError = "Enter the code from your authenticator app to reconnect."
+            } else {
+                signInError = "Enter your password and the code from your authenticator app to reconnect."
+            }
         } else if services.password("\(saved.host)|\(saved.account)") != nil {
-            // This older key did not distinguish ports. Its existence explains the recovery prompt;
-            // its password is never promoted or sent to the newly scoped connection.
             signInError = "Confirm your password once for this server address. Earlier versions saved it without distinguishing server ports. After connecting and scanning, Settings can recover older favourites and playlists."
         } else {
             signInError = "Sign in again to reconnect to your server."
@@ -460,12 +468,12 @@ public final class AppModel {
                     }
                 } else {
                     library.drive = drive
-                    // The cached library is used as is; a scan only runs when it has gone stale.
                     refreshIfStale(olderThan: 30 * 60)
                     startAutoRefresh()
                 }
             } catch SynologyError.twoFactorRequired {
                 guard isCurrent(generation) else { return }
+                pendingReconnectPassword = password
                 requestReauthentication(saved, needsOTP: true)
             } catch let error as NASTransportError {
                 guard isCurrent(generation) else { return }
