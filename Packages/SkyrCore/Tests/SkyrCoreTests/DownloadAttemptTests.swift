@@ -423,7 +423,7 @@ struct DownloadAttemptTests {
         defer { harness.close() }
         try await harness.restore()
         let album = transferAlbum()
-        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let playlist = Playlist(id: "favourites", name: "Favourites", summary: "", covers: [], tracks: album.tracks, kind: .local)
         let albumOwner = DownloadOwner(album: album, profileID: "listener")
         let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
         harness.queue(albumOwner)
@@ -442,7 +442,7 @@ struct DownloadAttemptTests {
         defer { harness.close() }
         try await harness.restore()
         let album = transferAlbum()
-        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let playlist = Playlist(id: "favourites", name: "Favourites", summary: "", covers: [], tracks: album.tracks, kind: .local)
         let albumOwner = DownloadOwner(album: album, profileID: "listener")
         let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
         harness.queue(albumOwner)
@@ -463,7 +463,7 @@ struct DownloadAttemptTests {
         defer { harness.close() }
         try await harness.restore()
         let album = transferAlbum()
-        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let playlist = Playlist(id: "favourites", name: "Favourites", summary: "", covers: [], tracks: album.tracks, kind: .local)
         let albumOwner = DownloadOwner(album: album, profileID: "listener")
         let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
         harness.queue(albumOwner)
@@ -527,7 +527,7 @@ struct DownloadAttemptTests {
         defer { harness.close() }
         try await harness.restore()
         let album = transferAlbum()
-        let playlist = Playlist(id: "shared-playlist", name: "Shared", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let playlist = Playlist(id: "shared-playlist", name: "Shared", summary: "", covers: [], tracks: album.tracks, kind: .local)
         let profile1 = DownloadOwner(playlist: playlist, profileID: "listener")
         let profile2 = DownloadOwner(playlist: playlist, profileID: "other")
         harness.queue(profile1)
