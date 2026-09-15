@@ -69,7 +69,6 @@ struct LibraryView: View {
             }
             .skyrBackground(player.tint)
             .navigationTitle("Library")
-            .modifier(LibrarySubtitle())
             .libraryDestinations()
             .navigationDestination(item: $model.albumToOpen) { AlbumView(album: $0) }
             .toolbar {
@@ -77,6 +76,10 @@ struct LibraryView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Scan for New Music", systemImage: "arrow.clockwise") { model.rescan() }
                         .help("Look for music added to the folder since the last scan")
+                }
+                #else
+                ToolbarItem(placement: .topBarTrailing) {
+                    ScanStatusButton()
                 }
                 #endif
             }
@@ -129,16 +132,6 @@ extension View {
                 }
             }
         #endif
-    }
-}
-
-/// The line under the Library title, read in a scope of its own: it changes with every scan
-/// progress report, and reading it in the Library's body re-evaluated every shelf each time.
-private struct LibrarySubtitle: ViewModifier {
-    @Environment(AppModel.self) private var model
-
-    func body(content: Content) -> some View {
-        content.windowSubtitle(model.librarySubtitle)
     }
 }
 
