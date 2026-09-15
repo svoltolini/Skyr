@@ -77,6 +77,7 @@ import Testing
         #expect(model.enterAddress(address))
         await model.signIn(account: account, password: "owner-fixture", otpCode: "", remember: true)
         #expect(model.isConnected)
+        model.chooseMusicFolder(path: "/music", showsProgress: false)
     }
 
     func configureFamily() async {
