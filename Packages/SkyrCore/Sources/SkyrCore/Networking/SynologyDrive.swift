@@ -125,3 +125,116 @@ public nonisolated final class SynologyDrive: RemoteDrive {
         return components.url
     }
 }
+
+// MARK: - Writing
+
+extension SynologyDrive: WritableRemoteDrive {
+    public func info(_ path: String) async throws -> RemoteEntry {
+        guard let url = session.url(api: "SYNO.FileStation.List", version: 2, method: "getinfo", params: [
+            "path": .strings([path]), "additional": .strings(["size", "time"]),
+        ]) else { throw RemoteDriveError.notSignedIn }
+        let list = try await SynologyClient.request(url, as: SynologyFileInfoList.self, api: "SYNO.FileStation.List")
+        guard let file = list.files.first else { throw RemoteWriteError.missing }
+        if let code = file.code { throw SynologyError.api(code: code, api: "SYNO.FileStation.List") }
+        return file.entry
+    }
+
+    /// Streams the file straight to disk, so a whole song is never held in memory, and stops at `maxBytes`.
+    @concurrent public func downloadFile(_ path: String, to destination: URL, maxBytes: Int64) async throws {
+        guard maxBytes >= 0 else { throw RemoteDriveError.tooLarge }
+        guard let url = streamURL(for: path) else { throw RemoteDriveError.notSignedIn }
+        let (bytes, response) = try await urlSession.bytes(from: url)
+        defer { bytes.task.cancel() }
+        guard let http = response as? HTTPURLResponse else { throw RemoteDriveError.http(0) }
+        guard (200..<300).contains(http.statusCode) else { throw RemoteDriveError.http(http.statusCode) }
+        guard response.expectedContentLength <= maxBytes else { throw RemoteDriveError.tooLarge }
+        _ = FileManager.default.createFile(atPath: destination.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: destination)
+        defer { try? handle.close() }
+        try await withTaskCancellationHandler {
+            var buffer = Data()
+            buffer.reserveCapacity(256 * 1024)
+            var total: Int64 = 0
+            for try await byte in bytes {
+                total += 1
+                guard total <= maxBytes else { throw RemoteDriveError.tooLarge }
+                buffer.append(byte)
+                if buffer.count >= 256 * 1024 {
+                    try Task.checkCancellation()
+                    try handle.write(contentsOf: buffer)
+                    buffer.removeAll(keepingCapacity: true)
+                }
+            }
+            try Task.checkCancellation()
+            if !buffer.isEmpty { try handle.write(contentsOf: buffer) }
+            try handle.synchronize()
+        } onCancel: {
+            bytes.task.cancel()
+        }
+    }
+
+    /// File Station's upload: a multipart form whose last part is the file, the way DSM's own
+    /// interface sends it. The form is staged on disk so the song streams from there.
+    @concurrent public func upload(_ file: URL, toFolder folder: String, name: String, modified: Date?) async throws {
+        guard let url = session.url(api: "SYNO.FileStation.Upload", version: 2, method: "upload") else {
+            throw RemoteWriteError.unsupported
+        }
+        var fields = [("path", folder), ("create_parents", "false"), ("overwrite", "true")]
+        if let modified { fields.append(("mtime", String(Int64(modified.timeIntervalSince1970 * 1000)))) }
+        let boundary = "skyr-" + UUID().uuidString
+        let body = FileManager.default.temporaryDirectory.appending(path: "skyr-upload-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: body) }
+        try Self.writeMultipartForm(fields: fields, file: file, fileName: name, boundary: boundary, to: body)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = session.token { request.setValue(token, forHTTPHeaderField: "X-SYNO-TOKEN") }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await urlSession.upload(for: request, fromFile: body)
+        } catch {
+            throw SynologyError.unreachable(error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse else { throw RemoteDriveError.http(0) }
+        guard (200..<300).contains(http.statusCode) else { throw RemoteDriveError.http(http.statusCode) }
+        let result = try SynologyClient.decode(data, as: SynologyUploadResult.self, api: "SYNO.FileStation.Upload")
+        guard result.blSkip != true else { throw SynologyError.api(code: 1805, api: "SYNO.FileStation.Upload") }
+    }
+
+    public func rename(_ path: String, to name: String) async throws {
+        guard let url = session.url(api: "SYNO.FileStation.Rename", version: 2, method: "rename", params: [
+            "path": .strings([path]), "name": .strings([name]),
+        ]) else { throw RemoteWriteError.unsupported }
+        _ = try await SynologyClient.request(url, as: SynologyEmpty.self, api: "SYNO.FileStation.Rename")
+    }
+
+    public func delete(_ path: String) async throws {
+        guard let url = session.url(api: "SYNO.FileStation.Delete", version: 2, method: "delete", params: [
+            "path": .strings([path]), "recursive": .bool(false),
+        ]) else { throw RemoteWriteError.unsupported }
+        _ = try await SynologyClient.request(url, as: SynologyEmpty.self, api: "SYNO.FileStation.Delete")
+    }
+
+    /// Writes the multipart body to `destination`: the text fields first, then the file, copied in chunks.
+    nonisolated static func writeMultipartForm(fields: [(String, String)], file: URL, fileName: String, boundary: String, to destination: URL) throws {
+        _ = FileManager.default.createFile(atPath: destination.path, contents: nil)
+        let output = try FileHandle(forWritingTo: destination)
+        defer { try? output.close() }
+        var head = ""
+        for (name, value) in fields {
+            head += "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n"
+        }
+        // Quotes and line breaks cannot appear in the header; DSM reads the rest as UTF-8.
+        let safeName = fileName.replacingOccurrences(of: "\"", with: "%22").replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
+        head += "--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(safeName)\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        try output.write(contentsOf: Data(head.utf8))
+        let input = try FileHandle(forReadingFrom: file)
+        defer { try? input.close() }
+        while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
+            try output.write(contentsOf: chunk)
+        }
+        try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
+        try output.synchronize()
+    }
+}

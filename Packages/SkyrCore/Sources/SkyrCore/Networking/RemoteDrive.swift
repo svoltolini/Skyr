@@ -40,7 +40,7 @@ nonisolated extension Error {
     }
 }
 
-public nonisolated enum RemoteDriveError: LocalizedError, Sendable {
+public nonisolated enum RemoteDriveError: LocalizedError, Sendable, Equatable {
     case notSignedIn
     case http(Int)
     case tooLarge

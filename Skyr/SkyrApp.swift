@@ -139,6 +139,8 @@ struct SkyrApp: App {
                 library.downloadedPlaylists = playlistIDs
             }
         }
+        // An album renamed in its files keeps its downloads under its new identity.
+        library.onAlbumRenamed = { [downloads] oldID, newID in downloads.reassignAlbum(from: oldID, to: newID) }
         // A song on this iPhone plays from disk, whether or not the server is reachable.
         player.streamURLProvider = { [library, model, downloads] track in
             downloads.localURL(for: track) ?? library.streamURL(for: track, quality: model.quality)

@@ -278,7 +278,7 @@ public nonisolated enum MP4Tags {
     // MARK: Bytes
 
     /// The child boxes between two offsets: type, payload start, box end.
-    private static func boxes(_ b: [UInt8], _ start: Int, _ end: Int) -> [(String, Int, Int)] {
+    static func boxes(_ b: [UInt8], _ start: Int, _ end: Int) -> [(String, Int, Int)] {
         guard MediaBounds.contains(start, 0, end: end), end <= b.count else { return [] }
         var result: [(String, Int, Int)] = []
         var position = start

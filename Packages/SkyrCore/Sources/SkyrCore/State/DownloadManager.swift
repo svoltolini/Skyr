@@ -490,6 +490,27 @@ public final class DownloadManager {
         if changed { saveManifest() }
     }
 
+    /// An album renamed through its tags gets a new id; the songs kept for the old one stay kept for the new one.
+    public func reassignAlbum(from oldID: String, to newID: String) {
+        guard oldID != newID else { return }
+        let oldSuffix = DownloadOwner.albumPrefix + oldID
+        let newSuffix = DownloadOwner.albumPrefix + newID
+        var changed = false
+        for (trackID, var record) in records {
+            let owners = Set(record.owners.map { owner -> String in
+                guard let separator = owner.firstIndex(of: "|"), owner[owner.index(after: separator)...] == oldSuffix else { return owner }
+                return String(owner[...separator]) + newSuffix
+            })
+            guard owners != record.owners else { continue }
+            record.owners = owners
+            records[trackID] = record
+            changed = true
+        }
+        guard changed else { return }
+        saveManifest()
+        notifyMembershipChange(driveID: driveIDProvider())
+    }
+
     /// Ids of every album and playlist that asked for a download and still has songs here or on the way.
     public var listedOwnerIDs: Set<String> {
         let driveID = driveIDProvider()
