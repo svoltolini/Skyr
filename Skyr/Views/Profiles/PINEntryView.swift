@@ -207,6 +207,48 @@ struct PINSetupSheet: View {
 
 #endif
 
+/// Verify the current PIN before allowing changes to PIN settings.
+struct PINVerificationSheet: View {
+    let profile: Profile
+    let onVerified: (Bool) -> Void
+    @Environment(ProfileStore.self) private var profiles
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 8) {
+                Spacer(minLength: 0)
+                ProfileAvatarView(profile: profile, size: 72)
+                Text("Verify PIN")
+                    .font(.title2.weight(.semibold))
+                    .padding(.top, 6)
+                Text("Enter your current PIN to continue.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 22)
+                PINEntryView { pin in
+                    guard profiles.verify(pin: pin, for: profile) else { return false }
+                    onVerified(true)
+                    dismiss()
+                    return true
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 24)
+            .inlineTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onVerified(false)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .sheetDetents([.large])
+    }
+}
+
 /// A locked profile: its PIN, or the device's own biometrics when the profile allows them here.
 struct UnlockSheet: View {
     let profile: Profile
