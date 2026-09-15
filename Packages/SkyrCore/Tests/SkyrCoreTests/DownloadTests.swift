@@ -191,3 +191,273 @@ private let watchAudioFixture = Data([
     catalogue.playlists = []
     #expect(catalogue.playlist(matching: snapshot) == nil)
 }
+
+// MARK: - Watch Manifest Validation Tests (Issue #16)
+
+private func multiTrackPlaylist(driveID: String = "nas-a", profileID: String = "profile-a") -> WatchPlaylist {
+    let tracks = [
+        WatchTrack(id: "track-1", title: "Song One", artist: "Artist", album: "Album", duration: 180,
+                   path: "/music/Album/01.wav", fileSize: Int64(watchAudioFixture.count), format: "WAV", isLossless: true),
+        WatchTrack(id: "track-2", title: "Song Two", artist: "Artist", album: "Album", duration: 200,
+                   path: "/music/Album/02.wav", fileSize: Int64(watchAudioFixture.count), format: "WAV", isLossless: true),
+        WatchTrack(id: "track-3", title: "Song Three", artist: "Artist", album: "Album", duration: 220,
+                   path: "/music/Album/03.wav", fileSize: Int64(watchAudioFixture.count), format: "WAV", isLossless: true),
+    ]
+    return WatchPlaylist(id: "test-playlist", name: "Test Playlist", isSmart: false, coverColours: [], tracks: tracks, totalSongs: 3,
+                         driveID: driveID, profileID: profileID)
+}
+
+@Test func validatedFileIDsReturnsOnlyExistingValidFiles() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+    manifest.generation = generation
+
+    for track in playlist.tracks.prefix(2) {
+        let job = try #require(WatchDownloadJob(playlist: playlist, track: track, generation: generation))
+        let destination = job.destination(in: directory)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try watchAudioFixture.write(to: destination)
+        manifest.files[track.id] = generation.uuidString + "/" + job.fileName
+    }
+
+    let validated = manifest.validatedFileIDs(for: playlist, root: directory)
+    #expect(validated.count == 2)
+    #expect(validated.contains("track-1"))
+    #expect(validated.contains("track-2"))
+    #expect(!validated.contains("track-3"))
+}
+
+@Test func validatedFileIDsExcludesMissingFiles() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+
+    for track in playlist.tracks {
+        let job = try #require(WatchDownloadJob(playlist: playlist, track: track, generation: generation))
+        manifest.files[track.id] = generation.uuidString + "/" + job.fileName
+    }
+
+    let validated = manifest.validatedFileIDs(for: playlist, root: directory)
+    #expect(validated.isEmpty, "Files that don't exist on disk should not be validated")
+}
+
+@Test func validatedFileIDsExcludesCorruptFiles() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+
+    for (index, track) in playlist.tracks.enumerated() {
+        let job = try #require(WatchDownloadJob(playlist: playlist, track: track, generation: generation))
+        let destination = job.destination(in: directory)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if index == 0 {
+            try watchAudioFixture.write(to: destination)
+        } else {
+            try watchAudioFixture.dropLast().write(to: destination)
+        }
+        manifest.files[track.id] = generation.uuidString + "/" + job.fileName
+    }
+
+    let validated = manifest.validatedFileIDs(for: playlist, root: directory)
+    #expect(validated.count == 1)
+    #expect(validated.contains("track-1"), "Only the valid file should be counted")
+}
+
+@Test func invalidFileIDsIdentifiesMissingAndCorruptFiles() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+
+    let validTrack = playlist.tracks[0]
+    let missingTrack = playlist.tracks[1]
+    let corruptTrack = playlist.tracks[2]
+
+    let validJob = try #require(WatchDownloadJob(playlist: playlist, track: validTrack, generation: generation))
+    let validDest = validJob.destination(in: directory)
+    try FileManager.default.createDirectory(at: validDest.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try watchAudioFixture.write(to: validDest)
+    manifest.files[validTrack.id] = generation.uuidString + "/" + validJob.fileName
+
+    let missingJob = try #require(WatchDownloadJob(playlist: playlist, track: missingTrack, generation: generation))
+    manifest.files[missingTrack.id] = generation.uuidString + "/" + missingJob.fileName
+
+    let corruptJob = try #require(WatchDownloadJob(playlist: playlist, track: corruptTrack, generation: generation))
+    let corruptDest = corruptJob.destination(in: directory)
+    try FileManager.default.createDirectory(at: corruptDest.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try watchAudioFixture.dropLast().write(to: corruptDest)
+    manifest.files[corruptTrack.id] = generation.uuidString + "/" + corruptJob.fileName
+
+    let invalid = manifest.invalidFileIDs(for: playlist, root: directory)
+    #expect(invalid.count == 2)
+    #expect(invalid.contains(missingTrack.id))
+    #expect(invalid.contains(corruptTrack.id))
+    #expect(!invalid.contains(validTrack.id))
+}
+
+@Test func outstandingTrackIDsReturnsDesiredMinusValidated() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+    manifest.generation = generation
+
+    let job = try #require(WatchDownloadJob(playlist: playlist, track: playlist.tracks[0], generation: generation))
+    let destination = job.destination(in: directory)
+    try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try watchAudioFixture.write(to: destination)
+    manifest.files[playlist.tracks[0].id] = generation.uuidString + "/" + job.fileName
+
+    let outstanding = manifest.outstandingTrackIDs(for: playlist, root: directory)
+    #expect(outstanding.count == 2)
+    #expect(!outstanding.contains("track-1"))
+    #expect(outstanding.contains("track-2"))
+    #expect(outstanding.contains("track-3"))
+}
+
+@Test func pruneInvalidFilesRemovesStaleEntries() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+
+    let validJob = try #require(WatchDownloadJob(playlist: playlist, track: playlist.tracks[0], generation: generation))
+    let validDest = validJob.destination(in: directory)
+    try FileManager.default.createDirectory(at: validDest.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try watchAudioFixture.write(to: validDest)
+    manifest.files[playlist.tracks[0].id] = generation.uuidString + "/" + validJob.fileName
+
+    let missingJob = try #require(WatchDownloadJob(playlist: playlist, track: playlist.tracks[1], generation: generation))
+    manifest.files[playlist.tracks[1].id] = generation.uuidString + "/" + missingJob.fileName
+
+    #expect(manifest.files.count == 2)
+    let pruned = manifest.pruneInvalidFiles(for: playlist, root: directory)
+    #expect(pruned.count == 1)
+    #expect(pruned.contains("track-2"))
+    #expect(manifest.files.count == 1)
+    #expect(manifest.files["track-1"] != nil)
+    #expect(manifest.files["track-2"] == nil)
+}
+
+@Test func manifestValidationHandlesSmartPlaylistChanges() throws {
+    var playlist = multiTrackPlaylist()
+    playlist.isSmart = true
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+    manifest.generation = generation
+
+    for track in playlist.tracks {
+        let job = try #require(WatchDownloadJob(playlist: playlist, track: track, generation: generation))
+        let destination = job.destination(in: directory)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try watchAudioFixture.write(to: destination)
+        manifest.files[track.id] = generation.uuidString + "/" + job.fileName
+    }
+
+    #expect(manifest.availableFiles(for: playlist, root: directory).count == 3)
+    #expect(manifest.validatedFileIDs(for: playlist, root: directory).count == 3)
+    #expect(manifest.outstandingTrackIDs(for: playlist, root: directory).isEmpty)
+
+    var changedPlaylist = playlist
+    changedPlaylist.tracks = Array(playlist.tracks.prefix(1))
+    changedPlaylist.tracks.append(WatchTrack(
+        id: "track-new", title: "New Song", artist: "Artist", album: "Album", duration: 150,
+        path: "/music/Album/new.wav", fileSize: Int64(watchAudioFixture.count), format: "WAV", isLossless: true
+    ))
+
+    let validatedAfterChange = manifest.validatedFileIDs(for: changedPlaylist, root: directory)
+    #expect(validatedAfterChange.count == 1, "Only track-1 is both in files and current playlist")
+    #expect(validatedAfterChange.contains("track-1"))
+
+    let availableAfterChange = manifest.availableFiles(for: changedPlaylist, root: directory)
+    #expect(availableAfterChange.count == 1)
+    #expect(availableAfterChange[0].track.id == "track-1")
+}
+
+@Test func manifestValidationHandlesDeletedFilesOnRelaunch() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+    manifest.generation = nil
+
+    for track in playlist.tracks {
+        let job = try #require(WatchDownloadJob(playlist: playlist, track: track, generation: generation))
+        let destination = job.destination(in: directory)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try watchAudioFixture.write(to: destination)
+        manifest.files[track.id] = generation.uuidString + "/" + job.fileName
+    }
+
+    #expect(manifest.validatedFileIDs(for: playlist, root: directory).count == 3)
+
+    let deletedJob = try #require(WatchDownloadJob(playlist: playlist, track: playlist.tracks[1], generation: generation))
+    try FileManager.default.removeItem(at: deletedJob.destination(in: directory))
+
+    let validatedAfterDelete = manifest.validatedFileIDs(for: playlist, root: directory)
+    #expect(validatedAfterDelete.count == 2)
+    #expect(!validatedAfterDelete.contains("track-2"))
+
+    let outstanding = manifest.outstandingTrackIDs(for: playlist, root: directory)
+    #expect(outstanding.count == 1)
+    #expect(outstanding.contains("track-2"))
+
+    let invalid = manifest.invalidFileIDs(for: playlist, root: directory)
+    #expect(invalid.count == 1)
+    #expect(invalid.contains("track-2"))
+}
+
+@Test func manifestPersistencePreservesValidationState() throws {
+    let playlist = multiTrackPlaylist()
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let generation = UUID()
+    var manifest = WatchDownloadManifest()
+    manifest.desired = Set(playlist.tracks.map(\.id))
+    manifest.generation = generation
+
+    let job = try #require(WatchDownloadJob(playlist: playlist, track: playlist.tracks[0], generation: generation))
+    let destination = job.destination(in: directory)
+    try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try watchAudioFixture.write(to: destination)
+    manifest.files[playlist.tracks[0].id] = generation.uuidString + "/" + job.fileName
+
+    let encoded = try JSONEncoder().encode(manifest)
+    let decoded = try JSONDecoder().decode(WatchDownloadManifest.self, from: encoded)
+
+    #expect(decoded.desired == manifest.desired)
+    #expect(decoded.files == manifest.files)
+    #expect(decoded.generation == manifest.generation)
+    #expect(decoded.validatedFileIDs(for: playlist, root: directory) == manifest.validatedFileIDs(for: playlist, root: directory))
+    #expect(decoded.outstandingTrackIDs(for: playlist, root: directory) == manifest.outstandingTrackIDs(for: playlist, root: directory))
+}
