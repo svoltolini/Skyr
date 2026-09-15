@@ -296,16 +296,7 @@ struct SettingsView: View {
         @Bindable var model = model
         return Group {
             Section("Appearance") {
-                LabeledContent {
-                    Picker("Appearance", selection: $model.appearance) {
-                        ForEach(Appearance.allCases) { appearance in
-                            Text(appearance == .auto ? "Automatic" : appearance.rawValue).tag(appearance)
-                        }
-                    }
-                    .labelsHidden()
-                } label: {
-                    NativeSettingsLabel("Appearance", symbol: "circle.lefthalf.filled", tint: .gray)
-                }
+                AppearanceSettingsRow(selection: $model.appearance)
             }
         }
     }
@@ -387,6 +378,70 @@ private struct NativeSettingsLabel: View {
                 .accessibilityHidden(true)
         }
         #endif
+    }
+}
+
+/// Light, Dark and Automatic as segments, so the current look is visible without opening a menu.
+/// A phone stacks the segments under the label, where three of them have room; an iPad in a wide
+/// window and the Mac keep them at the trailing edge like any other value. At accessibility text
+/// sizes a segmented control truncates its titles, so the choices become checkmark rows instead.
+/// The system control carries selection, VoiceOver and Reduce Motion behaviour on its own; nothing
+/// here animates.
+private struct AppearanceSettingsRow: View {
+    @Binding var selection: Appearance
+    #if os(iOS)
+    @Environment(\.isWideLayout) private var isWide
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #endif
+
+    var body: some View {
+        #if os(iOS)
+        if dynamicTypeSize.isAccessibilitySize {
+            label
+            Picker("Appearance", selection: $selection) { choices }
+                .pickerStyle(.inline)
+                .labelsHidden()
+        } else if isWide {
+            HStack {
+                label.accessibilityHidden(true)
+                Spacer(minLength: 16)
+                segments.fixedSize()
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                label.accessibilityHidden(true)
+                segments
+            }
+            .padding(.vertical, 4)
+        }
+        #else
+        LabeledContent {
+            segments.fixedSize()
+        } label: {
+            label
+        }
+        #endif
+    }
+
+    private var label: some View {
+        NativeSettingsLabel("Appearance", symbol: "circle.lefthalf.filled", tint: .gray)
+    }
+
+    // A segmented picker only speaks its name to VoiceOver as a labelled container; otherwise the
+    // first segment is announced as a bare "Light, button". With the container named, the visible
+    // label beside the segments would only repeat it, so the segmented layouts hide that label.
+    private var segments: some View {
+        Picker("Appearance", selection: $selection) { choices }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Appearance")
+    }
+
+    private var choices: some View {
+        ForEach(Appearance.allCases) { appearance in
+            Text(appearance.title).tag(appearance)
+        }
     }
 }
 #else
@@ -533,7 +588,7 @@ struct SettingsView: View {
                     SettingsRow(symbol: "circle.lefthalf.filled", tint: .gray, title: "Look") {
                         Picker("Look", selection: $model.appearance) {
                             ForEach(Appearance.allCases) { appearance in
-                                Text(appearance == .auto ? "Automatic" : appearance.rawValue).tag(appearance)
+                                Text(appearance.title).tag(appearance)
                             }
                         }
                         .menuPicker()

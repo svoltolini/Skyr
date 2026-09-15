@@ -370,7 +370,7 @@ public nonisolated enum WidgetStore {
     }
 }
 
-/// Links from the widgets into the app.
+/// Links from the widgets and the Live Activity into the app.
 public nonisolated enum WidgetLink {
     public static let scheme = "skyr"
 
@@ -379,11 +379,30 @@ public nonisolated enum WidgetLink {
         case playlist(String)
         /// A tab by name: "library", "playlists" or "downloads".
         case tab(String)
+        /// The player sheet for the song playing now. Nothing may be playing any more by the time the
+        /// app is on screen, as after a cold start, so the link carries where to land instead: the
+        /// album or playlist the widget or activity was showing.
+        indirect case nowPlaying(fallback: Destination?)
     }
 
     public static func album(id: String) -> URL { make(host: "album", id: id) }
     public static func playlist(id: String) -> URL { make(host: "playlist", id: id) }
     public static func tab(_ name: String) -> URL { make(host: "tab", id: name) }
+
+    public static func nowPlaying(fallback: Destination? = nil) -> URL {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = nowPlayingHost
+        switch fallback {
+        case .album(let id): components.queryItems = [URLQueryItem(name: "album", value: id)]
+        case .playlist(let id): components.queryItems = [URLQueryItem(name: "playlist", value: id)]
+        case .tab(let name): components.queryItems = [URLQueryItem(name: "tab", value: name)]
+        case .nowPlaying, nil: break
+        }
+        return components.url ?? URL(string: "\(scheme)://\(nowPlayingHost)")!
+    }
+
+    private static let nowPlayingHost = "now-playing"
 
     private static func make(host: String, id: String) -> URL {
         var components = URLComponents()
@@ -394,9 +413,16 @@ public nonisolated enum WidgetLink {
     }
 
     public static func destination(from url: URL) -> Destination? {
-        guard url.scheme == scheme,
-              let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value
-        else { return nil }
+        guard url.scheme == scheme else { return nil }
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func value(_ name: String) -> String? { query.first { $0.name == name }?.value }
+        if url.host == nowPlayingHost {
+            if let id = value("album") { return .nowPlaying(fallback: .album(id)) }
+            if let id = value("playlist") { return .nowPlaying(fallback: .playlist(id)) }
+            if let name = value("tab") { return .nowPlaying(fallback: .tab(name)) }
+            return .nowPlaying(fallback: nil)
+        }
+        guard let id = value("id") else { return nil }
         switch url.host {
         case "album": return .album(id)
         case "playlist": return .playlist(id)

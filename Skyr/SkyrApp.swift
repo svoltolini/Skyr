@@ -132,6 +132,14 @@ struct SkyrApp: App {
             UserDefaults.standard.set(true, forKey: "downloads.ownersScoped")
         }
         downloads.activeProfileID = profiles.lastActiveID ?? profiles.owner?.id ?? "default"
+        // Songs owned only by profiles not on this device count as unused, but the local profile list
+        // is trusted only once iCloud has been consulted; before that, or while it fails, nothing is judged.
+        downloads.knownProfileIDsProvider = { [profiles, cloud] in
+            switch cloud.status {
+            case .synced, .noAccount: Set(profiles.profiles.map(\.id))
+            case .off, .syncing, .failed: []
+            }
+        }
         // Persist download membership changes to iCloud via the profile state.
         downloads.onMembershipChanged = { [profiles] driveID, albumIDs, playlistIDs in
             profiles.updateLibrary(driveID) { library in
@@ -141,6 +149,17 @@ struct SkyrApp: App {
         }
         // An album renamed in its files keeps its downloads under its new identity.
         library.onAlbumRenamed = { [downloads] oldID, newID in downloads.reassignAlbum(from: oldID, to: newID) }
+        // Membership restored from iCloud meets the files already in the downloads folder: songs still
+        // here are reused rather than fetched again, and anything no download uses is surfaced. Runs
+        // whenever either side changes: a profile opening, its document arriving, or the catalogue loading.
+        let reconcileDownloads: () -> Void = { [library, profiles, downloads] in
+            guard profiles.active != nil, !library.catalogue.isEmpty else { return }
+            let driveID = library.catalogue.driveID
+            let state = profiles.libraryState(for: driveID)
+            downloads.reconcile(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID,
+                                album: { library.album(id: $0) }, playlist: { library.playlist(id: $0) })
+        }
+        library.onContentChanged = reconcileDownloads
         // A song on this iPhone plays from disk, whether or not the server is reachable.
         player.streamURLProvider = { [library, model, downloads] track in
             downloads.localURL(for: track) ?? library.streamURL(for: track, quality: model.quality)
@@ -159,29 +178,25 @@ struct SkyrApp: App {
         profiles.onActivate = { [library, model, player, downloads, widgetFeed, profiles] profile in
             downloads.activeProfileID = profile.id
             library.loadProfileState()
-            // Restore download membership from iCloud sync state (files will re-fetch from NAS if needed).
-            let driveID = library.catalogue.driveID
-            let state = profiles.libraryState(for: driveID)
-            downloads.restoreDownloadMembership(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID)
+            reconcileDownloads()
             model.applyProfileSettings()
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
             widgetFeed.refresh()
         }
-        profiles.onDeactivate = { [player, library, downloads, widgetFeed, watchBridge] in
+        profiles.onDeactivate = { [model, player, library, downloads, widgetFeed, watchBridge] in
             player.stop()
+            // The picker must not have the player sheet, with its favourite and playlist buttons, over it.
+            model.isNowPlayingPresented = false
             downloads.activeProfileID = "locked"
             library.loadProfileState()
             widgetFeed.refresh()
             watchBridge.revoke()
         }
         // The document changed on another device: show it.
-        profiles.onRemoteState = { [library, model, player, profiles, downloads, widgetFeed] in
+        profiles.onRemoteState = { [library, model, player, profiles, widgetFeed] in
             library.loadProfileState()
-            // Restore download membership that may have synced from another device.
-            let driveID = library.catalogue.driveID
-            let state = profiles.libraryState(for: driveID)
-            downloads.restoreDownloadMembership(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID)
+            reconcileDownloads()
             model.applyProfileSettings()
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
@@ -245,6 +260,23 @@ struct SkyrApp: App {
         scanAliveTask = .invalid
     }
 
+    /// Where a widget or Live Activity link lands, whether the app was running or has just been launched for it.
+    private func open(_ destination: WidgetLink.Destination?) {
+        switch destination {
+        case .album(let id):
+            if let album = library.album(id: id) { model.showAlbum(album) }
+        case .playlist(let id):
+            if let playlist = library.playlist(id: id) { model.showPlaylist(playlist) }
+        case .tab(let name):
+            model.showTab(named: name)
+        case .nowPlaying(let fallback):
+            // After a cold start nothing is playing any more; the album or playlist the link came from stands in.
+            if player.hasTrack { model.showNowPlaying() } else { open(fallback) }
+        case nil:
+            break
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -253,17 +285,8 @@ struct SkyrApp: App {
                 .profileSaveErrorAlert()
                 .scrollIndicators(.hidden)
                 .onOpenURL { url in
-                    // Something tapped on a Home Screen widget.
-                    switch WidgetLink.destination(from: url) {
-                    case .album(let id):
-                        if let album = library.album(id: id) { model.showAlbum(album) }
-                    case .playlist(let id):
-                        if let playlist = library.playlist(id: id) { model.showPlaylist(playlist) }
-                    case .tab(let name):
-                        model.showTab(named: name)
-                    case nil:
-                        break
-                    }
+                    // Something tapped on a Home Screen widget or on the download Live Activity.
+                    open(WidgetLink.destination(from: url))
                 }
                 .environment(model)
                 .environment(library)
@@ -273,7 +296,7 @@ struct SkyrApp: App {
                 .environment(cloud)
                 .preferredColorScheme(model.appearance.colorScheme)
                 .onChange(of: scenePhase) { _, phase in
-                    model.scenePhaseChanged(phase)
+                    model.scenePhaseChanged(phase, isPlaying: player.isPlaying)
                     if phase == .active || phase == .background { watchBridge.sync() }
                     if phase == .active { Task { await cloud.refresh(reason: "foreground") } }
                     if phase == .background {

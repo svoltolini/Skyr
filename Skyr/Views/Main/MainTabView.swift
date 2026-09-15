@@ -4,9 +4,9 @@ import SwiftUI
 /// Library, Playlists and Search tabs with the mini player docked above the tab bar.
 struct MainTabView: View {
     @Environment(AppModel.self) private var model
+    @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
     @Environment(\.colorScheme) private var colorScheme
-    @State private var isShowingNowPlaying = false
 
     var body: some View {
         @Bindable var model = model
@@ -28,6 +28,12 @@ struct MainTabView: View {
             }
         }
         .adaptiveTabs()
+        // The Search tab's field is the tab view's to place, not the tab's. Paired with the tab's search
+        // role, iOS turns the tab bar into the field the moment Search is chosen, as Music does, so it is
+        // on screen at once. Inside the tab's own navigation stack it would fall into the bar's drawer
+        // and stay hidden under the large title until a pull down.
+        .searchable(text: $model.searchQuery, prompt: SearchView.prompt)
+        .onSubmit(of: .search) { library.noteSearch(model.searchQuery) }
         .tabBarMinimizeBehavior(.onScrollDown)
         // Pin the tab bar and its accessory to the app's own light or dark look. Left to itself, the glass
         // flips its label colour to match whatever scrolls underneath, which can leave white text on a
@@ -35,14 +41,16 @@ struct MainTabView: View {
         .toolbarColorScheme(colorScheme, for: .tabBar)
         .tabViewBottomAccessory(isEnabled: player.hasTrack) {
             MiniPlayerView {
-                isShowingNowPlaying = true
+                model.showNowPlaying()
             }
             // The accessory resolves its own scheme from the glass; keep its text on the app's scheme too.
             .environment(\.colorScheme, colorScheme)
         }
         // A plain sheet on purpose: a zoom out of the mini player crashes, because the tab bar
         // accessory is not always in the view hierarchy when the sheet comes back down.
-        .sheet(isPresented: $isShowingNowPlaying) {
+        // The model owns whether it is up, so a Live Activity or widget link and a return to the
+        // foreground while music plays can bring it up from outside the tabs.
+        .sheet(isPresented: $model.isNowPlayingPresented) {
             NowPlayingView()
                 .nowPlayingSheetSize()
         }

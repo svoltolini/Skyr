@@ -102,6 +102,9 @@ public final class LibraryStore {
     public private(set) var albums: [Album] = []
     /// Changes once a complete set of derived catalogue content is published, never for scan progress.
     public private(set) var contentRevision = 0
+    /// Called after `contentRevision` moves, for work that needs the albums and their songs, such as
+    /// matching restored download membership against the files on this device.
+    public var onContentChanged: (() -> Void)?
     /// The NAS whose derived rows are on screen. A replacement catalogue can be waiting for its
     /// background derivation, so its source must not be assigned to the preceding source's rows.
     public private(set) var contentSourceID: String?
@@ -266,6 +269,7 @@ public final class LibraryStore {
             shuffleDay = ""
             rebuildPlaylists()
             contentRevision &+= 1
+            onContentChanged?()
         }
         let unread = coveredAlbumIDs.subtracting(palettes.keys)
         if !unread.isEmpty { readPalettes(for: unread) }

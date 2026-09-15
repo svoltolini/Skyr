@@ -63,7 +63,18 @@ private struct SmallLayout: View {
         .containerBackground(for: .widget) {
             CoverBackdrop(album: album)
         }
-        .widgetURL(WidgetLink.album(id: album.id))
+        .widgetURL(lead.link(to: album))
+    }
+}
+
+private extension WidgetSnapshot.Lead {
+    /// The cover of the song playing or paused opens the player, as the island does; any other lead opens
+    /// its album's page. Nothing may be playing any more once the app is up, so the album stands in then.
+    func link(to album: WidgetSnapshot.Album) -> URL {
+        switch self {
+        case .playing, .paused: WidgetLink.nowPlaying(fallback: .album(album.id))
+        case .recentlyPlayed, .recentlyAdded: WidgetLink.album(id: album.id)
+        }
     }
 }
 
@@ -76,7 +87,7 @@ private struct MediumLayout: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 14) {
-            LeadCover(album: album, isPlaying: lead == .playing)
+            LeadCover(album: album, isPlaying: lead == .playing, link: lead.link(to: album))
                 .frame(maxHeight: .infinity)
             VStack(alignment: .leading, spacing: 3) {
                 LeadEyebrow(lead: lead)
@@ -118,7 +129,7 @@ private struct LargeLayout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 14) {
-                LeadCover(album: album, isPlaying: lead == .playing)
+                LeadCover(album: album, isPlaying: lead == .playing, link: lead.link(to: album))
                     .frame(width: 112, height: 112)
                 VStack(alignment: .leading, spacing: 3) {
                     LeadEyebrow(lead: lead)

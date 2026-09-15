@@ -426,6 +426,15 @@ public nonisolated enum Appearance: String, CaseIterable, Identifiable, Sendable
     case auto = "Auto"
     public var id: String { rawValue }
 
+    /// The choice as Settings names it; "Auto" stays the stored value so saved profiles keep reading.
+    public var title: String {
+        switch self {
+        case .light: "Light"
+        case .dark: "Dark"
+        case .auto: "Automatic"
+        }
+    }
+
     public var colorScheme: ColorScheme? {
         switch self {
         case .light: .light

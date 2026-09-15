@@ -414,12 +414,16 @@ extension View {
         #endif
     }
 
-    /// Puts the cursor in the search field; the television opens its keyboard on its own.
-    @ViewBuilder func focusesSearch(_ binding: FocusState<Bool>.Binding) -> some View {
-        #if os(tvOS)
+    /// A search page's own field, where the page is the one to draw it. The television puts the field
+    /// above the page's content. On iPhone and iPad the page adds none: the tab bar is the field there,
+    /// placed by the tab view (see `MainTabView`), and one inside the page's navigation stack would sit in
+    /// the bar's drawer instead, hidden under the large title until a pull down.
+    @ViewBuilder func pageSearchField(text: Binding<String>, prompt: Text, onSubmit action: @escaping () -> Void) -> some View {
+        #if os(iOS)
         self
         #else
-        searchFocused(binding)
+        searchable(text: text, prompt: prompt)
+            .onSubmit(of: .search, action)
         #endif
     }
 

@@ -70,6 +70,18 @@ public nonisolated struct DownloadOwner: Hashable, Sendable {
 
     /// Owner ids start with the profile they belong to.
     public static func scope(_ profileID: String) -> String { "profile:\(profileID)|" }
+
+    /// The album or playlist an owner id names, as a link into the app; nil for an id in neither form.
+    public static func destination(ownerID: String) -> WidgetLink.Destination? {
+        let item = ownerID.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).last.map(String.init) ?? ownerID
+        if item.hasPrefix(albumPrefix), item.count > albumPrefix.count {
+            return .album(String(item.dropFirst(albumPrefix.count)))
+        }
+        if item.hasPrefix(playlistPrefix), item.count > playlistPrefix.count {
+            return .playlist(String(item.dropFirst(playlistPrefix.count)))
+        }
+        return nil
+    }
 }
 
 /// What a download control should show.
@@ -85,6 +97,40 @@ public nonisolated enum DownloadState: Equatable, Sendable {
         if case .downloading = self { return true }
         return false
     }
+}
+
+/// What matching the downloads folder against restored membership found, for the log and for tests.
+public nonisolated struct DownloadReconciliation: Equatable, Sendable {
+    /// Songs whose file was already in the folder and was attached instead of downloaded again.
+    public var attachedFiles = 0
+    /// Songs already saved for another album, playlist or profile, now shared with the restored owner.
+    public var sharedRecords = 0
+    /// Songs of the restored albums and playlists that are not on this device; a retry fetches only these.
+    public var missingSongs = 0
+    /// Partial transfers left behind by an interrupted launch, deleted.
+    public var removedPartialFiles = 0
+    /// Files no download uses after matching, surfaced for removal rather than deleted.
+    public var unused = UnusedDownloadStorage()
+
+    public init() {}
+}
+
+/// Space in the downloads folder that no download on this device uses: files the manifest does not
+/// know, songs whose every owner is a profile that is not on this device, and songs saved for a
+/// library this device is not signed in to. Surfaced so it never sits invisible, deleted only on request.
+public nonisolated struct UnusedDownloadStorage: Equatable, Sendable {
+    public var bytes: Int64 = 0
+    public var fileCount = 0
+    /// Of `bytes`, songs kept for another library; signing back in to it lists them again.
+    public var otherLibraryBytes: Int64 = 0
+    /// Files without a manifest entry, plus the files of unused entries.
+    var fileNames: [String] = []
+    /// Manifest entries no profile here or library uses.
+    var recordKeys: [String] = []
+
+    public var isEmpty: Bool { fileCount == 0 }
+
+    public init() {}
 }
 
 /// Everything the session needs to remember about a file, stored in the task description so it
@@ -105,9 +151,11 @@ public nonisolated struct DownloadJob: Codable, Sendable {
     /// A retry is a different transfer, even when it asks for the same NAS file.
     public let attemptID: String
 
-    public var incomingFileName: String {
+    public var incomingFileName: String { Self.incomingFileName(cacheKey: cacheKey, attemptID: attemptID) }
+
+    static func incomingFileName(cacheKey: String, attemptID: String) -> String {
         let data = Data((cacheKey + "|" + attemptID).utf8)
-        return "incoming-" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return DownloadCacheInventory.incomingPrefix + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     public init(ownerID: String, trackID: String, driveID: String, fileName: String, expectedBytes: Int64?, ownerTitle: String, ownerSubtitle: String, trackTitle: String, ownerTrackCount: Int, attemptID: String = UUID().uuidString) {
@@ -175,8 +223,16 @@ public final class DownloadManager {
     public var driveIDProvider: () -> String = { "" }
     /// The profile whose downloads the screens show and new downloads belong to.
     public var activeProfileID = "default"
+    /// The profiles on this device. Songs owned only by profiles not in this set are surfaced as
+    /// unused storage; an empty set means the app does not know yet, and nothing is judged.
+    public var knownProfileIDsProvider: () -> Set<String> = { [] }
     /// Called when download membership changes (albums/playlists added or removed). Args: driveID, albumIDs, playlistIDs.
     public var onMembershipChanged: ((String, [String], [String]) -> Void)?
+    /// Albums and playlists whose download membership came back from iCloud, by drive. They stay
+    /// listed while their songs are still missing, so a restored download is never invisible.
+    private var restoredOwners: [String: Set<String>] = [:] { didSet { stateRevision &+= 1 } }
+    /// What the downloads folder holds that no download here uses, from the last reconciliation.
+    public private(set) var unusedStorage = UnusedDownloadStorage()
     /// 0…1 for every file currently coming down, by track id.
     public var progress: [String: Double] {
         Dictionary(jobs.values.filter { $0.driveID == driveIDProvider() }.compactMap { job in
@@ -213,6 +269,8 @@ public final class DownloadManager {
     private var initialPendingOwners: [String: Set<String>] = [:]
     private var migratesLegacySessionOwners = false
     private var cancelledInitialOwners: [String: Set<String>] = [:]
+    /// A sweep met partial transfers before the session's tasks were known; look again once they are.
+    private var sweepDeferredByRestoration = false
 
     private struct OwnerRequest: Codable {
         let ownerID: String
@@ -386,74 +444,186 @@ public final class DownloadManager {
 
     // MARK: Download membership for iCloud sync
 
-    /// Returns the current download membership (album and playlist IDs) for the active profile on the given drive.
-    /// Membership survives reinstall via iCloud; files may need re-fetch from NAS.
+    /// The albums and playlists the active profile keeps on this device for the given drive: those with
+    /// songs saved or on their way, and those restored from iCloud whose songs are still to come.
+    /// Restored membership is included so a new download never overwrites the restored list in iCloud.
     public func downloadMembership(driveID: String) -> (albums: [String], playlists: [String]) {
         let scope = DownloadOwner.scope(activeProfileID)
+        var ownerIDs: Set<String> = []
+        for record in records.values where record.driveID == driveID { ownerIDs.formUnion(record.owners) }
+        for (ownerID, keys) in pendingByOwner where keys.contains(where: { jobs[$0]?.driveID == driveID }) { ownerIDs.insert(ownerID) }
+        ownerIDs.formUnion(restoredOwners[driveID] ?? [])
         var albums: Set<String> = []
         var playlists: Set<String> = []
-        
-        // Collect from completed records
-        for record in records.values where record.driveID == driveID {
-            for owner in record.owners where owner.hasPrefix(scope) {
-                let stripped = String(owner.dropFirst(scope.count))
-                if stripped.hasPrefix(DownloadOwner.albumPrefix) {
-                    albums.insert(String(stripped.dropFirst(DownloadOwner.albumPrefix.count)))
-                } else if stripped.hasPrefix(DownloadOwner.playlistPrefix) {
-                    playlists.insert(String(stripped.dropFirst(DownloadOwner.playlistPrefix.count)))
-                }
+        for ownerID in ownerIDs where ownerID.hasPrefix(scope) {
+            let stripped = String(ownerID.dropFirst(scope.count))
+            if stripped.hasPrefix(DownloadOwner.albumPrefix) {
+                albums.insert(String(stripped.dropFirst(DownloadOwner.albumPrefix.count)))
+            } else if stripped.hasPrefix(DownloadOwner.playlistPrefix) {
+                playlists.insert(String(stripped.dropFirst(DownloadOwner.playlistPrefix.count)))
             }
         }
-        
-        // Collect from pending downloads
-        for ownerID in pendingByOwner.keys where ownerID.hasPrefix(scope) {
-            // Check if any pending keys match this driveID
-            if let keys = pendingByOwner[ownerID], keys.contains(where: { jobs[$0]?.driveID == driveID }) {
-                let stripped = String(ownerID.dropFirst(scope.count))
-                if stripped.hasPrefix(DownloadOwner.albumPrefix) {
-                    albums.insert(String(stripped.dropFirst(DownloadOwner.albumPrefix.count)))
-                } else if stripped.hasPrefix(DownloadOwner.playlistPrefix) {
-                    playlists.insert(String(stripped.dropFirst(DownloadOwner.playlistPrefix.count)))
-                }
-            }
-        }
-        
         return (albums: albums.sorted(), playlists: playlists.sorted())
     }
-    
-    /// Restores download membership from iCloud sync state. Called on profile activation to re-populate
-    /// the download intent for items that were downloaded before reinstall. Files will re-fetch from NAS.
-    public func restoreDownloadMembership(albums: [String], playlists: [String], driveID: String) {
-        guard !albums.isEmpty || !playlists.isEmpty else { return }
+
+    /// Matches the downloads folder against the membership iCloud restored for the active profile.
+    /// Runs when a profile opens, when its document arrives from another device, and when the
+    /// catalogue loads, since the songs of an album are only known once the catalogue is.
+    ///
+    /// A song already in the folder is attached, not downloaded again: either its manifest entry is
+    /// shared with the restored owner, or a file named for it is adopted when its size matches the
+    /// catalogue. Songs that are not here stay missing until a retry fetches only them. Afterwards the
+    /// folder is swept: partial transfers no live task owns are deleted, and anything else no download
+    /// uses is surfaced as unused storage rather than left invisible.
+    @discardableResult
+    public func reconcile(albums: [String], playlists: [String], driveID: String,
+                          album: (String) -> Album?, playlist: (String) -> Playlist?) -> DownloadReconciliation {
+        var report = DownloadReconciliation()
         let scope = DownloadOwner.scope(activeProfileID)
-        var restoredAlbums = 0
-        var restoredPlaylists = 0
-        
-        // Check which album memberships are missing
-        for albumID in albums {
-            let ownerID = scope + DownloadOwner.albumPrefix + albumID
-            let hasAnyRecord = records.values.contains { $0.driveID == driveID && $0.owners.contains(ownerID) }
-            let hasPending = pendingByOwner[ownerID]?.contains(where: { jobs[$0]?.driveID == driveID }) == true
-            if !hasAnyRecord && !hasPending {
-                restoredAlbums += 1
+        var restored: Set<String> = []
+        var owners: [DownloadOwner] = []
+        for id in albums {
+            restored.insert(scope + DownloadOwner.albumPrefix + id)
+            if let album = album(id) { owners.append(DownloadOwner(album: album, profileID: activeProfileID)) }
+        }
+        for id in playlists {
+            restored.insert(scope + DownloadOwner.playlistPrefix + id)
+            if let playlist = playlist(id) { owners.append(DownloadOwner(playlist: playlist, profileID: activeProfileID)) }
+        }
+        let inventory = DownloadCacheInventory.read(directory: cacheDirectory)
+        var changed = false
+        for owner in owners {
+            for track in owner.tracks {
+                let key = Self.cacheKey(trackID: track.id, driveID: driveID)
+                if var record = records[key], !record.fileName.isEmpty {
+                    if FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path) {
+                        if record.owners.insert(owner.id).inserted {
+                            records[key] = record
+                            changed = true
+                            report.sharedRecords += 1
+                        }
+                        continue
+                    }
+                    records[key] = nil
+                    changed = true
+                }
+                guard records[key] == nil else { continue }
+                if pendingByOwner.values.contains(where: { $0.contains(key) }) || initialPendingOwners.values.contains(where: { $0.contains(key) }) {
+                    continue
+                }
+                if let file = validFile(for: track, key: key, in: inventory) {
+                    records[key] = DownloadRecord(trackID: track.id, driveID: driveID, fileName: file.fileName, bytes: file.bytes, owners: [owner.id])
+                    changed = true
+                    report.attachedFiles += 1
+                } else {
+                    report.missingSongs += 1
+                }
             }
         }
-        
-        // Check which playlist memberships are missing  
-        for playlistID in playlists {
-            let ownerID = scope + DownloadOwner.playlistPrefix + playlistID
-            let hasAnyRecord = records.values.contains { $0.driveID == driveID && $0.owners.contains(ownerID) }
-            let hasPending = pendingByOwner[ownerID]?.contains(where: { jobs[$0]?.driveID == driveID }) == true
-            if !hasAnyRecord && !hasPending {
-                restoredPlaylists += 1
-            }
+        // Membership belongs to one profile; another profile's restored list on the same drive stays.
+        var listed = (restoredOwners[driveID] ?? []).filter { !$0.hasPrefix(scope) }
+        listed.formUnion(restored)
+        if (restoredOwners[driveID] ?? []) != listed { restoredOwners[driveID] = listed.isEmpty ? nil : listed }
+        if changed { saveManifest() }
+        let sweep = sweepFolder(driveID: driveID)
+        report.removedPartialFiles = sweep.removedPartialFiles
+        report.unused = sweep.unused
+        if !owners.isEmpty || report.removedPartialFiles > 0 || !report.unused.isEmpty {
+            log("Downloads reconciled: \(report.attachedFiles) files attached, \(report.sharedRecords) shared, \(report.missingSongs) songs missing, "
+                + "\(report.removedPartialFiles) partial files removed, \(report.unused.fileCount) unused files (\(report.unused.bytes) bytes)")
         }
-        
-        if restoredAlbums > 0 || restoredPlaylists > 0 {
-            log("Download membership restored from iCloud: \(restoredAlbums) albums, \(restoredPlaylists) playlists to re-download")
+        return report
+    }
+
+    /// Reads the folder again and updates `unusedStorage`, e.g. when the Downloads screen appears.
+    public func refreshUnusedStorage() {
+        _ = sweepFolder(driveID: driveIDProvider())
+    }
+
+    /// Deletes what `unusedStorage` describes, judged again at this moment so nothing attached or
+    /// downloaded since the last look is touched.
+    public func removeUnused() {
+        let unused = sweepFolder(driveID: driveIDProvider()).unused
+        for name in unused.fileNames {
+            try? FileManager.default.removeItem(at: cacheDirectory.appending(path: name))
+        }
+        for key in unused.recordKeys { records[key] = nil }
+        if !unused.recordKeys.isEmpty { saveManifest() }
+        _ = sweepFolder(driveID: driveIDProvider())
+        log("Removed \(unused.fileCount) unused download files (\(unused.bytes) bytes)")
+    }
+
+    /// The file in the folder that holds this song, when one does and it is worth keeping: complete
+    /// according to the catalogue, and audio rather than a server's error page.
+    private func validFile(for track: Track, key: String, in inventory: DownloadCacheInventory) -> DownloadCacheInventory.File? {
+        guard let candidates = inventory.filesByKey[key] else { return nil }
+        let expected = track.fileSize ?? 0
+        let valid = candidates.filter { file in
+            guard !file.isIncoming, file.bytes > 0 else { return false }
+            if expected > 0, file.bytes != expected { return false }
+            return !Self.looksLikeServerMessage(cacheDirectory.appending(path: file.fileName))
+        }
+        // Files from a crash-interrupted retry can sit next to the original; prefer the one named
+        // the way this song would be named now, then the largest.
+        let suffix = "." + Self.safeExtension(track.fileExtension)
+        return valid.max { a, b in
+            let aNamed = a.fileName.hasSuffix(suffix), bNamed = b.fileName.hasSuffix(suffix)
+            if aNamed != bNamed { return !aNamed }
+            return a.bytes < b.bytes
         }
     }
-    
+
+    /// Lists the folder, deletes partial transfers no transfer still owns, and works out what else no
+    /// download here uses. Partial files are only judged once the session's tasks are known.
+    private func sweepFolder(driveID: String) -> (removedPartialFiles: Int, unused: UnusedDownloadStorage) {
+        let inventory = DownloadCacheInventory.read(directory: cacheDirectory)
+        let known = knownProfileIDsProvider()
+        var claimed: Set<String> = []
+        var unused = UnusedDownloadStorage()
+        var unusedNames: Set<String> = []
+        for (key, record) in records where !record.fileName.isEmpty {
+            let hasKnownOwner = !record.owners.isEmpty && (known.isEmpty || record.owners.contains { owner in
+                guard let profileID = Self.profileID(inOwner: owner) else { return true }
+                return known.contains(profileID)
+            })
+            let otherLibrary = !driveID.isEmpty && record.driveID != driveID
+            if hasKnownOwner && !otherLibrary {
+                claimed.insert(record.fileName)
+            } else {
+                unused.recordKeys.append(key)
+                unusedNames.insert(record.fileName)
+                if otherLibrary { unused.otherLibraryBytes += inventory.files.first { $0.fileName == record.fileName }?.bytes ?? record.bytes }
+            }
+        }
+        var protected: Set<String> = []
+        for (key, attemptID) in expectedAttempts { protected.insert(DownloadJob.incomingFileName(cacheKey: key, attemptID: attemptID)) }
+        for job in jobs.values { protected.insert(job.incomingFileName) }
+        for job in initialJobs.values { protected.insert(job.incomingFileName) }
+        var removedPartialFiles = 0
+        for file in inventory.files where !claimed.contains(file.fileName) {
+            if file.isIncoming {
+                if isRestoringTasks { sweepDeferredByRestoration = true }
+                guard !isRestoringTasks, !protected.contains(file.fileName) else { continue }
+                try? FileManager.default.removeItem(at: cacheDirectory.appending(path: file.fileName))
+                removedPartialFiles += 1
+                continue
+            }
+            unusedNames.insert(file.fileName)
+            unused.bytes += file.bytes
+            unused.fileCount += 1
+        }
+        unused.fileNames = unusedNames.sorted()
+        unused.recordKeys.sort()
+        if unusedStorage != unused { unusedStorage = unused }
+        return (removedPartialFiles, unused)
+    }
+
+    /// The profile an owner id belongs to; nil for ids written before downloads were scoped.
+    nonisolated static func profileID(inOwner ownerID: String) -> String? {
+        guard ownerID.hasPrefix("profile:"), let end = ownerID.firstIndex(of: "|") else { return nil }
+        return String(ownerID[ownerID.index(ownerID.startIndex, offsetBy: "profile:".count)..<end])
+    }
+
     /// Notifies the membership change callback with the current membership for the given drive.
     private func notifyMembershipChange(driveID: String) {
         guard let callback = onMembershipChanged else { return }
@@ -495,23 +665,30 @@ public final class DownloadManager {
         guard oldID != newID else { return }
         let oldSuffix = DownloadOwner.albumPrefix + oldID
         let newSuffix = DownloadOwner.albumPrefix + newID
+        func renamed(_ owner: String) -> String {
+            guard let separator = owner.firstIndex(of: "|"), owner[owner.index(after: separator)...] == oldSuffix else { return owner }
+            return String(owner[...separator]) + newSuffix
+        }
         var changed = false
         for (trackID, var record) in records {
-            let owners = Set(record.owners.map { owner -> String in
-                guard let separator = owner.firstIndex(of: "|"), owner[owner.index(after: separator)...] == oldSuffix else { return owner }
-                return String(owner[...separator]) + newSuffix
-            })
+            let owners = Set(record.owners.map(renamed))
             guard owners != record.owners else { continue }
             record.owners = owners
             records[trackID] = record
             changed = true
+        }
+        // Membership restored from iCloud that is still waiting for its songs follows the album too.
+        for (driveID, owners) in restoredOwners {
+            let moved = Set(owners.map(renamed))
+            if moved != owners { restoredOwners[driveID] = moved }
         }
         guard changed else { return }
         saveManifest()
         notifyMembershipChange(driveID: driveIDProvider())
     }
 
-    /// Ids of every album and playlist that asked for a download and still has songs here or on the way.
+    /// Ids of every album and playlist that asked for a download and still has songs here or on the way,
+    /// plus those whose membership iCloud restored and whose songs are still to be fetched.
     public var listedOwnerIDs: Set<String> {
         let driveID = driveIDProvider()
         var ids = Set(pendingByOwner.filter { entry in entry.value.contains { jobs[$0]?.driveID == driveID } }.keys)
@@ -519,7 +696,24 @@ public final class DownloadManager {
         for request in requests.values where request.driveID == driveID && (!request.errors.isEmpty || request.cancelled) {
             ids.insert(request.ownerID)
         }
+        ids.formUnion(restoredOwners[driveID] ?? [])
         return ids
+    }
+
+    /// Whether iCloud restored this album or playlist's membership, so it is listed even with no songs here.
+    func isRestored(_ owner: DownloadOwner, driveID: String) -> Bool {
+        restoredOwners[driveID]?.contains(owner.id) == true
+    }
+
+    /// Songs of the album or playlist with neither a saved file nor a transfer under way, from the
+    /// manifest alone so a screen can offer to fetch them without touching the filesystem.
+    public func missingCount(for owner: DownloadOwner) -> Int {
+        let driveID = driveIDProvider()
+        let pending = pendingByOwner[owner.id] ?? []
+        return owner.tracks.filter { track in
+            let key = Self.cacheKey(trackID: track.id, driveID: driveID)
+            return records[key]?.owners.contains(owner.id) != true && !pending.contains(key)
+        }.count
     }
 
     /// Songs of the album or playlist that it has on the device.
@@ -543,6 +737,8 @@ public final class DownloadManager {
         let error = request?.errors.sorted(by: { $0.key < $1.key }).first?.value
         if done > 0 { return .partial(done: done, total: tracks.count, message: error) }
         if let error { return .failed(message: error) }
+        // Membership came back from iCloud but the songs did not: kept listed, with a retry offered.
+        if isRestored(owner, driveID: driveIDProvider()) { return .partial(done: 0, total: tracks.count, message: nil) }
         return .none
     }
 
@@ -564,6 +760,7 @@ public final class DownloadManager {
                                              simulatedKeys: simulatedKeys, pending: pendingByOwner[owner.id] ?? [],
                                              progress: progressByKey, cancelled: request?.cancelled == true,
                                              errors: request?.errors ?? [:],
+                                             restored: isRestored(owner, driveID: driveID),
                                              directory: cacheDirectory)
         let worker = Task.detached(priority: .userInitiated) {
             try snapshot.read(fileExists: fileExists)
@@ -600,7 +797,10 @@ public final class DownloadManager {
                                           keys: Set(owner.tracks.map { Self.cacheKey(trackID: $0.id, driveID: driveID) }), total: owner.tracks.count)
         var pending = pendingByOwner[owner.id] ?? []
         var shared = 0
+        var attached = 0
         var queued = 0
+        // Read once, and only if a song turns out to have no manifest entry.
+        var inventory: DownloadCacheInventory?
         for track in owner.tracks {
             let key = Self.cacheKey(trackID: track.id, driveID: driveID)
             if let existing = records[key], existing.fileName.isEmpty || !FileManager.default.fileExists(atPath: cacheDirectory.appending(path: existing.fileName).path) {
@@ -618,6 +818,17 @@ public final class DownloadManager {
             if let existing, (isRestoringTasks || hasLiveTask || simulations[key] != nil), accept(existing) {
                 pending.insert(key)
                 continue
+            }
+            // The file can be in the folder without a manifest entry, e.g. after a reinstall kept the
+            // folder but not its index. A complete copy is attached rather than fetched again.
+            if !driveID.isEmpty {
+                if inventory == nil { inventory = DownloadCacheInventory.read(directory: cacheDirectory) }
+                if let inventory, let file = validFile(for: track, key: key, in: inventory) {
+                    if let existing { retire(existing) }
+                    records[key] = DownloadRecord(trackID: track.id, driveID: driveID, fileName: file.fileName, bytes: file.bytes, owners: [owner.id])
+                    attached += 1
+                    continue
+                }
             }
             let offeredSource = url(track)
             let source = offeredSource.flatMap { isTransportAllowed($0) ? $0 : nil }
@@ -666,7 +877,7 @@ public final class DownloadManager {
         pendingByOwner[owner.id] = pending.isEmpty ? nil : pending
         saveManifest()
         savePendingOwners()
-        log("“\(owner.title)”: queued \(queued) songs, \(shared) already on this iPhone")
+        log("“\(owner.title)”: queued \(queued) songs, \(shared) already on this iPhone, \(attached) found in the downloads folder")
         startNextIfIdle()
         refreshActivity(force: true)
         notifyMembershipChange(driveID: driveID)
@@ -741,6 +952,9 @@ public final class DownloadManager {
     public func remove(_ owner: DownloadOwner) {
         cancel(owner)
         requests[requestKey(ownerID: owner.id, driveID: driveIDProvider())] = nil
+        // Removing is the one way out of restored membership; otherwise iCloud would list it again.
+        restoredOwners[driveIDProvider()]?.remove(owner.id)
+        if restoredOwners[driveIDProvider()]?.isEmpty == true { restoredOwners[driveIDProvider()] = nil }
         var deleted = 0
         var kept = 0
         for (trackID, var record) in records where record.driveID == driveIDProvider() && record.owners.contains(owner.id) {
@@ -816,6 +1030,10 @@ public final class DownloadManager {
         deferredSessionEvents.removeAll()
         for event in events { receive(event) }
         if !restored.isEmpty { log("Picked up \(restored.count) downloads still queued from the last launch") }
+        if sweepDeferredByRestoration {
+            sweepDeferredByRestoration = false
+            _ = sweepFolder(driveID: driveIDProvider())
+        }
         startNextIfIdle()
         refreshActivity(force: true)
     }
@@ -1041,7 +1259,9 @@ public final class DownloadManager {
               let ownerID = pendingByOwner.keys.sorted().first(where: { pendingByOwner[$0]?.contains(job.cacheKey) == true }) else { return }
         let id = requestKey(ownerID: ownerID, driveID: job.driveID)
         guard let request = requests[id], let state = progressSnapshot(ownerID: ownerID, driveID: job.driveID) else { return }
-        let attributes = DownloadActivityAttributes(title: request.title, subtitle: request.subtitle)
+        // A tap on the activity opens the player when a song is playing, else the album or playlist being saved.
+        let attributes = DownloadActivityAttributes(title: request.title, subtitle: request.subtitle,
+                                                    link: WidgetLink.nowPlaying(fallback: DownloadOwner.destination(ownerID: ownerID)))
         guard let created = try? Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: nil)) else { return }
         activity = created
         activityOwnerID = ownerID

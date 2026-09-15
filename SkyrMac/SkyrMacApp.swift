@@ -57,6 +57,14 @@ struct SkyrMacApp: App {
             UserDefaults.standard.set(true, forKey: "downloads.ownersScoped")
         }
         downloads.activeProfileID = profiles.lastActiveID ?? profiles.owner?.id ?? "default"
+        // Songs owned only by profiles not on this device count as unused, but the local profile list
+        // is trusted only once iCloud has been consulted; before that, or while it fails, nothing is judged.
+        downloads.knownProfileIDsProvider = { [profiles, cloud] in
+            switch cloud.status {
+            case .synced, .noAccount: Set(profiles.profiles.map(\.id))
+            case .off, .syncing, .failed: []
+            }
+        }
         // Persist download membership changes to iCloud via the profile state.
         downloads.onMembershipChanged = { [profiles] driveID, albumIDs, playlistIDs in
             profiles.updateLibrary(driveID) { library in
@@ -66,6 +74,17 @@ struct SkyrMacApp: App {
         }
         // An album renamed in its files keeps its downloads under its new identity.
         library.onAlbumRenamed = { [downloads] oldID, newID in downloads.reassignAlbum(from: oldID, to: newID) }
+        // Membership restored from iCloud meets the files already in the downloads folder: songs still
+        // here are reused rather than fetched again, and anything no download uses is surfaced. Runs
+        // whenever either side changes: a profile opening, its document arriving, or the catalogue loading.
+        let reconcileDownloads: () -> Void = { [library, profiles, downloads] in
+            guard profiles.active != nil, !library.catalogue.isEmpty else { return }
+            let driveID = library.catalogue.driveID
+            let state = profiles.libraryState(for: driveID)
+            downloads.reconcile(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID,
+                                album: { library.album(id: $0) }, playlist: { library.playlist(id: $0) })
+        }
+        library.onContentChanged = reconcileDownloads
         // A song on this Mac plays from disk, whether or not the server is reachable.
         player.streamURLProvider = { [library, model, downloads] track in
             downloads.localURL(for: track) ?? library.streamURL(for: track, quality: model.quality)
@@ -84,10 +103,7 @@ struct SkyrMacApp: App {
         profiles.onActivate = { [library, model, player, downloads, profiles] profile in
             downloads.activeProfileID = profile.id
             library.loadProfileState()
-            // Restore download membership from iCloud sync state (files will re-fetch from NAS if needed).
-            let driveID = library.catalogue.driveID
-            let state = profiles.libraryState(for: driveID)
-            downloads.restoreDownloadMembership(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID)
+            reconcileDownloads()
             model.applyProfileSettings()
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
@@ -97,12 +113,9 @@ struct SkyrMacApp: App {
             downloads.activeProfileID = "locked"
             library.loadProfileState()
         }
-        profiles.onRemoteState = { [library, model, player, profiles, downloads] in
+        profiles.onRemoteState = { [library, model, player, profiles] in
             library.loadProfileState()
-            // Restore download membership that may have synced from another device.
-            let driveID = library.catalogue.driveID
-            let state = profiles.libraryState(for: driveID)
-            downloads.restoreDownloadMembership(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID)
+            reconcileDownloads()
             model.applyProfileSettings()
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)

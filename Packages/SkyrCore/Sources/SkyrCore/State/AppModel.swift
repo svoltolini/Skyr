@@ -13,7 +13,11 @@ public final class AppModel {
 
     // MARK: Connection
 
-    public var stage: Stage = .welcome
+    public var stage: Stage = .welcome {
+        // The tabs and their player sheet leave the screen with the library; a request to show it must not
+        // wait around to come up over the next library that opens.
+        didSet { if stage != .ready { isNowPlayingPresented = false } }
+    }
     /// Server chosen from discovery or typed manually; presents the sign-in sheet while set.
     public var pendingServer: DiscoveredServer?
     public private(set) var isSigningIn = false
@@ -321,11 +325,32 @@ public final class AppModel {
     // MARK: Automatic refresh
 
     private var autoRefreshTask: Task<Void, Never>?
+    /// The screen is about to come up for the first time or back from the background: set at launch and
+    /// whenever the app leaves the screen, cleared once that arrival has been decided, by the activation
+    /// itself or by a widget or Live Activity link handled first. A dismissed Control Center or a
+    /// finished Face ID prompt only passes through inactive and is no arrival.
+    private var isArriving = true
 
     /// Re-indexes in the background when the app comes to the foreground and periodically while it runs.
-    public func scenePhaseChanged(_ phase: ScenePhase) {
+    ///
+    /// The phone also reports whether a song is playing. A tap on the system's Now Playing island, on the
+    /// Lock Screen card or in Control Center opens the app exactly like a tap on its icon, with no link
+    /// or launch option to tell them apart, so music playing as the screen arrives is the one signal that
+    /// the player is wanted, and it comes up over whatever was on screen. Music already playing at the
+    /// first activation means a widget's play button or the car started it with the app launched in the
+    /// background. A widget or Live Activity link handled during the same arrival decides where to land.
+    public func scenePhaseChanged(_ phase: ScenePhase, isPlaying: Bool? = nil) {
+        if phase == .background {
+            isArriving = true
+            return
+        }
         guard phase == .active else { return }
         refreshIfStale(olderThan: 30 * 60)
+        // The car's scene, the Mac and the television report no playback state and leave the arrival alone.
+        guard let isPlaying else { return }
+        let arriving = isArriving
+        isArriving = false
+        if arriving, isPlaying { showNowPlaying() }
     }
 
     public func refreshIfStale(olderThan age: TimeInterval) {
@@ -523,6 +548,7 @@ public final class AppModel {
 
     /// Closes whatever is in front, switches to the Library tab and opens the album there.
     public func showAlbum(_ album: Album) {
+        leaveNowPlaying()
         guard let request = beginAlbumNavigation(album) else { return }
         #if os(macOS)
         finishAlbumNavigation(request)
@@ -562,6 +588,7 @@ public final class AppModel {
 
     /// Switches to the Playlists tab and opens the playlist there.
     public func showPlaylist(_ playlist: Playlist) {
+        leaveNowPlaying()
         selectedTab = .playlists
         #if os(macOS)
         playlistToOpen = playlist
@@ -575,12 +602,36 @@ public final class AppModel {
 
     /// A tab by the name a widget link carries.
     public func showTab(named name: String) {
+        leaveNowPlaying()
         switch name {
         case "library": selectedTab = .library
         case "playlists": selectedTab = .playlists
         case "downloads": selectedTab = .downloads
         default: break
         }
+    }
+
+    // MARK: Now Playing
+
+    /// The player sheet is up, or has been asked for from outside it. The phone binds its sheet to this;
+    /// the Mac and the television have their own player surfaces and leave it alone.
+    public var isNowPlayingPresented = false
+
+    /// Brings the player sheet up for the song playing now: from the mini player, a Live Activity or
+    /// widget link, or a return to the foreground while music plays. Nothing happens while a profile is
+    /// locked, before the library is open or while the sign-in sheet is in front, and a sheet that is
+    /// already up stays as it is.
+    public func showNowPlaying() {
+        isArriving = false
+        guard stage == .ready, profiles?.isLocked != true, pendingServer == nil else { return }
+        isNowPlayingPresented = true
+    }
+
+    /// Another destination is taking over: the sheet closes, and this arrival on screen is spoken for,
+    /// so the player must not come back up over the page the link asked for.
+    private func leaveNowPlaying() {
+        isArriving = false
+        isNowPlayingPresented = false
     }
 
     /// Waits for the server sign-in that starts at launch, so a song can stream, or gives up after the limit.
