@@ -22,6 +22,9 @@ struct ProfileEditorSheet: View {
     @State private var biometrics: Bool
     @State private var isSettingPIN = false
     @State private var isConfirmingDelete = false
+    @State private var isVerifyingPINForChange = false
+    @State private var isVerifyingPINForRemoval = false
+    @State private var currentPINVerified = false
     @State private var problem: String?
     @State private var openingSession: UUID?
 
@@ -77,6 +80,13 @@ struct ProfileEditorSheet: View {
         return profile.map { profiles.canEditDraft($0, session: openingSession) } ?? profiles.canManageProfiles
     }
 
+    /// Changing or removing the PIN on YOUR OWN profile (the currently active profile) requires
+    /// verifying the current PIN first to prevent someone else from disabling your lock while you're away.
+    private var requiresPINVerification: Bool {
+        guard let profile, profile.isLocked, !currentPINVerified else { return false }
+        return profile.id == profiles.activeID
+    }
+
     private func validateDraft() -> Bool {
         guard isCurrentDraft else {
             problem = "This profile or session changed. Close this editor and open it again."
@@ -125,10 +135,16 @@ struct ProfileEditorSheet: View {
                                     Text("••••")
                                         .foregroundStyle(.secondary)
                                 }
-                                SettingsButtonRow(symbol: "arrow.triangle.2.circlepath", tint: .blue, title: "Change PIN") { isSettingPIN = true }
+                                SettingsButtonRow(symbol: "arrow.triangle.2.circlepath", tint: .blue, title: "Change PIN") {
+                                    if requiresPINVerification { isVerifyingPINForChange = true }
+                                    else { isSettingPIN = true }
+                                }
                                 SettingsButtonRow(symbol: "lock.open", tint: .red, title: "Remove PIN", role: .destructive) {
-                                    pinChange = .remove
-                                    biometrics = false
+                                    if requiresPINVerification { isVerifyingPINForRemoval = true }
+                                    else {
+                                        pinChange = .remove
+                                        biometrics = false
+                                    }
                                 }
                                 if let biometry = profiles.biometryName {
                                     SettingsRow(symbol: biometry == "Face ID" ? "faceid" : "touchid", tint: .green, title: "Open with \(biometry)") {
@@ -203,10 +219,16 @@ struct ProfileEditorSheet: View {
                     Section {
                         if hasPIN {
                             LabeledContent("PIN", value: "Set")
-                            Button("Change PIN", systemImage: "arrow.triangle.2.circlepath") { isSettingPIN = true }
+                            Button("Change PIN", systemImage: "arrow.triangle.2.circlepath") {
+                                if requiresPINVerification { isVerifyingPINForChange = true }
+                                else { isSettingPIN = true }
+                            }
                             Button("Remove PIN", systemImage: "lock.open", role: .destructive) {
-                                pinChange = .remove
-                                biometrics = false
+                                if requiresPINVerification { isVerifyingPINForRemoval = true }
+                                else {
+                                    pinChange = .remove
+                                    biometrics = false
+                                }
                             }
                             if let biometry = profiles.biometryName {
                                 Toggle("Open with \(biometry)", isOn: $biometrics)
@@ -284,6 +306,23 @@ struct ProfileEditorSheet: View {
             #endif
             .sheet(isPresented: $isSettingPIN) {
                 PINSetupSheet { pin in pinChange = .set(pin) }
+            }
+            .sheet(isPresented: $isVerifyingPINForChange) {
+                PINVerificationSheet(profile: profile!) { verified in
+                    if verified {
+                        currentPINVerified = true
+                        isSettingPIN = true
+                    }
+                }
+            }
+            .sheet(isPresented: $isVerifyingPINForRemoval) {
+                PINVerificationSheet(profile: profile!) { verified in
+                    if verified {
+                        currentPINVerified = true
+                        pinChange = .remove
+                        biometrics = false
+                    }
+                }
             }
         }
         #if os(macOS)

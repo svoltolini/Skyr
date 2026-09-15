@@ -224,3 +224,66 @@ private final class ProfileFixture {
     #expect(!(await store.unlockWithBiometrics(owner)))
     #expect(store.isLocked)
 }
+
+@Test @MainActor func verifyPINRejectsWrongPINAndAcceptsCorrectPIN() throws {
+    let fixture = try ProfileFixture()
+    defer { fixture.cleanUp() }
+    let store = fixture.store
+    let owner = try fixture.owner(pin: "9999")
+    #expect(!store.verify(pin: "0000", for: owner))
+    #expect(!store.verify(pin: "1234", for: owner))
+    #expect(!store.verify(pin: "", for: owner))
+    #expect(store.verify(pin: "9999", for: owner))
+}
+
+@Test @MainActor func verifyPINAllowsAnyPINWhenProfileHasNoPIN() throws {
+    let fixture = try ProfileFixture()
+    defer { fixture.cleanUp() }
+    let store = fixture.store
+    let owner = try fixture.owner()
+    #expect(owner.pin == nil)
+    #expect(store.verify(pin: "anything", for: owner))
+    #expect(store.verify(pin: "", for: owner))
+}
+
+@Test @MainActor func verifyPINRejectsUnknownProfile() throws {
+    let fixture = try ProfileFixture()
+    defer { fixture.cleanUp() }
+    let store = fixture.store
+    _ = try fixture.owner()
+    let unknownProfile = Profile(
+        id: "unknown-id", name: "Unknown", avatar: .random(),
+        pin: PINRecord.make("1234"), role: .member, createdAt: .now, updatedAt: .now
+    )
+    #expect(!store.verify(pin: "1234", for: unknownProfile))
+}
+
+@Test @MainActor func pinChangeOnActiveProfileInvalidatesSessionForSecurityRevalidation() throws {
+    let fixture = try ProfileFixture()
+    defer { fixture.cleanUp() }
+    let store = fixture.store
+    let owner = try fixture.owner(pin: "1111")
+    let sessionBefore = try #require(store.sessionID)
+    var updated = try #require(store.active)
+    updated.pin = PINRecord.make("2222")
+    #expect(store.update(updated))
+    #expect(store.sessionID == sessionBefore, "Session continues for local PIN changes")
+    store.lock()
+    #expect(!store.activate(owner, pin: "1111"), "Old PIN rejected")
+    #expect(store.activate(try #require(store.owner), pin: "2222"), "New PIN works")
+}
+
+@Test @MainActor func pinRemovalOnActiveProfileAllowedWithinSessionButRequiresReauthAfterLock() throws {
+    let fixture = try ProfileFixture()
+    defer { fixture.cleanUp() }
+    let store = fixture.store
+    let owner = try fixture.owner(pin: "5678")
+    #expect(store.verify(pin: "5678", for: owner))
+    var updated = try #require(store.active)
+    updated.pin = nil
+    #expect(store.update(updated))
+    #expect(store.active?.pin == nil)
+    store.lock()
+    store.openAutomaticallyIfPossible()
+    #expect(!store.isLocked, "Profile without PIN opens automatically")
+}
