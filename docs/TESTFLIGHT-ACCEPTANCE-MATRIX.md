@@ -2,7 +2,7 @@
 
 This document defines the complete acceptance testing required before making Skyr 1.0 publicly available. It consolidates requirements from [#12](https://github.com/svoltolini/Skyr/issues/12) and the [release audit](RELEASE-AUDIT-2026-09-14.md).
 
-**Current TestFlight build**: 1.0 (202609151800)  
+**Current TestFlight build**: 1.0 (202609151900)  
 **Audit baseline**: `73f85b74ab60a9707de2f744161b172d21ef5b4e`
 
 ## Testing Layers
@@ -55,11 +55,11 @@ All targets must share the same version numbers:
 
 | Target | MARKETING_VERSION | CURRENT_PROJECT_VERSION |
 | --- | --- | --- |
-| Skyr (iOS) | 1.0 | 202609151800 |
-| SkyrWidgets | 1.0 | 202609151800 |
-| SkyrWatch | 1.0 | 202609151800 |
-| SkyrMac | 1.0 | 202609151800 |
-| SkyrTV | 1.0 | 202609151800 |
+| Skyr (iOS) | 1.0 | 202609151900 |
+| SkyrWidgets | 1.0 | 202609151900 |
+| SkyrWatch | 1.0 | 202609151900 |
+| SkyrMac | 1.0 | 202609151900 |
+| SkyrTV | 1.0 | 202609151900 |
 
 ### Privacy Manifest Validation
 
