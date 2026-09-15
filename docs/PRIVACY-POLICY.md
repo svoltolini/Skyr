@@ -1,6 +1,6 @@
 # Skyr Music privacy policy — publication draft
 
-Updated for the source-only artwork release changes. This draft is not yet published. A public support contact and hosting URL must be supplied before public App Store submission. The in-app Privacy Details page already explains the data flows without linking to a placeholder website.
+This draft is not yet published. A public support contact and hosting URL must be supplied before public App Store submission. The in-app Privacy Details page already explains the data flows without linking to a placeholder website.
 
 ## Your music and NAS
 
@@ -10,9 +10,7 @@ Your NAS receives the credentials, folder requests and media requests needed for
 
 ## Album artwork
 
-Skyr uses cover images from your NAS folders and pictures embedded in your music files. It does not request artwork from Apple's Search service or send artist and album names to an online artwork search service. If your files have no cover, Skyr shows a generated design. A saved online-artwork choice from an earlier build cannot enable requests.
-
-Earlier builds stored source covers and external covers together without recording where each picture came from. This release leaves that older cache on the device unused and rebuilds covers from the NAS in a separate source-only cache. Some older covers may show placeholders while offline until a connected scan restores the available source pictures. Original music, downloaded songs, playlists and favourites are unchanged. The app does not recall requests already received by Apple from older builds or remove independent device backups.
+Skyr uses cover images from your NAS folders and pictures embedded in your music files. It does not send artist or album names to an online artwork search service. If your files have no cover, Skyr shows a generated design.
 
 ## iCloud and family sharing
 
@@ -24,7 +22,7 @@ Anyone with a family invitation link can join that family and receive its shared
 
 Skyr keeps its catalogue, covers, preferences and downloaded music on your devices. Removing a download removes the device's copy, not the original NAS file. Apple TV can purge cache storage. Device backups and NAS backups may retain copies according to your settings and the provider's behavior.
 
-The paired Watch can receive playlist metadata, colours for playlist mosaics, and the current NAS address, account and password from the iPhone, then download music from the NAS. The password is saved in the Watch Keychain. Skyr does not send cover image files to the Watch. Legacy saved or queued playlist colours are replaced with generated colours until a current source-only catalogue arrives. Widgets and Apple playback surfaces, including Now Playing, AirPlay and CarPlay, receive the metadata or audio needed for the features you use. Face ID and Touch ID are handled by the operating system; Skyr receives the authentication result, not biometric templates.
+The paired Watch can receive playlist metadata, colours for playlist mosaics, and the current NAS address, account and password from the iPhone, then download music from the NAS. The password is saved in the Watch Keychain. Skyr does not send cover image files to the Watch. Widgets and Apple playback surfaces, including Now Playing, AirPlay and CarPlay, receive the metadata or audio needed for the features you use. Face ID and Touch ID are handled by the operating system; Skyr receives the authentication result, not biometric templates.
 
 ## Diagnostics, distribution and support
 
@@ -41,4 +39,3 @@ You can remove downloads, edit or delete eligible profiles, and clear diagnostic
 - Add the public support contact and confirm how voluntarily submitted support material is retained.
 - Publish the final policy at a stable public HTTPS URL, then set that URL and Apple TV policy text in App Store Connect.
 - Complete the app-level privacy answers consistently with the release's behavior and Apple's definitions; document the reasoning in `PRIVACY-RELEASE-CHECK.md`.
-- Verify the source-only artwork behavior and migration on the final signed builds; external Apple artwork is omitted from this release under [#34](https://github.com/svoltolini/Skyr/issues/34).

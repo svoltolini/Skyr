@@ -10,8 +10,7 @@ struct PrivacyDetailsView: View {
             "Your NAS receives the sign-in details and file requests needed to connect and play music. Its administrator controls the server and its logs. Skyr saves your personal NAS password in the device Keychain."
         ]),
         ("Album artwork", [
-            Self.artworkDisclosure,
-            "Older cached covers whose source was not recorded are no longer displayed. Those cache files are left on the device unused. Skyr rebuilds covers from your NAS on the next connected scan, so some covers may show placeholders while offline. Your music files and downloaded songs are unchanged."
+            Self.artworkDisclosure
         ]),
         ("iCloud and family sharing", [
             "When iCloud is available, Skyr syncs profile names, chosen profile photos, favourites, playlists, recent plays, searches and settings through Apple's CloudKit service. It also syncs the information needed to reconcile your changes between devices.",
