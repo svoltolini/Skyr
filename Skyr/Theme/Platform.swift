@@ -414,6 +414,18 @@ extension View {
         #endif
     }
 
+    /// A page's own search field. On iPhone and iPad it is kept in the drawer under the title, so it
+    /// is on screen at first paint: left to decide for itself, the phone parks the field above the
+    /// content, where it only appears once the page has been pulled down. The Mac and the television
+    /// have one place for search and put it there.
+    @ViewBuilder func searchField(text: Binding<String>, prompt: LocalizedStringKey) -> some View {
+        #if os(macOS) || os(tvOS)
+        searchable(text: text, prompt: prompt)
+        #else
+        searchable(text: text, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)
+        #endif
+    }
+
     /// Puts the cursor in the search field; the television opens its keyboard on its own.
     @ViewBuilder func focusesSearch(_ binding: FocusState<Bool>.Binding) -> some View {
         #if os(tvOS)

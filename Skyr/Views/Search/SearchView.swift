@@ -36,7 +36,8 @@ struct SearchView: View {
             .hiddenScrollBackground()
             .skyrBackground(player.tint)
             .navigationTitle("Search")
-            .searchable(text: $model.searchQuery, prompt: "Albums, artists, songs")
+            .largeTitle()
+            .searchField(text: $model.searchQuery, prompt: "Albums, artists, songs")
             .focusesSearch($isSearchFocused)
             .onAppear {
                 #if os(macOS)
