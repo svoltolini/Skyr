@@ -5,20 +5,29 @@ import WatchConnectivity
 
 /// What the phone has told the watch: the playlists it may download and the sign-in for the server.
 /// The catalogue is kept on disk, the password in the Keychain, so both survive relaunches.
+///
+/// When the phone sends a revocation message (profile lock/switch), this store clears the saved
+/// credentials and catalogue immediately. Revocation is queued by WatchConnectivity, so a
+/// disconnected Watch receives it on next sync — stale credentials never persist across a profile change.
 @Observable
 @MainActor
 final class WatchStore: NSObject, WCSessionDelegate {
     private(set) var catalogue: WatchCatalogue?
     private(set) var hasCredentials = false
     private(set) var isSample = false
+    /// The timestamp of the last revocation applied, to reject stale catalogues/credentials that
+    /// arrive out of order after a queued revocation.
+    private var lastRevocationTimestamp: TimeInterval = 0
 
     private static let catalogueURL = AppDirectories.support.appending(path: "Skyr/watch-catalogue.json")
     private static let accountKey = "watch.account"
     private static let baseURLKey = "watch.baseURL"
     private static let driveIDKey = "watch.driveID"
+    private static let revocationTimestampKey = "watch.revocationTimestamp"
 
     override init() {
         super.init()
+        lastRevocationTimestamp = UserDefaults.standard.double(forKey: Self.revocationTimestampKey)
         if let data = try? Data(contentsOf: Self.catalogueURL), let saved = try? JSONDecoder().decode(WatchCatalogue.self, from: data) {
             catalogue = saved
             WatchDownloads.shared.reconcile(saved)
@@ -27,6 +36,38 @@ final class WatchStore: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
+    }
+
+    /// Clears all cached credentials, catalogue, and downloaded files. Called when the phone
+    /// sends a revocation message due to profile lock or switch.
+    func revoke(timestamp: TimeInterval) {
+        guard timestamp > lastRevocationTimestamp else {
+            DiagnosticsLog.shared.record("Watch: ignoring stale revocation (timestamp \(timestamp) <= \(lastRevocationTimestamp))")
+            return
+        }
+        lastRevocationTimestamp = timestamp
+        UserDefaults.standard.set(timestamp, forKey: Self.revocationTimestampKey)
+
+        let defaults = UserDefaults.standard
+        if let account = defaults.string(forKey: Self.accountKey) {
+            KeychainStore.delete(account: "watch|\(account)")
+        }
+        defaults.removeObject(forKey: Self.accountKey)
+        defaults.removeObject(forKey: Self.baseURLKey)
+        defaults.removeObject(forKey: Self.driveIDKey)
+        hasCredentials = false
+
+        try? FileManager.default.removeItem(at: Self.catalogueURL)
+        let previousCatalogue = catalogue
+        catalogue = nil
+        isSample = false
+
+        WatchDownloads.shared.clearAll()
+        DiagnosticsLog.shared.record("Watch: revoked credentials, catalogue, and downloads (timestamp \(timestamp))")
+
+        if let previous = previousCatalogue {
+            WatchDownloads.shared.reconcile(WatchCatalogue(serverName: previous.serverName, profileName: nil, playlists: []))
+        }
     }
 
     /// The server sign-in the phone handed over, or nil until it has.
@@ -141,7 +182,13 @@ final class WatchStore: NSObject, WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
-        guard userInfo["kind"] as? String == "credentials",
+        let kind = userInfo["kind"] as? String
+        if kind == "revoke" {
+            let timestamp = userInfo["timestamp"] as? TimeInterval ?? Date.now.timeIntervalSince1970
+            Task { @MainActor in self.revoke(timestamp: timestamp) }
+            return
+        }
+        guard kind == "credentials",
               let base = userInfo["baseURL"] as? String, let url = URL(string: base),
               let account = userInfo["account"] as? String, let password = userInfo["password"] as? String else { return }
         let credentials = WatchCredentials(baseURL: url, account: account, password: password, driveID: userInfo["driveID"] as? String)

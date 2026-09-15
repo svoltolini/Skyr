@@ -155,11 +155,12 @@ struct SkyrApp: App {
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
             widgetFeed.refresh()
         }
-        profiles.onDeactivate = { [player, library, downloads, widgetFeed] in
+        profiles.onDeactivate = { [player, library, downloads, widgetFeed, watchBridge] in
             player.stop()
             downloads.activeProfileID = "locked"
             library.loadProfileState()
             widgetFeed.refresh()
+            watchBridge.revoke()
         }
         // The document changed on another device: show it.
         profiles.onRemoteState = { [library, model, player, profiles, widgetFeed] in
