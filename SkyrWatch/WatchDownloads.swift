@@ -44,13 +44,35 @@ final class WatchDownloads: NSObject, URLSessionDownloadDelegate {
 
     func state(of playlist: WatchPlaylist) -> State {
         guard let key = playlist.cacheID else { return .none }
-        let done = files(for: playlist).count
-        if !playlist.tracks.isEmpty, done == playlist.tracks.count { return .downloaded }
-        if let pending = expected[key], !pending.isEmpty {
-            return .downloading(done: done, total: playlist.tracks.count)
+        guard let manifest = manifests[key] else {
+            return .none
         }
+
+        let validatedFiles = manifest.validatedFileIDs(for: playlist, root: Self.root)
+        let desiredTracks = Set(playlist.tracks.map(\.id))
+        let relevantValidated = validatedFiles.intersection(desiredTracks)
+        let done = relevantValidated.count
+        let total = playlist.tracks.count
+
+        if !playlist.tracks.isEmpty, done == total { return .downloaded }
+
+        if let pending = expected[key], !pending.isEmpty {
+            return .downloading(done: done, total: total)
+        }
+
         if let error = errors[key] { return .failed(error) }
-        if done > 0 { return .failed("\(done) of \(playlist.tracks.count) songs are available. Download again to finish.") }
+
+        if done > 0 {
+            return .failed("\(done) of \(total) songs are available. Download again to finish.")
+        }
+
+        if manifest.hasStoredFiles, !manifest.desired.isEmpty {
+            let outstanding = manifest.outstandingTrackIDs(for: playlist, root: Self.root)
+            if !outstanding.isEmpty {
+                return .failed("Download again to finish.")
+            }
+        }
+
         return .none
     }
 
@@ -169,6 +191,7 @@ final class WatchDownloads: NSObject, URLSessionDownloadDelegate {
     }
 
     /// An edited smart playlist must finish against its new membership, even during a transfer.
+    /// Also validates that manifest entries correspond to actual files on disk and prunes stale entries.
     func reconcile(_ catalogue: WatchCatalogue) {
         let previous = currentCatalogue
         currentCatalogue = catalogue
@@ -176,13 +199,30 @@ final class WatchDownloads: NSObject, URLSessionDownloadDelegate {
             cancel(playlist)
         }
         for playlist in catalogue.playlists {
-            guard let key = playlist.cacheID, let saved = manifests[key] else { continue }
+            guard let key = playlist.cacheID else { continue }
             let desired = Set(playlist.tracks.map(\.id))
             let previousTracks = previous?.playlist(matching: playlist)?.tracks
-            if saved.desired != desired || (previousTracks != nil && previousTracks != playlist.tracks) {
-                cancel(playlist)
-                manifests[key]?.desired = desired
-                errors[key] = nil
+
+            if var saved = manifests[key] {
+                let pruned = saved.pruneInvalidFiles(for: playlist, root: Self.root)
+                if !pruned.isEmpty {
+                    manifests[key] = saved
+                    DiagnosticsLog.shared.record("Watch downloads: pruned \(pruned.count) invalid files for \(playlist.name)")
+                }
+
+                if saved.desired != desired || (previousTracks != nil && previousTracks != playlist.tracks) {
+                    cancel(playlist)
+                    manifests[key]?.desired = desired
+                    errors[key] = nil
+                } else if saved.generation == nil, !saved.desired.isEmpty {
+                    let outstanding = saved.outstandingTrackIDs(for: playlist, root: Self.root)
+                    if !outstanding.isEmpty, expected[key] == nil {
+                        let validated = saved.validatedFileIDs(for: playlist, root: Self.root)
+                        if validated.count < desired.count, validated.count > 0 {
+                            errors[key] = "\(validated.count) of \(desired.count) songs are available. Download again to finish."
+                        }
+                    }
+                }
             }
         }
         saveManifests()
