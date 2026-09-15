@@ -426,6 +426,9 @@ public nonisolated enum Appearance: String, CaseIterable, Identifiable, Sendable
     case auto = "Auto"
     public var id: String { rawValue }
 
+    /// Settings copy. Automatic follows the system appearance.
+    public var title: String { self == .auto ? "Automatic" : rawValue }
+
     public var colorScheme: ColorScheme? {
         switch self {
         case .light: .light

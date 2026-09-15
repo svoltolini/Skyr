@@ -296,16 +296,7 @@ struct SettingsView: View {
         @Bindable var model = model
         return Group {
             Section("Appearance") {
-                LabeledContent {
-                    Picker("Appearance", selection: $model.appearance) {
-                        ForEach(Appearance.allCases) { appearance in
-                            Text(appearance == .auto ? "Automatic" : appearance.rawValue).tag(appearance)
-                        }
-                    }
-                    .labelsHidden()
-                } label: {
-                    NativeSettingsLabel("Appearance", symbol: "circle.lefthalf.filled", tint: .gray)
-                }
+                AppearanceSettingsRow(selection: $model.appearance)
             }
         }
     }
@@ -386,6 +377,29 @@ private struct NativeSettingsLabel: View {
                 .background(tint, in: RoundedRectangle(cornerRadius: 6))
                 .accessibilityHidden(true)
         }
+        #endif
+    }
+}
+
+/// Colored icon plus the appearance pills. The Mac keeps a trailing segmented control;
+/// iPhone and iPad stack it under the label so Light / Dark / Automatic are not clipped.
+private struct AppearanceSettingsRow: View {
+    @Binding var selection: Appearance
+
+    var body: some View {
+        #if os(macOS)
+        LabeledContent {
+            AppearancePicker(selection: $selection)
+        } label: {
+            NativeSettingsLabel("Appearance", symbol: "circle.lefthalf.filled", tint: .gray)
+        }
+        #else
+        VStack(alignment: .leading, spacing: 12) {
+            NativeSettingsLabel("Appearance", symbol: "circle.lefthalf.filled", tint: .gray)
+                .accessibilityHidden(true)
+            AppearancePicker(selection: $selection)
+        }
+        .padding(.vertical, 4)
         #endif
     }
 }
@@ -531,14 +545,8 @@ struct SettingsView: View {
 
                 SettingsGroup(title: "Appearance") {
                     SettingsRow(symbol: "circle.lefthalf.filled", tint: .gray, title: "Look") {
-                        Picker("Look", selection: $model.appearance) {
-                            ForEach(Appearance.allCases) { appearance in
-                                Text(appearance == .auto ? "Automatic" : appearance.rawValue).tag(appearance)
-                            }
-                        }
-                        .menuPicker()
-                        .labelsHidden()
-                        .tint(.secondary)
+                        AppearancePicker(selection: $model.appearance, label: "Look")
+                            .frame(maxWidth: 420)
                     }
                 }
 
