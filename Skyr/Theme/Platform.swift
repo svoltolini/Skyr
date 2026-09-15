@@ -423,6 +423,17 @@ extension View {
         #endif
     }
 
+    /// Search on a tab of its own should show the field at once. The default
+    /// drawer stays hidden until you pull down, which is the Mail pattern, not Music.
+    @ViewBuilder func alwaysVisibleSearch(text: Binding<String>, prompt: LocalizedStringKey) -> some View {
+        #if os(iOS)
+        searchable(text: text, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)
+            .searchPresentationToolbarBehavior(.avoidHidingContent)
+        #else
+        searchable(text: text, prompt: prompt)
+        #endif
+    }
+
     /// The line under a window or page title, where titles have one.
     @ViewBuilder func windowSubtitle(_ text: String) -> some View {
         #if os(tvOS)

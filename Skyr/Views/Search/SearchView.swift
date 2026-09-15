@@ -6,6 +6,7 @@ struct SearchView: View {
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var artworkNamespace
     /// Recomputed for query changes or a published catalogue revision, preserving the search field and stack.
@@ -26,7 +27,7 @@ struct SearchView: View {
                         .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: query.isEmpty)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: query.isEmpty)
             .onChange(of: query, initial: true) { _, query in
                 results = library.searchResults(query)
             }
@@ -36,7 +37,8 @@ struct SearchView: View {
             .hiddenScrollBackground()
             .skyrBackground(player.tint)
             .navigationTitle("Search")
-            .searchable(text: $model.searchQuery, prompt: "Albums, artists, songs")
+            .largeTitle()
+            .alwaysVisibleSearch(text: $model.searchQuery, prompt: "Albums, artists, songs")
             .focusesSearch($isSearchFocused)
             .onAppear {
                 #if os(macOS)
