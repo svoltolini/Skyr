@@ -200,7 +200,8 @@ struct DownloadRestorationTests {
         harness.restoreWithoutActiveTasks()
         #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
         #expect(harness.manager.records[job.cacheKey]?.owners == [second.id])
-        #expect(harness.manager.state(for: first) == .none)
+        // Cancelled before the request records existed for restored intent; it reads as cancelled all the same.
+        #expect(harness.manager.state(for: first) == .cancelled(done: 0, total: 1))
         #expect(harness.manager.state(for: second) == .downloaded)
         #expect(try harness.savedPending().isEmpty)
     }
@@ -242,9 +243,8 @@ struct DownloadRestorationTests {
     }
 
     /// The mirror image of `cancellationDuringRestorationRetainsOnlyTheOtherSavedOwner`: whichever of
-    /// the two saved owners cancels, the other keeps the file. A pending list from before the intent
-    /// document carries no request records, so the cancelled owner has nothing to show as
-    /// "cancelled" and simply leaves the Downloads list; the versioned document keeps that state.
+    /// the two saved owners cancels, the other keeps the file, and the one that cancelled reads as
+    /// cancelled even though a pending list from before the intent document carried no request for it.
     @Test func cancellingSecondOwnerDuringRestorationPreservesFirstOwner() async throws {
         let album = restorationAlbum()
         let first = DownloadOwner(album: album, profileID: "listener")
@@ -255,14 +255,14 @@ struct DownloadRestorationTests {
         defer { harness.close() }
         harness.manager.cancel(second)
         #expect(try harness.savedPending() == [first.id: [job.cacheKey]])
+        #expect(harness.manager.state(for: second) == .cancelled(done: 0, total: 1))
         try harness.deliverFile(for: job, contents: contents)
         harness.restoreWithoutActiveTasks()
         #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
         #expect(harness.manager.records[job.cacheKey]?.owners == [first.id])
         #expect(harness.manager.state(for: first) == .downloaded)
-        #expect(harness.manager.state(for: second) == .none)
-        #expect(harness.manager.listedOwnerIDs.contains(first.id))
-        #expect(!harness.manager.listedOwnerIDs.contains(second.id))
+        #expect(harness.manager.state(for: second) == .cancelled(done: 0, total: 1))
+        #expect(harness.manager.listedOwnerIDs.isSuperset(of: [first.id, second.id]))
         #expect(FileManager.default.fileExists(atPath: harness.directory.appending(path: job.fileName).path))
     }
 

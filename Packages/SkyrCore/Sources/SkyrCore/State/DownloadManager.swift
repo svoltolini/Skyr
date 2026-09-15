@@ -677,13 +677,24 @@ public final class DownloadManager {
             records[trackID] = record
             changed = true
         }
-        // Membership restored from iCloud that is still waiting for its songs follows the album too.
+        // Membership restored from iCloud that is still waiting for its songs follows the album too,
+        // as does a cancelled or failed request still listed for it.
         for (driveID, owners) in restoredOwners {
             let moved = Set(owners.map(renamed))
             if moved != owners { restoredOwners[driveID] = moved }
         }
+        for (id, request) in requests where renamed(request.ownerID) != request.ownerID {
+            requests[id] = nil
+            let owner = renamed(request.ownerID)
+            requests[requestKey(ownerID: owner, driveID: request.driveID)] = OwnerRequest(
+                ownerID: owner, driveID: request.driveID, title: request.title, subtitle: request.subtitle,
+                keys: request.keys, total: request.total, errors: request.errors, cancelled: request.cancelled
+            )
+            changed = true
+        }
         guard changed else { return }
         saveManifest()
+        savePendingOwners()
         notifyMembershipChange(driveID: driveIDProvider())
     }
 
@@ -918,7 +929,6 @@ public final class DownloadManager {
     public func cancel(_ owner: DownloadOwner) {
         let driveID = driveIDProvider()
         let requestID = requestKey(ownerID: owner.id, driveID: driveID)
-        if requests[requestID] != nil { requests[requestID]?.cancelled = true }
         if isRestoringTasks || migratesLegacySessionOwners || !initialPendingOwners.isEmpty {
             cancelledInitialOwners[owner.id, default: []].insert(driveID)
         }
@@ -927,6 +937,17 @@ public final class DownloadManager {
         let scoped = pending.filter { key in
             let source = jobs[key]?.driveID ?? initialJobs[key]?.driveID
             return source == driveID || (source == nil && ownerKeys.contains(key))
+        }
+        if requests[requestID] != nil {
+            requests[requestID]?.cancelled = true
+        } else if !scoped.isEmpty {
+            // Intent saved by a build from before the request records has songs waiting but no
+            // request to mark. The cancellation still has to read as one, so the album stays listed
+            // with a retry exactly like a download cancelled after it was requested here.
+            let saved = Set(records.filter { $0.value.driveID == driveID && $0.value.owners.contains(owner.id) }.keys)
+            let keys = saved.union(scoped)
+            requests[requestID] = OwnerRequest(ownerID: owner.id, driveID: driveID, title: owner.title, subtitle: owner.subtitle,
+                                               keys: keys, total: max(keys.count, owner.tracks.count), cancelled: true)
         }
         pendingByOwner[owner.id]?.subtract(scoped)
         if pendingByOwner[owner.id]?.isEmpty == true { pendingByOwner[owner.id] = nil }
