@@ -38,3 +38,7 @@ The no-tracking manifest declaration is consistent with the reviewed source. The
 4. Confirm onboarding and Settings behavior on the signed TestFlight builds across platforms.
 
 Apple requires a public privacy-policy URL and tvOS policy text before public release: [Manage app privacy](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy).
+
+## Related documentation
+
+- [App Store Packaging Validation](APP-STORE-PACKAGING-VALIDATION.md) — Complete checklist for archive builds, entitlements, privacy manifests, TestFlight uploads, and App Store metadata requirements.
