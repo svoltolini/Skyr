@@ -115,14 +115,16 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     } else {
-                        Label("Manage Profiles", systemImage: "person.crop.circle")
+                        NativeSettingsLabel("Manage Profiles", symbol: "person.crop.circle.fill", tint: .blue)
                     }
                 }
                 .padding(.vertical, 4)
             }
             .accessibilityHint("Manage profiles and family invitations.")
-            Button("Switch Profile", systemImage: "person.2") {
+            Button {
                 profiles.lock()
+            } label: {
+                NativeSettingsLabel("Switch Profile", symbol: "rectangle.stack.person.crop.fill", tint: .cyan)
             }
         } header: {
             Text("Profile")
@@ -141,15 +143,27 @@ struct SettingsView: View {
                 }
             }
             if cloud.isActive, !cloud.participants.isEmpty {
-                LabeledContent("Participants", value: cloud.participants.count.formatted())
+                LabeledContent {
+                    Text(cloud.participants.count.formatted()).foregroundStyle(.secondary)
+                } label: {
+                    NativeSettingsLabel("Participants", symbol: "person.3.fill", tint: .blue)
+                }
             }
         }
     }
 
     private var serverSection: some View {
         Section("Server") {
-            LabeledContent(model.serverTitle, value: model.isConnected ? "Connected" : "Offline")
-            Button("Remote Access Help", systemImage: "network") { isShowingRemoteAccessHelp = true }
+            LabeledContent {
+                Text(model.isConnected ? "Connected" : "Offline").foregroundStyle(.secondary)
+            } label: {
+                NativeSettingsLabel(model.serverTitle, symbol: library.isDemo ? "shippingbox.fill" : "externaldrive.fill", tint: .indigo)
+            }
+            Button {
+                isShowingRemoteAccessHelp = true
+            } label: {
+                NativeSettingsLabel("Remote Access Help", symbol: "network", tint: .teal)
+            }
             if model.connection != nil, permissions.canManageServer {
                 NavigationLink {
                     FolderPickerView(mode: .settings)
@@ -160,8 +174,10 @@ struct SettingsView: View {
                         NativeSettingsLabel("Music folder", symbol: "folder.fill", tint: .orange)
                     }
                 }
-                Button(model.isReconnecting ? "Reconnecting…" : "Reconnect", systemImage: "arrow.clockwise") {
+                Button {
                     Task { await model.reconnect() }
+                } label: {
+                    NativeSettingsLabel(model.isReconnecting ? "Reconnecting…" : "Reconnect", symbol: "arrow.clockwise", tint: .mint)
                 }
                 .disabled(model.isReconnecting)
                 if let error = model.signInError, !model.isReconnecting {
@@ -175,7 +191,11 @@ struct SettingsView: View {
     private var recoverySection: some View {
         if !model.legacyLibraryRecoveries.isEmpty {
             Section {
-                Button("Recover saved library", systemImage: "clock.arrow.circlepath") { isRecoveringLegacyLibrary = true }
+                Button {
+                    isRecoveringLegacyLibrary = true
+                } label: {
+                    NativeSettingsLabel("Recover saved library", symbol: "clock.arrow.circlepath", tint: .blue)
+                }
             } header: {
                 Text("Saved library")
             } footer: {
@@ -189,19 +209,43 @@ struct SettingsView: View {
         @Bindable var library = library
         return Group {
             Section {
-                LabeledContent("Last scan", value: model.lastScanText)
-                LabeledContent("Library", value: library.catalogue.summary)
-                if model.indexer.isEnriching {
-                    LabeledContent("Album details", value: "\(model.indexer.enrichedCount.formatted()) of \(model.indexer.enrichTotal.formatted())")
+                LabeledContent {
+                    Text(model.lastScanText).foregroundStyle(.secondary)
+                } label: {
+                    NativeSettingsLabel("Last scan", symbol: "clock.fill", tint: .gray)
                 }
-                Toggle("Watch for changes", isOn: $model.watchFolder)
+                LabeledContent {
+                    Text(library.catalogue.summary).foregroundStyle(.secondary)
+                } label: {
+                    NativeSettingsLabel("Library", symbol: "music.note.list", tint: .pink)
+                }
+                if model.indexer.isEnriching {
+                    LabeledContent {
+                        Text("\(model.indexer.enrichedCount.formatted()) of \(model.indexer.enrichTotal.formatted())").foregroundStyle(.secondary)
+                    } label: {
+                        NativeSettingsLabel("Album details", symbol: "text.magnifyingglass", tint: .purple)
+                    }
+                }
+                Toggle(isOn: $model.watchFolder) {
+                    NativeSettingsLabel("Watch for changes", symbol: "eye.fill", tint: .green)
+                }
                 #if os(iOS)
-                Toggle("Stay awake to scan", isOn: $model.keepsScreenOnWhileScanning)
+                Toggle(isOn: $model.keepsScreenOnWhileScanning) {
+                    NativeSettingsLabel("Stay awake to scan", symbol: "sun.max.fill", tint: .yellow)
+                }
                 #endif
-                Button(model.isScanning ? "Scanning…" : "Scan now", systemImage: "arrow.triangle.2.circlepath") { model.rescan() }
-                    .disabled(model.isScanning)
-                Button("Read Song Tags Again", systemImage: "arrow.clockwise") { isConfirmingTagRead = true }
-                    .disabled(model.isScanning || !model.isConnected || model.isDemo)
+                Button {
+                    model.rescan()
+                } label: {
+                    NativeSettingsLabel(model.isScanning ? "Scanning…" : "Scan now", symbol: "arrow.triangle.2.circlepath", tint: .blue)
+                }
+                .disabled(model.isScanning)
+                Button {
+                    isConfirmingTagRead = true
+                } label: {
+                    NativeSettingsLabel("Read Song Tags Again", symbol: "arrow.clockwise", tint: .blue)
+                }
+                .disabled(model.isScanning || !model.isConnected || model.isDemo)
             } header: {
                 Text("Library")
             } footer: {
@@ -211,11 +255,17 @@ struct SettingsView: View {
                 Text(SettingsHelp.tagRefresh)
             }
             Section("Names") {
-                Toggle("Clean album names", isOn: $library.hidesBracketedTitleParts)
+                Toggle(isOn: $library.hidesBracketedTitleParts) {
+                    NativeSettingsLabel("Clean album names", symbol: "textformat.abc", tint: .brown)
+                }
                 NavigationLink {
                     GenreNamesView()
                 } label: {
-                    LabeledContent("Genre names", value: library.genreRenames.isEmpty ? "None" : library.genreRenames.count.formatted())
+                    LabeledContent {
+                        Text(library.genreRenames.isEmpty ? "None" : library.genreRenames.count.formatted()).foregroundStyle(.secondary)
+                    } label: {
+                        NativeSettingsLabel("Genre names", symbol: "tag.fill", tint: .pink)
+                    }
                 }
             }
             Section("Downloads") {
@@ -233,7 +283,7 @@ struct SettingsView: View {
     private var privacySection: some View {
         Section {
             NavigationLink { PrivacyDetailsView() } label: {
-                Label("Privacy Details", systemImage: "hand.raised")
+                NativeSettingsLabel("Privacy Details", symbol: "hand.raised.fill", tint: .blue)
             }
         } header: {
             Text("Privacy")
@@ -246,10 +296,15 @@ struct SettingsView: View {
         @Bindable var model = model
         return Group {
             Section("Appearance") {
-                Picker("Appearance", selection: $model.appearance) {
-                    ForEach(Appearance.allCases) { appearance in
-                        Text(appearance == .auto ? "Automatic" : appearance.rawValue).tag(appearance)
+                LabeledContent {
+                    Picker("Appearance", selection: $model.appearance) {
+                        ForEach(Appearance.allCases) { appearance in
+                            Text(appearance == .auto ? "Automatic" : appearance.rawValue).tag(appearance)
+                        }
                     }
+                    .labelsHidden()
+                } label: {
+                    NativeSettingsLabel("Appearance", symbol: "circle.lefthalf.filled", tint: .gray)
                 }
             }
         }
@@ -266,23 +321,31 @@ struct SettingsView: View {
                     NativeSettingsLabel("What's New", symbol: "sparkles", tint: .purple)
                 }
             }
-            LabeledContent("Version", value: Self.versionText)
-                .onTapGesture {
-                    versionTaps += 1
-                    if versionTaps >= 5 {
-                        versionTaps = 0
-                        isShowingDiagnostics = true
-                    }
+            LabeledContent {
+                Text(Self.versionText).foregroundStyle(.secondary)
+            } label: {
+                NativeSettingsLabel("Version", symbol: "info.circle.fill", tint: .gray)
+            }
+            .onTapGesture {
+                versionTaps += 1
+                if versionTaps >= 5 {
+                    versionTaps = 0
+                    isShowingDiagnostics = true
                 }
+            }
             NavigationLink { DiagnosticsView() } label: {
-                Label("Diagnostics", systemImage: "stethoscope")
+                NativeSettingsLabel("Diagnostics", symbol: "stethoscope", tint: .gray)
             }
         }
     }
 
     private var signOutSection: some View {
         Section {
-            Button(library.isDemo ? "Leave sample library" : "Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { isConfirmingSignOut = true }
+            Button(role: .destructive) {
+                isConfirmingSignOut = true
+            } label: {
+                NativeSettingsLabel(library.isDemo ? "Leave sample library" : "Sign out", symbol: "rectangle.portrait.and.arrow.right", tint: .red)
+            }
         } footer: {
             if let connection = model.connection {
                 Text("Signed in as \(connection.account). Signing out forgets the saved password and clears the cached library.")
