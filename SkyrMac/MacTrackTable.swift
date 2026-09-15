@@ -149,14 +149,32 @@ struct MacTrackTable: View {
             presentation = nil
             return
         }
-        // Metadata reads take a small, bounded snapshot on the actor; locale-aware comparison of
-        // thousands of rows happens in a cancellable worker. Progress/player updates do not enter it.
-        let snapshot = request.input.entries.map { entry in
-            let album = library.album(for: entry.track)
-            return MacSongRow(entry: entry, artist: entry.track.artist ?? album?.artist ?? "Unknown Artist", album: album?.title ?? entry.track.albumTitleTag ?? "Unknown Album")
-        }
+        // Capture album metadata once on the main actor; row construction and locale-aware
+        // sorting of thousands of rows then happens entirely in a cancellable background worker.
+        let albumsByID = library.albumLookup
+        let entries = request.input.entries
+        let comparators = request.sortOrder
         do {
-            let sorted = try await BackgroundSort.sorted(snapshot, using: request.sortOrder)
+            let sorted = try await Task.detached(priority: .userInitiated) {
+                try Task.checkCancellation()
+                let snapshot = entries.map { entry in
+                    let album = albumsByID[entry.track.albumID]
+                    return MacSongRow(
+                        entry: entry,
+                        artist: entry.track.artist ?? album?.artist ?? "Unknown Artist",
+                        album: album?.title ?? entry.track.albumTitleTag ?? "Unknown Album"
+                    )
+                }
+                try Task.checkCancellation()
+                return try snapshot.sorted { lhs, rhs in
+                    try Task.checkCancellation()
+                    for comparator in comparators {
+                        let result = comparator.compare(lhs, rhs)
+                        if result != .orderedSame { return result == .orderedAscending }
+                    }
+                    return false
+                }
+            }.value
             guard !Task.isCancelled, preparationID == generation,
                   currentInput == request.input, sortOrder == request.sortOrder,
                   inputIsCurrent(request.input) else { return }

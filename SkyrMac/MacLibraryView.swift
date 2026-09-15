@@ -8,6 +8,11 @@ struct MacLibraryView: View {
     @Environment(MacNavigation.self) private var navigation
     @Environment(ProfileStore.self) private var profiles
     @State private var songs: [TrackListEntry] = []
+    @State private var artists: [Artist] = []
+    @State private var genres: [Genre] = []
+    @State private var decades: [Decade] = []
+    @State private var recentlyAdded: [Album] = []
+    @State private var allAlbums: [Album] = []
     @State private var editingGenre: MacGenreEdit?
 
     var body: some View {
@@ -19,55 +24,20 @@ struct MacLibraryView: View {
                     MacTrackTable(entries: songs, title: "Songs")
                         .onChange(of: library.contentRevision, initial: true) { _, _ in songs = TrackListEntry.make(from: library.tracks) }
                 case .artists:
-                    List(library.artists) { artist in
-                        NavigationLink(value: artist) {
-                            Label {
-                                HStack {
-                                    Text(artist.name)
-                                    Spacer()
-                                    Text("\(artist.albums.count.formatted()) albums").foregroundStyle(.secondary)
-                                }
-                            } icon: { Image(systemName: "person.crop.circle") }
-                        }
-                    }
-                    .listStyle(.inset)
+                    MacArtistsList(artists: artists)
+                        .onChange(of: library.contentRevision, initial: true) { _, _ in artists = library.artists }
                 case .genres:
-                    List {
-                        Section("Genres") {
-                            ForEach(library.genres) { genre in
-                                let scope = MacLibraryActionScope(library: library, profiles: profiles)
-                                NavigationLink(value: AlbumCollection(title: genre.name, albums: genre.albums)) {
-                                    HStack {
-                                        Label(genre.name, systemImage: "guitars")
-                                        Spacer()
-                                        Text(genre.countText).foregroundStyle(.secondary)
-                                    }
-                                }
-                                .contextMenu {
-                                    Button("Rename or Merge Genre…", systemImage: "pencil") {
-                                        guard scope.isCurrent(library: library, profiles: profiles), library.genres.contains(genre) else { return }
-                                        editingGenre = MacGenreEdit(genre: genre, scope: scope)
-                                    }
-                                }
-                            }
+                    MacGenresList(genres: genres, decades: decades, library: library, profiles: profiles, editingGenre: $editingGenre)
+                        .onChange(of: library.contentRevision, initial: true) { _, _ in
+                            genres = library.genres
+                            decades = library.decades
                         }
-                        if !library.decades.isEmpty {
-                            Section("Decades") {
-                                ForEach(library.decades) { decade in
-                                    NavigationLink(value: AlbumCollection(title: decade.label, albums: decade.albums)) {
-                                        HStack {
-                                            Label(decade.label, systemImage: "calendar")
-                                            Spacer()
-                                            Text(decade.countText).foregroundStyle(.secondary)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .listStyle(.inset)
+                case .recentlyAdded:
+                    ScrollView { MacAlbumGrid(albums: recentlyAdded) }
+                        .onChange(of: library.contentRevision, initial: true) { _, _ in recentlyAdded = library.recentlyAdded }
                 default:
-                    ScrollView { MacAlbumGrid(albums: section == .recentlyAdded ? library.recentlyAdded : library.albums) }
+                    ScrollView { MacAlbumGrid(albums: allAlbums) }
+                        .onChange(of: library.contentRevision, initial: true) { _, _ in allAlbums = library.albums }
                 }
             }
             .overlay {
@@ -110,6 +80,72 @@ private struct MacGenreEdit: Identifiable {
 private struct MacLibraryIdentity: Hashable {
     let section: MacSection
     let request: UUID
+}
+
+/// Virtualized artist rows that only re-render when the cached artists array changes.
+private struct MacArtistsList: View {
+    let artists: [Artist]
+
+    var body: some View {
+        List(artists) { artist in
+            NavigationLink(value: artist) {
+                Label {
+                    HStack {
+                        Text(artist.name)
+                        Spacer()
+                        Text("\(artist.albums.count.formatted()) albums").foregroundStyle(.secondary)
+                    }
+                } icon: { Image(systemName: "person.crop.circle") }
+            }
+        }
+        .listStyle(.inset)
+    }
+}
+
+/// Genres and decades list that only re-renders when the cached arrays change.
+private struct MacGenresList: View {
+    let genres: [Genre]
+    let decades: [Decade]
+    let library: LibraryStore
+    let profiles: ProfileStore
+    @Binding var editingGenre: MacGenreEdit?
+
+    var body: some View {
+        let scope = MacLibraryActionScope(library: library, profiles: profiles)
+        List {
+            Section("Genres") {
+                ForEach(genres) { genre in
+                    NavigationLink(value: AlbumCollection(title: genre.name, albums: genre.albums)) {
+                        HStack {
+                            Label(genre.name, systemImage: "guitars")
+                            Spacer()
+                            Text(genre.countText).foregroundStyle(.secondary)
+                        }
+                    }
+                    .contextMenu {
+                        Button("Rename or Merge Genre…", systemImage: "pencil") {
+                            guard scope.isCurrent(library: library, profiles: profiles), library.genres.contains(genre) else { return }
+                            editingGenre = MacGenreEdit(genre: genre, scope: scope)
+                        }
+                    }
+                }
+            }
+            if !decades.isEmpty {
+                Section("Decades") {
+                    ForEach(decades) { decade in
+                        NavigationLink(value: AlbumCollection(title: decade.label, albums: decade.albums)) {
+                            HStack {
+                                Label(decade.label, systemImage: "calendar")
+                                Spacer()
+                                Text(decade.countText).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.inset)
+    }
 }
 
 /// Artwork remains the focus of album browsing, at a density suited to a desktop window.
