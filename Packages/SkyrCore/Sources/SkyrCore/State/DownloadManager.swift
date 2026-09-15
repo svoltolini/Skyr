@@ -437,8 +437,13 @@ public final class DownloadManager {
 
     private func record(for track: Track) -> DownloadRecord? {
         guard !records.isEmpty else { return nil }
-        guard let record = records[key(for: track)] else { return nil }
-        if record.fileName.isEmpty { return simulatedKeys.contains(key(for: track)) ? record : nil }
+        return record(for: track, driveID: driveIDProvider())
+    }
+
+    private func record(for track: Track, driveID: String) -> DownloadRecord? {
+        let key = Self.cacheKey(trackID: track.id, driveID: driveID)
+        guard let record = records[key] else { return nil }
+        if record.fileName.isEmpty { return simulatedKeys.contains(key) ? record : nil }
         return FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path) ? record : nil
     }
 
@@ -730,26 +735,37 @@ public final class DownloadManager {
     /// Songs of the album or playlist that it has on the device.
     public func downloadedCount(for owner: DownloadOwner) -> Int {
         guard !records.isEmpty else { return 0 }
-        return owner.tracks.filter { record(for: $0)?.owners.contains(owner.id) == true }.count
+        return downloadedCount(for: owner, driveID: driveIDProvider())
     }
 
+    private func downloadedCount(for owner: DownloadOwner, driveID: String) -> Int {
+        guard !records.isEmpty else { return 0 }
+        return owner.tracks.filter { record(for: $0, driveID: driveID)?.owners.contains(owner.id) == true }.count
+    }
+
+    /// The source is read once per call: the Downloads screen asks this for every listed collection,
+    /// and a playlist can hold thousands of songs.
     public func state(for owner: DownloadOwner) -> DownloadState {
         let tracks = owner.tracks
         guard !tracks.isEmpty else { return .none }
-        let done = downloadedCount(for: owner)
+        let driveID = driveIDProvider()
+        let done = downloadedCount(for: owner, driveID: driveID)
         if done == tracks.count { return .downloaded }
         let pending = pendingByOwner[owner.id] ?? []
-        if !pending.isEmpty, tracks.contains(where: { pending.contains(key(for: $0)) }) {
-            let inFlight = tracks.filter { pending.contains(key(for: $0)) }.reduce(0.0) { $0 + (progressByKey[key(for: $1)] ?? 0) }
-            return .downloading(fraction: (Double(done) + inFlight) / Double(tracks.count), done: done, total: tracks.count)
+        if !pending.isEmpty {
+            let keys = tracks.map { Self.cacheKey(trackID: $0.id, driveID: driveID) }.filter { pending.contains($0) }
+            if !keys.isEmpty {
+                let inFlight = keys.reduce(0.0) { $0 + (progressByKey[$1] ?? 0) }
+                return .downloading(fraction: (Double(done) + inFlight) / Double(tracks.count), done: done, total: tracks.count)
+            }
         }
-        let request = requests[requestKey(ownerID: owner.id, driveID: driveIDProvider())]
+        let request = requests[requestKey(ownerID: owner.id, driveID: driveID)]
         if request?.cancelled == true { return .cancelled(done: done, total: tracks.count) }
         let error = request?.errors.sorted(by: { $0.key < $1.key }).first?.value
         if done > 0 { return .partial(done: done, total: tracks.count, message: error) }
         if let error { return .failed(message: error) }
         // Membership came back from iCloud but the songs did not: kept listed, with a retry offered.
-        if isRestored(owner, driveID: driveIDProvider()) { return .partial(done: 0, total: tracks.count, message: nil) }
+        if isRestored(owner, driveID: driveID) { return .partial(done: 0, total: tracks.count, message: nil) }
         return .none
     }
 
