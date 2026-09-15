@@ -121,6 +121,92 @@ import Testing
     #expect(media.duration == 1)
 }
 
+// MARK: - Security: Malformed Metadata Rejection
+
+@Test func mp4OversizedMoovDeclarationIsRejected() async throws {
+    let file = atom("ftyp", Array("M4A ".utf8) + [0, 0, 0, 0])
+        + bigEndian(0x7FFF_FFFF) + Array("moov".utf8) + [UInt8](repeating: 0, count: 100)
+    let media = try await MP4Tags.read { range in fixtureRead(file, range) }
+    #expect(media == nil)
+}
+
+@Test func mp4TruncatedBoxHeaderIsRejected() async throws {
+    let file = atom("ftyp", Array("M4A ".utf8) + [0, 0, 0, 0]) + [0, 0, 0, 20]
+    let media = try await MP4Tags.read { range in fixtureRead(file, range) }
+    #expect(media == nil)
+}
+
+@Test func mp4AtomSizeSmallerThanHeaderIsRejected() async throws {
+    let file = atom("ftyp", Array("M4A ".utf8) + [0, 0, 0, 0])
+        + [0, 0, 0, 4] + Array("moov".utf8)
+    let media = try await MP4Tags.read { range in fixtureRead(file, range) }
+    #expect(media == nil)
+}
+
+@Test func id3OversizedTagDeclarationIsRejected() async throws {
+    let file = Array("ID3".utf8) + [4, 0, 0] + syncsafeBytes(0x0FFF_FFFF) + [UInt8](repeating: 0, count: 100)
+    let media = try await ID3Tags.read(fileSize: 1_000_000) { range in fixtureRead(file, range) }
+    #expect(media == nil)
+}
+
+@Test func id3TruncatedFrameDataIsRejected() async throws {
+    let frame = Array("TIT2".utf8) + syncsafeBytes(1000) + [0, 0]
+    let file = Array("ID3".utf8) + [4, 0, 0] + syncsafeBytes(frame.count) + frame
+    let media = try await ID3Tags.read(fileSize: 1_000_000) { range in fixtureRead(file, range) }
+    #expect(media?.title == nil)
+}
+
+@Test func id3OversizedExtendedHeaderIsRejected() async throws {
+    let file = Array("ID3".utf8) + [4, 0, 0x40] + syncsafeBytes(100) + syncsafeBytes(0x0FFF_FFFF) + [UInt8](repeating: 0, count: 90)
+    let media = try await ID3Tags.read(fileSize: 1_000_000) { range in fixtureRead(file, range) }
+    #expect(media?.title == nil)
+}
+
+@Test func flacOversizedBlockDeclarationIsRejected() {
+    var file = Array("fLaC".utf8)
+    file += [0x00, 0xFF, 0xFF, 0xFF]
+    let info = FLACHeader.parse(Data(file))
+    #expect(info?.neededPrefix == nil || info?.sampleRate == nil)
+}
+
+@Test func flacOversizedVorbisVendorLengthIsRejected() {
+    var file = Array("fLaC".utf8)
+    file += [0x00, 0x00, 0x00, 18]
+    file += [UInt8](repeating: 0, count: 18)
+    file += [0x84]
+    file += [0x00, 0x00, 10]
+    file += [0xFF, 0xFF, 0xFF, 0x7F]
+    let info = FLACHeader.parse(Data(file))
+    #expect(info?.tags.isEmpty ?? true)
+}
+
+@Test func flacOversizedPictureDescriptionLengthIsRejected() {
+    var file = Array("fLaC".utf8)
+    file += [0x00, 0x00, 0x00, 18]
+    file += [UInt8](repeating: 0, count: 18)
+    file += [0x86]
+    file += [0x00, 0x00, 30]
+    file += [0x00, 0x00, 0x00, 0x03]
+    file += [0x00, 0x00, 0x00, 0x00]
+    file += [0x7F, 0xFF, 0xFF, 0xFF]
+    let info = FLACHeader.parse(Data(file))
+    #expect(info?.picture == nil)
+}
+
+@Test func flacTruncatedPictureMetadataFieldsAreRejected() {
+    var file = Array("fLaC".utf8)
+    file += [0x00, 0x00, 0x00, 18]
+    file += [UInt8](repeating: 0, count: 18)
+    file += [0x86]
+    file += [0x00, 0x00, 20]
+    file += [0x00, 0x00, 0x00, 0x03]
+    file += [0x00, 0x00, 0x00, 0x04]
+    file += Array("test".utf8)
+    file += [0x00, 0x00, 0x00, 0x00]
+    let info = FLACHeader.parse(Data(file))
+    #expect(info?.picture == nil)
+}
+
 private nonisolated func bigEndian(_ value: UInt32) -> [UInt8] {
     [UInt8(truncatingIfNeeded: value >> 24), UInt8(truncatingIfNeeded: value >> 16),
      UInt8(truncatingIfNeeded: value >> 8), UInt8(truncatingIfNeeded: value)]

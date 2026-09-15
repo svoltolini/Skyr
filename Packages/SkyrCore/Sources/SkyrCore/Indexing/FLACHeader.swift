@@ -98,7 +98,7 @@ public nonisolated enum FLACHeader {
             offset += 4
             return value
         }
-        guard let vendorLength = readUInt32() else { return tags }
+        guard let vendorLength = readUInt32(), offset + vendorLength <= block.count else { return tags }
         offset += vendorLength
         guard let count = readUInt32() else { return tags }
         for _ in 0..<count {
@@ -124,8 +124,9 @@ public nonisolated enum FLACHeader {
         guard let kind = readUInt32(), let mimeLength = readUInt32(), offset + mimeLength <= block.count else { return nil }
         let mime = String(decoding: block[offset..<offset + mimeLength], as: UTF8.self)
         offset += mimeLength
-        guard let descriptionLength = readUInt32() else { return nil }
+        guard let descriptionLength = readUInt32(), offset + descriptionLength <= block.count else { return nil }
         offset += descriptionLength
+        guard offset + 16 <= block.count else { return nil }
         offset += 16
         guard let dataLength = readUInt32(), dataLength > 0, offset + dataLength <= block.count else { return nil }
         return (kind, mime, Data(block[offset..<offset + dataLength]))
