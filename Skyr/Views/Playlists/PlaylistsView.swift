@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Playlists tab: the lists the app keeps for you, then the ones you made.
 struct PlaylistsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
@@ -62,7 +63,7 @@ struct PlaylistsView: View {
                         }
                         .padding(.horizontal, 24)
                         .padding(.top, 12)
-                        .animation(.snappy(duration: 0.3), value: library.playlists.map(\.id))
+                        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: library.playlists.map(\.id))
                     }
                 }
                 .padding(.bottom, 32)
@@ -311,6 +312,7 @@ extension PlaylistDetailView {
 
 /// One song of a playlist: tap to play, "…" to favourite, add to another playlist or remove it.
 private struct PlaylistTrackRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let track: Track
     let position: Int
     let playlist: Playlist
@@ -344,22 +346,22 @@ private struct PlaylistTrackRow: View {
                     Spacer(minLength: 8)
                     if library.isFavourite(track) {
                         FavouriteMark()
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                     }
                     if let fraction = downloads.progress[track.id] {
                         MiniProgressRing(fraction: fraction)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                     } else if downloads.isQueued(track) {
                         Circle()
                             .stroke(.quaternary, lineWidth: 2)
                             .frame(width: 13, height: 13)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                             .accessibilityLabel("Waiting to download")
                     } else if downloads.isDownloaded(track) {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                             .accessibilityLabel("Downloaded")
                     }
                     Text(TimeText.clock(track.duration))
@@ -367,8 +369,8 @@ private struct PlaylistTrackRow: View {
                         .monospacedDigit()
                         .foregroundStyle(.tertiary)
                 }
-                .animation(.snappy(duration: 0.3), value: downloads.isDownloaded(track))
-                .animation(.snappy(duration: 0.3), value: library.isFavourite(track))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: downloads.isDownloaded(track))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: library.isFavourite(track))
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
             }
@@ -376,7 +378,7 @@ private struct PlaylistTrackRow: View {
 
             TrackActionsMenu(
                 track: track,
-                onRemove: isLocal ? { withAnimation(.snappy(duration: 0.3)) { library.remove(track, fromPlaylist: playlist.id) } } : nil,
+                onRemove: isLocal ? { withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) { library.remove(track, fromPlaylist: playlist.id) } } : nil,
                 isAddingToPlaylist: Binding(get: { addingTrack?.id == track.id }, set: { addingTrack = $0 ? track : nil })
             )
             .padding(.leading, 2)

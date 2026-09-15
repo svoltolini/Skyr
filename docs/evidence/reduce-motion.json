@@ -1,0 +1,29 @@
+{
+  "mac": {
+    "initialReducedNoDrift": true,
+    "sameViewRuntimeDriftRestoredAndRemoved": true,
+    "onscreenDriftObservations": 3,
+    "actualEnvironmentValues": [
+      false,
+      true
+    ]
+  },
+  "iphone": {
+    "initialReducedNoDrift": true,
+    "sameViewRuntimeDriftRestoredAndRemoved": true,
+    "onscreenDriftObservations": 3,
+    "actualEnvironmentValues": [
+      false,
+      true
+    ]
+  },
+  "tv": {
+    "initialReducedNoDrift": true,
+    "sameViewRuntimeDriftRestoredAndRemoved": true,
+    "onscreenDriftObservations": 3,
+    "actualEnvironmentValues": [
+      false,
+      true
+    ]
+  }
+}

@@ -603,6 +603,7 @@ private struct MacFolderStep: View {
 // MARK: - Library
 
 private struct MacLibraryStep: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
 
@@ -615,8 +616,8 @@ private struct MacLibraryStep: View {
                     Text(model.indexedCount, format: .number)
                         .font(.system(size: 54, weight: .light))
                         .monospacedDigit()
-                        .contentTransition(.numericText(value: Double(model.indexedCount)))
-                        .animation(.default, value: model.indexedCount)
+                        .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(model.indexedCount)))
+                        .animation(reduceMotion ? nil : .default, value: model.indexedCount)
                     Text("songs")
                         .font(.title3)
                         .foregroundStyle(.secondary)

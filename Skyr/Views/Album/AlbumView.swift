@@ -298,22 +298,22 @@ struct TrackRow: View {
                     Spacer(minLength: 8)
                     if library.isFavourite(track) {
                         FavouriteMark()
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                     }
                     if let fraction = downloads.progress[track.id] {
                         MiniProgressRing(fraction: fraction)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                     } else if downloads.isQueued(track) {
                         Circle()
                             .stroke(.quaternary, lineWidth: 2)
                             .frame(width: 13, height: 13)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                             .accessibilityLabel("Waiting to download")
                     } else if downloads.isDownloaded(track) {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                             .accessibilityLabel("Downloaded")
                     }
                     Text(TimeText.clock(track.duration))
@@ -321,8 +321,8 @@ struct TrackRow: View {
                         .monospacedDigit()
                         .foregroundStyle(.tertiary)
                 }
-                .animation(.snappy(duration: 0.3), value: downloads.isDownloaded(track))
-                .animation(.snappy(duration: 0.3), value: library.isFavourite(track))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: downloads.isDownloaded(track))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: library.isFavourite(track))
                 .padding(.vertical, 17)
                 .padding(.leading, 4)
                 .contentShape(Rectangle())

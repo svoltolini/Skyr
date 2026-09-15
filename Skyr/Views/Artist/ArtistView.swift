@@ -19,6 +19,7 @@ struct ArtistView: View {
 }
 
 private struct ArtistDetailContent: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let artist: Artist
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
@@ -136,7 +137,10 @@ private struct ArtistDetailContent: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, offset in
-            pull = min(0, offset)
+            pull = reduceMotion ? 0 : min(0, offset)
+        }
+        .onChange(of: reduceMotion) { _, reduced in
+            if reduced { pull = 0 }
         }
         .heroUnderBar()
         .skyrBackground(artist.primaryColor)
@@ -146,7 +150,8 @@ private struct ArtistDetailContent: View {
     }
 
     private var hero: some View {
-        ZStack(alignment: .bottomLeading) {
+        let displacement = reduceMotion ? 0 : pull
+        return ZStack(alignment: .bottomLeading) {
             LinearGradient(
                 colors: [artist.primaryColor, artist.secondaryColor],
                 startPoint: UnitPoint(x: 0.2, y: 0),
@@ -171,9 +176,9 @@ private struct ArtistDetailContent: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 22)
         }
-        .frame(height: 300 - pull)
+        .frame(height: 300 - displacement)
         .clipped()
-        .offset(y: pull)
+        .offset(y: displacement)
         .accessibilityElement(children: .combine)
     }
 }

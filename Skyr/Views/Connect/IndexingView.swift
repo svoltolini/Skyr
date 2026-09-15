@@ -2,6 +2,7 @@ import SkyrCore
 import SwiftUI
 
 struct IndexingView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
 
@@ -24,8 +25,8 @@ struct IndexingView: View {
                 .font(.system(size: 56 * Metrics.scale, weight: .light))
                 .monospacedDigit()
                 .kerning(-1.5 * Metrics.scale)
-                .contentTransition(.numericText(value: Double(model.indexedCount)))
-                .animation(.default, value: model.indexedCount)
+                .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(model.indexedCount)))
+                .animation(reduceMotion ? nil : .default, value: model.indexedCount)
             Text(title)
                 .font(Metrics.scale > 1 ? .title3 : .subheadline)
                 .foregroundStyle(.secondary)

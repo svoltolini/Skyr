@@ -59,6 +59,7 @@ struct LibraryHomeView: View {
 
 /// Snapping horizontal row of square album cards.
 struct AlbumCarousel: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let albums: [Album]
     let cardWidth: CGFloat
     let cornerRadius: CGFloat
@@ -74,7 +75,7 @@ struct AlbumCarousel: View {
                         AlbumCard(album: album, width: cardWidth, cornerRadius: cornerRadius, destination: destination)
                     }
                     .cardButton()
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                 }
             }
             .scrollTargetLayout()
@@ -84,7 +85,7 @@ struct AlbumCarousel: View {
         .scrollIndicators(.hidden)
         .scrollClipDisabled()
         // Albums found by a scan ease into the shelf instead of popping.
-        .animation(.easeInOut(duration: 0.3), value: albums.map(\.id))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: albums.map(\.id))
     }
 }
 

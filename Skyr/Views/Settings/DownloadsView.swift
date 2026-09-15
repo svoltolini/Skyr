@@ -16,6 +16,7 @@ struct DownloadsTabView: View {
 
 /// Albums and playlists kept on this \(Device.noun), as grids of covers. Anything still coming down shows its ring.
 struct DownloadsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(DownloadManager.self) private var downloads
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
@@ -61,7 +62,7 @@ struct DownloadsView: View {
                     }
                 }
                 .padding(.bottom, 32)
-                .animation(.snappy(duration: 0.3), value: albums.map(\.id) + playlists.map(\.id))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: albums.map(\.id) + playlists.map(\.id))
             }
         }
         .skyrBackground(player.tint)
