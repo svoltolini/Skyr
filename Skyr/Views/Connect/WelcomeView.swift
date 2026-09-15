@@ -2,6 +2,7 @@ import SkyrCore
 import SwiftUI
 
 struct WelcomeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
     /// The privacy introduction is read once; after that the welcome goes straight to finding servers.
     @AppStorage("onboarding.seen") private var hasSeenOnboarding = false
@@ -13,7 +14,7 @@ struct WelcomeView: View {
             SetupPage(step: .welcome) {
                 WelcomeContent(hasSeenOnboarding: hasSeenOnboarding) {
                     onboardingStart = 0
-                    withAnimation(.easeInOut(duration: 0.4)) { isShowingOnboarding = true }
+                    withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : .easeInOut(duration: 0.4)) { isShowingOnboarding = true }
                 }
             }
             .accessibilityHidden(isShowingOnboarding)
@@ -29,7 +30,7 @@ struct WelcomeView: View {
                         withTransaction(transaction) { isShowingOnboarding = false }
                     }
                 }
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
                 .zIndex(1)
             }
         }

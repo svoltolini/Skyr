@@ -168,6 +168,7 @@ struct OnboardingView: View {
 
 /// Page capsules: the current one long and inked.
 struct PageDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let count: Int
     let current: Int
 
@@ -179,7 +180,7 @@ struct PageDots: View {
                     .frame(width: (i == current ? 26 : 8) * Metrics.scale, height: 6 * Metrics.scale)
             }
         }
-        .animation(.snappy(duration: 0.3), value: current)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: current)
         .accessibilityElement()
         .accessibilityLabel("Page \(current + 1) of \(count)")
     }

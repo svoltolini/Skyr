@@ -153,6 +153,7 @@ private struct BrandMark: View {
 
 /// Four capsules; the current step's is long and inked.
 private struct StepDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let current: SetupStep
 
     var body: some View {
@@ -163,7 +164,7 @@ private struct StepDots: View {
                     .frame(width: step == current ? 26 : 8, height: 6)
             }
         }
-        .animation(.snappy(duration: 0.3), value: current)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: current)
         .accessibilityElement()
         .accessibilityLabel("Step \(current.rawValue + 1) of \(SetupStep.allCases.count)")
     }

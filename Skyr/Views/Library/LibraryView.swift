@@ -13,6 +13,7 @@ nonisolated struct AlbumCollection: Hashable {
 }
 
 struct LibraryView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
@@ -52,14 +53,14 @@ struct LibraryView: View {
                         }
                         // The old facet fades out first; the new one then fades in while rising a little,
                         // so the two layouts never show on top of each other.
-                        .transition(.asymmetric(
+                        .transition(reduceMotion ? .opacity : .asymmetric(
                             insertion: .opacity.combined(with: .offset(y: 10)).animation(.easeOut(duration: 0.3).delay(0.12)),
                             removal: .opacity.animation(.easeIn(duration: 0.14))
                         ))
                     }
                 }
                 .padding(.bottom, 32)
-                .animation(.easeInOut(duration: 0.25), value: model.facet)
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeInOut(duration: 0.25), value: model.facet)
             }
             .pullToRefresh { [model] in
                 // Pull down to scan the folder again; the shelf shows progress from here on.

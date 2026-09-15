@@ -6,6 +6,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(ProfileStore.self) private var profiles
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -24,8 +25,8 @@ struct RootView: View {
                     .zIndex(1)
             }
         }
-        .animation(.easeInOut(duration: 0.5), value: model.stage == .ready)
-        .animation(.easeInOut(duration: 0.35), value: profiles.isLocked)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.5), value: model.stage == .ready)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: profiles.isLocked)
     }
 }
 #endif
