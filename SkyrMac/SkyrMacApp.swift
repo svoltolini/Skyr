@@ -57,7 +57,14 @@ struct SkyrMacApp: App {
             UserDefaults.standard.set(true, forKey: "downloads.ownersScoped")
         }
         downloads.activeProfileID = profiles.lastActiveID ?? profiles.owner?.id ?? "default"
-        downloads.knownProfileIDsProvider = { [profiles] in Set(profiles.profiles.map(\.id)) }
+        // Songs owned only by profiles not on this device count as unused, but the local profile list
+        // is trusted only once iCloud has been consulted; before that, or while it fails, nothing is judged.
+        downloads.knownProfileIDsProvider = { [profiles, cloud] in
+            switch cloud.status {
+            case .synced, .noAccount: Set(profiles.profiles.map(\.id))
+            case .off, .syncing, .failed: []
+            }
+        }
         // Persist download membership changes to iCloud via the profile state.
         downloads.onMembershipChanged = { [profiles] driveID, albumIDs, playlistIDs in
             profiles.updateLibrary(driveID) { library in
