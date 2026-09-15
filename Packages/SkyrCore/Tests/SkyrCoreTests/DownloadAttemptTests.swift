@@ -375,6 +375,161 @@ struct DownloadAttemptTests {
         #expect(harness.manager.state(for: owner) == .none)
     }
 
+    // MARK: - Live Activity Failure Visibility Tests (Issue #19)
+
+    @Test func completeFailureNeverShowsDownloadedInStatusLine() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let owner = harness.manager.owner(for: transferAlbum())
+        harness.queue(owner)
+        harness.fail(try harness.startedJob(0))
+        try await drain()
+        let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(state.outcome == .failed)
+        #expect(state.outcome != .downloaded)
+        #expect(!state.statusLine.contains("Downloaded"))
+        #expect(state.statusLine.contains("failed"))
+        #expect(state.done == 0)
+        #expect(state.fraction == 0)
+    }
+
+    @Test func partialFailureNeverShowsDownloadedInStatusLine() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum(count: 3)
+        let owner = harness.manager.owner(for: album)
+        harness.queue(owner)
+        try harness.deliver(try harness.startedJob(0))
+        try await drain()
+        harness.fail(try harness.startedJob(1))
+        try await drain()
+        harness.fail(try harness.startedJob(2))
+        try await drain()
+        let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(state.outcome == .partial)
+        #expect(state.outcome != .downloaded)
+        #expect(!state.statusLine.contains("Downloaded"))
+        #expect(state.statusLine.contains("saved"))
+        #expect(state.done == 1)
+        #expect(state.total == 3)
+        #expect(state.fraction < 1.0)
+    }
+
+    @Test func cancellationNeverShowsDownloadedInStatusLine() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let owner = harness.manager.owner(for: transferAlbum())
+        harness.queue(owner)
+        harness.manager.cancel(owner)
+        let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(state.outcome == .cancelled)
+        #expect(state.outcome != .downloaded)
+        #expect(!state.statusLine.contains("Downloaded"))
+        #expect(state.statusLine.contains("Cancelled"))
+        #expect(state.done == 0)
+    }
+
+    @Test func failureAfterBackgroundRestorationShowsFailedNotDownloaded() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let owner = harness.manager.owner(for: transferAlbum())
+        harness.queue(owner)
+        let job = try harness.startedJob(0)
+        harness.stop()
+        harness.open()
+        try await harness.restore([job])
+        harness.fail(job)
+        try await drain()
+        let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(state.outcome == .failed)
+        #expect(state.outcome != .downloaded)
+        #expect(!state.statusLine.contains("Downloaded"))
+        #expect(state.fraction == 0)
+    }
+
+    @Test func multipleFailuresAllShowCorrectOutcomeNotDownloaded() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum(count: 3)
+        let owner = harness.manager.owner(for: album)
+        harness.queue(owner)
+        harness.fail(try harness.startedJob(0))
+        try await drain()
+        harness.fail(try harness.startedJob(1))
+        try await drain()
+        harness.fail(try harness.startedJob(2))
+        try await drain()
+        let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(state.outcome == .failed)
+        #expect(state.outcome != .downloaded)
+        #expect(!state.statusLine.contains("Downloaded"))
+        #expect(state.done == 0)
+        #expect(state.total == 3)
+        #expect(state.fraction == 0)
+    }
+
+    @Test func onlyFullSuccessShowsDownloadedOutcome() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum(count: 2)
+        let owner = harness.manager.owner(for: album)
+        harness.queue(owner)
+        try harness.deliver(try harness.startedJob(0))
+        try await drain()
+        let partialState = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(partialState.outcome == .downloading)
+        #expect(!partialState.statusLine.contains("Downloaded"))
+        try harness.deliver(try harness.startedJob(1))
+        try await drain()
+        let completeState = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(completeState.outcome == .downloaded)
+        #expect(completeState.statusLine.contains("Downloaded"))
+        #expect(completeState.done == 2)
+        #expect(completeState.total == 2)
+        #expect(completeState.fraction == 1.0)
+    }
+
+    @Test func httpErrorResponseShowsFailedNotDownloaded() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let owner = harness.manager.owner(for: transferAlbum())
+        harness.queue(owner)
+        let job = try harness.startedJob(0)
+        let incoming = harness.directory.appending(path: job.incomingFileName)
+        try transferBytes.write(to: incoming)
+        harness.delegate.onFinish?(job, Int64(transferBytes.count), 404, nil)
+        try await drain()
+        let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(state.outcome == .failed)
+        #expect(!state.statusLine.contains("Downloaded"))
+        #expect(harness.manager.lastError?.contains("HTTP 404") == true)
+    }
+
+    @Test func interruptedBackgroundDownloadShowsFailedNotDownloaded() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let owner = harness.manager.owner(for: transferAlbum())
+        harness.queue(owner)
+        let job = try harness.startedJob(0)
+        harness.stop()
+        harness.open()
+        try await harness.restore()
+        harness.delegate.onEventsFinished?()
+        try await drain()
+        let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
+        #expect(state.outcome == .failed)
+        #expect(!state.statusLine.contains("Downloaded"))
+        #expect(state.statusLine.contains("failed") || state.statusLine.contains("Retry"))
+    }
+
     // MARK: - Shared ownership edge cases (issue #17)
 
     @Test func cancellingSecondOwnerKeepsTheTransferForTheOriginalOwner() async throws {
