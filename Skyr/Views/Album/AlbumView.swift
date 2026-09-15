@@ -273,7 +273,7 @@ struct AlbumRenameSheet: View {
                     resultSections(report)
                 } else if isWriting {
                     Section {
-                        TagWriteProgressView(writer: library.metadataWriter, title: "Writing “\(writtenTitle)” to \(songCount) \(songCount == 1 ? "song" : "songs")")
+                        TagWriteProgressView(writer: library.metadataWriter, title: "Writing “\(writtenTitle)”")
                     } footer: {
                         Text("Each song is downloaded, its album tag rewritten and the file put back on your NAS. Songs already written stay written if you stop.")
                             .fixedSize(horizontal: false, vertical: true)

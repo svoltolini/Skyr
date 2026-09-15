@@ -342,15 +342,25 @@ public final class LibraryStore {
         return result
     }
 
+    /// Songs shown under `name` whose files carry a different genre tag than the name itself: what a
+    /// device-only rename left behind, and what writing the name into the files would change.
+    public func tracksCarryingAnotherTag(underGenre name: String) -> [Track] {
+        tracks(shownUnderGenre: name).filter { $0.genreTag.nonEmpty != name }
+    }
+
     /// Writes `newName` into the genre tag of every song shown under `name`. Songs whose files could
     /// not be changed are shown under the new name on this device instead, so the rename holds
     /// everywhere on screen while Genre Names in Settings says which files still carry the old tag.
+    /// With `newName` equal to `name`, the name a device-only rename shows is written into the files.
     public func writeGenre(_ name: String, to newName: String) async -> MetadataWriteReport {
         let target = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !target.isEmpty, target != name else { return MetadataWriteReport() }
+        guard !target.isEmpty else { return MetadataWriteReport() }
         let affected = tracks(shownUnderGenre: name)
+        // Files the catalogue already knows to carry the name are not fetched just to find that out.
+        let pending = affected.filter { $0.genreTag.nonEmpty != target }
         let sourceID = catalogue.driveID
-        let report = await writeTags(TagEdits(genre: target), to: affected)
+        var report = await writeTags(TagEdits(genre: target), to: pending)
+        report.unchanged += affected.filter { $0.genreTag.nonEmpty == target }
         guard catalogue.driveID == sourceID else { return report }
         // Failed songs, and songs never tried when the job was stopped, keep showing the asked-for
         // name through an alias of the tag their file still carries.

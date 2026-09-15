@@ -231,6 +231,9 @@ private nonisolated func id3v1(album: String = "Nocturne Drift", genre: UInt8 = 
         var flacNamedMP3 = Array("fLaC".utf8) + zeros(200)
         flacNamedMP3[4] = 0x80
         #expect(throws: TagWriteError.mismatchedContents("not MPEG audio")) { try plan(TagEdits(genre: "Ambient"), "song.mp3", flacNamedMP3) }
+        // A WAV whose PCM happens to contain frame-sync-like bytes is still a WAV.
+        let wavNamedMP3 = Array("RIFF".utf8) + be32(1000) + Array("WAVE".utf8) + mpegAudio
+        #expect(throws: TagWriteError.mismatchedContents("not MPEG audio")) { try plan(TagEdits(genre: "Ambient"), "song.mp3", wavNamedMP3) }
     }
 
     @Test func wholeTagUnsynchronisationIsUndoneAndFramesKept() async throws {

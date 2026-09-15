@@ -216,6 +216,94 @@ private nonisolated func readTags(_ drive: WriterFixtureDrive, _ path: String) a
         #expect(flac.genre == "Rock")
     }
 
+    /// A library over the fixture folder, every song read with "Rock" and the folder's album title.
+    private func library(over drive: WriterFixtureDrive) async -> LibraryStore {
+        let files = await drive.files
+        let entries = [mp3Path, flacPath, wavPath].map { path in
+            RemoteEntry(path: path, name: (path as NSString).lastPathComponent, isDirectory: false, size: Int64(files[path]?.count ?? 0), modified: Date(timeIntervalSince1970: 1_700_000_000))
+        }
+        var catalogue = Catalogue.build(folders: [ScannedFolder(path: folder, audio: entries, cover: nil)], rootPath: "/music", serverName: "Fixture NAS", driveID: drive.id, existing: nil)
+        for album in catalogue.albums.indices {
+            for index in catalogue.albums[album].tracks.indices {
+                catalogue.albums[album].tracks[index].isEnriched = true
+                catalogue.albums[album].tracks[index].tagVersion = Track.currentTagVersion
+                catalogue.albums[album].tracks[index].genreTag = "Rock"
+                catalogue.albums[album].tracks[index].albumTitleTag = "Nocturne Drift"
+            }
+            catalogue.albums[album].refreshFromTags()
+        }
+        let library = LibraryStore()
+        library.replace(with: catalogue, drive: drive)
+        // Aliases persist per source in UserDefaults; a previous run must not leak into this one.
+        library.resetGenreNames()
+        return library
+    }
+
+    @Test func libraryWritesAGenreAndFallsBackToAnAliasForFilesItCouldNotChange() async throws {
+        let covers = FileManager.default.temporaryDirectory.appending(path: "skyr-writer-covers-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: covers) }
+        try await CoverStore.$directoryOverride.withValue(covers) {
+            let drive = fixtureDrive()
+            let library = await self.library(over: drive)
+            #expect(library.canWriteTags)
+            #expect(library.tracks(shownUnderGenre: "Rock").count == 3)
+            #expect(library.tracksCarryingAnotherTag(underGenre: "Rock").isEmpty)
+            let report = await library.writeGenre("Rock", to: "Ambient")
+            #expect(report.written.map(\.id) == [mp3Path, flacPath])
+            #expect(report.failures.map(\.trackID) == [wavPath])
+            let tracks = Dictionary(uniqueKeysWithValues: library.catalogue.albums.flatMap(\.tracks).map { ($0.id, $0) })
+            #expect(tracks[mp3Path]?.genreTag == "Ambient")
+            #expect(tracks[flacPath]?.genreTag == "Ambient")
+            #expect(tracks[wavPath]?.genreTag == "Rock")
+            #expect(tracks[mp3Path]?.sourceModifiedAt == 1_700_000_001)
+            #expect(library.genreRenames.map { "\($0.tag)→\($0.name)" } == ["Rock→Ambient"])
+            #expect(library.tracks(shownUnderGenre: "Ambient").count == 3)
+            #expect(library.tracks(shownUnderGenre: "Rock").isEmpty)
+            #expect(library.tracksCarryingAnotherTag(underGenre: "Ambient").map(\.id) == [wavPath])
+            let mp3 = try #require(try await readTags(drive, mp3Path))
+            #expect(mp3.genre == "Ambient")
+            #expect(mp3.title == "Morning")
+            // Writing the shown name again only touches the file that still carries the old tag, and fails the same way.
+            let again = await library.writeGenre("Ambient", to: "Ambient")
+            #expect(again.written.isEmpty)
+            #expect(again.unchanged.count == 2)
+            #expect(again.failures.map(\.trackID) == [wavPath])
+            let calls = await drive.calls
+            #expect(calls.count == 2)
+            library.resetGenreNames()
+        }
+    }
+
+    @Test func libraryRenamesAnAlbumAndFollowsItToItsNewIdentity() async throws {
+        let covers = FileManager.default.temporaryDirectory.appending(path: "skyr-writer-covers-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: covers) }
+        try await CoverStore.$directoryOverride.withValue(covers) {
+            let drive = fixtureDrive()
+            let library = await self.library(over: drive)
+            var renames: [(String, String)] = []
+            library.onAlbumRenamed = { renames.append(($0, $1)) }
+            let album = try #require(library.catalogue.albums.first)
+            #expect(album.title == "Nocturne Drift")
+            let outcome = await library.renameAlbum(album, to: "Second Light Sessions")
+            #expect(outcome.report.written.count == 2)
+            #expect(outcome.report.failures.map(\.trackID) == [wavPath])
+            #expect(outcome.albumID == Album.makeID(title: "Second Light Sessions", artist: album.artist))
+            #expect(renames.map(\.0) == [album.id])
+            #expect(renames.map(\.1) == [outcome.albumID])
+            let renamed = try #require(library.catalogue.albums.first { $0.id == outcome.albumID })
+            #expect(renamed.title == "Second Light Sessions")
+            #expect(renamed.genre == "Rock")
+            #expect(renamed.tracks.map(\.id) == [mp3Path, flacPath])
+            #expect(renamed.tracks.allSatisfy { $0.albumTitleTag == "Second Light Sessions" && $0.genreTag == "Rock" })
+            // The song that could not be written keeps the old title in its file and stays under it.
+            let remaining = try #require(library.catalogue.albums.first { $0.id == album.id })
+            #expect(remaining.tracks.map(\.id) == [wavPath])
+            let flac = try #require(try await readTags(drive, flacPath))
+            #expect(flac.album == "Second Light Sessions")
+            #expect(flac.title == "Second Light")
+        }
+    }
+
     @Test func verificationRefusesAnyDriftInUneditedFields() {
         let before = WrittenTags(title: "Morning", artist: "Halden Vey", album: "Nocturne Drift", genre: "Rock", trackNumber: 1)
         var after = before

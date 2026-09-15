@@ -13,6 +13,8 @@ struct GenreEditorSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var name: String
     @State private var songCount = 0
+    /// Songs shown here whose files carry another genre tag, left by a rename made before files were written.
+    @State private var untaggedCount = 0
     @State private var isWriting = false
     @State private var writtenName = ""
     @State private var report: MetadataWriteReport?
@@ -29,8 +31,13 @@ struct GenreEditorSheet: View {
     /// An existing genre whose name matches what was typed, so "religious" merges into "Religious".
     private var mergeTarget: Genre? { others.first { $0.name.localizedCaseInsensitiveCompare(trimmedName) == .orderedSame } }
     private var target: String { mergeTarget?.name ?? trimmedName }
-    private var canSave: Bool { isContextCurrent() && !trimmedName.isEmpty && trimmedName != genre.name && !isWriting }
     private var writesFiles: Bool { library.canWriteTags }
+    /// The name is unchanged, but some files still carry another tag from a device-only rename:
+    /// Done writes the shown name into them.
+    private var commitsDeviceOnlyName: Bool { writesFiles && trimmedName == genre.name && untaggedCount > 0 }
+    private var canSave: Bool {
+        isContextCurrent() && !trimmedName.isEmpty && (trimmedName != genre.name || commitsDeviceOnlyName) && !isWriting
+    }
 
     var body: some View {
         NavigationStack {
@@ -69,6 +76,7 @@ struct GenreEditorSheet: View {
         .interactiveDismissDisabled(isWriting)
         .onAppear {
             songCount = library.tracks(shownUnderGenre: genre.name).count
+            untaggedCount = library.tracksCarryingAnotherTag(underGenre: genre.name).count
             isEditingName = true
         }
     }
@@ -135,7 +143,7 @@ struct GenreEditorSheet: View {
 
     private var progressSection: some View {
         Section {
-            TagWriteProgressView(writer: library.metadataWriter, title: "Writing “\(writtenName)” to \(songCount) \(songCount == 1 ? "song" : "songs")")
+            TagWriteProgressView(writer: library.metadataWriter, title: "Writing “\(writtenName)”")
         } footer: {
             Text("Each song is downloaded, its genre tag rewritten and the file put back on your NAS. Songs already written stay written if you stop.")
                 .fixedSize(horizontal: false, vertical: true)
@@ -164,6 +172,9 @@ struct GenreEditorSheet: View {
         if writesFiles {
             if let mergeTarget {
                 return "“\(genre.name)” disappears: the genre tag of its \(songs) is rewritten on your NAS as “\(mergeTarget.name)”. Other tags stay as they are."
+            }
+            if commitsDeviceOnlyName {
+                return "\(untaggedCount) of these \(songs) carry another genre tag, or none, in their files. Done writes “\(genre.name)” into them on your NAS."
             }
             return "The genre tag of \(songs) is rewritten on your NAS. Other tags stay as they are; with many songs this can take a while."
         }

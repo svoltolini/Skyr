@@ -141,7 +141,9 @@ public nonisolated enum TagWriter {
         let head = [UInt8](try read(0..<min(fileSize, 16)))
         switch ext {
         case "mp3":
-            guard !isFLAC(head), !isMP4(head) else { throw TagWriteError.mismatchedContents("not MPEG audio") }
+            guard !isFLAC(head), !isMP4(head), !hasSignature(head, "RIFF"), !hasSignature(head, "OggS") else {
+                throw TagWriteError.mismatchedContents("not MPEG audio")
+            }
             return try ID3TagWriter.plan(edits: edits, fileSize: fileSize, read: read)
         case "m4a", "mp4", "aac", "alac":
             guard isMP4(head) else { throw TagWriteError.mismatchedContents("not an MPEG-4 container") }
@@ -200,8 +202,11 @@ public nonisolated enum TagWriter {
         }
     }
 
-    static func isFLAC(_ head: [UInt8]) -> Bool {
-        head.count >= 4 && head[0] == 0x66 && head[1] == 0x4C && head[2] == 0x61 && head[3] == 0x43
+    static func isFLAC(_ head: [UInt8]) -> Bool { hasSignature(head, "fLaC") }
+
+    static func hasSignature(_ head: [UInt8], _ signature: String) -> Bool {
+        let bytes = Array(signature.utf8)
+        return head.count >= bytes.count && Array(head[0..<bytes.count]) == bytes
     }
 
     static func isMP4(_ head: [UInt8]) -> Bool {
