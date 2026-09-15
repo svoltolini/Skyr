@@ -1,4 +1,5 @@
 import Foundation
+import SkyrShared
 import Testing
 @testable import SkyrCore
 
@@ -53,6 +54,23 @@ import Testing
         Issue.record("Expected cancellation")
     } catch is CancellationError { }
     #expect(await source.consumed == 0)
+}
+
+@Test func artworkDownloadLimitIsReasonablySized() {
+    let limit = ArtworkPolicy.maxArtworkDownloadBytes
+    #expect(limit == 12 * 1024 * 1024, "Artwork limit should be 12 MB")
+    #expect(limit > 0, "Artwork limit must be positive")
+    #expect(limit <= 50 * 1024 * 1024, "Artwork limit should not exceed 50 MB")
+}
+
+@Test func byteCollectorRejectsOversizedArtworkAtPolicyLimit() async throws {
+    let oversized = ArtworkPolicy.maxArtworkDownloadBytes + 1
+    let source = CountingBytes.Source(count: Int(oversized))
+    do {
+        _ = try await BoundedBytes.collect(CountingBytes(source: source), maximum: ArtworkPolicy.maxArtworkDownloadBytes, expectedLength: oversized)
+        Issue.record("Expected oversized artwork to be rejected before consumption")
+    } catch RemoteDriveError.tooLarge { }
+    #expect(await source.consumed == 0, "No bytes should be consumed when advertised length exceeds limit")
 }
 
 private nonisolated struct CountingBytes: AsyncSequence, Sendable {

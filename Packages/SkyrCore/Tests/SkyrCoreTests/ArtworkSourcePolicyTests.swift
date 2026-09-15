@@ -33,6 +33,7 @@ private actor SourceArtworkDrive: RemoteDrive {
     func download(_ path: String, maxBytes: Int64) async throws -> Data {
         downloads.append(path)
         guard let data = contents[path] else { throw URLError(.fileDoesNotExist) }
+        guard Int64(data.count) <= maxBytes else { throw RemoteDriveError.tooLarge }
         return data
     }
     nonisolated func streamURL(for path: String) -> URL? { nil }
