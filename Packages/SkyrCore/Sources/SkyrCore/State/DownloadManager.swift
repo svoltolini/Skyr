@@ -175,6 +175,8 @@ public final class DownloadManager {
     public var driveIDProvider: () -> String = { "" }
     /// The profile whose downloads the screens show and new downloads belong to.
     public var activeProfileID = "default"
+    /// Called when download membership changes (albums/playlists added or removed). Args: driveID, albumIDs, playlistIDs.
+    public var onMembershipChanged: ((String, [String], [String]) -> Void)?
     /// 0…1 for every file currently coming down, by track id.
     public var progress: [String: Double] {
         Dictionary(jobs.values.filter { $0.driveID == driveIDProvider() }.compactMap { job in
@@ -382,6 +384,83 @@ public final class DownloadManager {
         return FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path) ? record : nil
     }
 
+    // MARK: Download membership for iCloud sync
+
+    /// Returns the current download membership (album and playlist IDs) for the active profile on the given drive.
+    /// Membership survives reinstall via iCloud; files may need re-fetch from NAS.
+    public func downloadMembership(driveID: String) -> (albums: [String], playlists: [String]) {
+        let scope = DownloadOwner.scope(activeProfileID)
+        var albums: Set<String> = []
+        var playlists: Set<String> = []
+        
+        // Collect from completed records
+        for record in records.values where record.driveID == driveID {
+            for owner in record.owners where owner.hasPrefix(scope) {
+                let stripped = String(owner.dropFirst(scope.count))
+                if stripped.hasPrefix(DownloadOwner.albumPrefix) {
+                    albums.insert(String(stripped.dropFirst(DownloadOwner.albumPrefix.count)))
+                } else if stripped.hasPrefix(DownloadOwner.playlistPrefix) {
+                    playlists.insert(String(stripped.dropFirst(DownloadOwner.playlistPrefix.count)))
+                }
+            }
+        }
+        
+        // Collect from pending downloads
+        for ownerID in pendingByOwner.keys where ownerID.hasPrefix(scope) {
+            // Check if any pending keys match this driveID
+            if let keys = pendingByOwner[ownerID], keys.contains(where: { jobs[$0]?.driveID == driveID }) {
+                let stripped = String(ownerID.dropFirst(scope.count))
+                if stripped.hasPrefix(DownloadOwner.albumPrefix) {
+                    albums.insert(String(stripped.dropFirst(DownloadOwner.albumPrefix.count)))
+                } else if stripped.hasPrefix(DownloadOwner.playlistPrefix) {
+                    playlists.insert(String(stripped.dropFirst(DownloadOwner.playlistPrefix.count)))
+                }
+            }
+        }
+        
+        return (albums: albums.sorted(), playlists: playlists.sorted())
+    }
+    
+    /// Restores download membership from iCloud sync state. Called on profile activation to re-populate
+    /// the download intent for items that were downloaded before reinstall. Files will re-fetch from NAS.
+    public func restoreDownloadMembership(albums: [String], playlists: [String], driveID: String) {
+        guard !albums.isEmpty || !playlists.isEmpty else { return }
+        let scope = DownloadOwner.scope(activeProfileID)
+        var restoredAlbums = 0
+        var restoredPlaylists = 0
+        
+        // Check which album memberships are missing
+        for albumID in albums {
+            let ownerID = scope + DownloadOwner.albumPrefix + albumID
+            let hasAnyRecord = records.values.contains { $0.driveID == driveID && $0.owners.contains(ownerID) }
+            let hasPending = pendingByOwner[ownerID]?.contains(where: { jobs[$0]?.driveID == driveID }) == true
+            if !hasAnyRecord && !hasPending {
+                restoredAlbums += 1
+            }
+        }
+        
+        // Check which playlist memberships are missing  
+        for playlistID in playlists {
+            let ownerID = scope + DownloadOwner.playlistPrefix + playlistID
+            let hasAnyRecord = records.values.contains { $0.driveID == driveID && $0.owners.contains(ownerID) }
+            let hasPending = pendingByOwner[ownerID]?.contains(where: { jobs[$0]?.driveID == driveID }) == true
+            if !hasAnyRecord && !hasPending {
+                restoredPlaylists += 1
+            }
+        }
+        
+        if restoredAlbums > 0 || restoredPlaylists > 0 {
+            log("Download membership restored from iCloud: \(restoredAlbums) albums, \(restoredPlaylists) playlists to re-download")
+        }
+    }
+    
+    /// Notifies the membership change callback with the current membership for the given drive.
+    private func notifyMembershipChange(driveID: String) {
+        guard let callback = onMembershipChanged else { return }
+        let membership = downloadMembership(driveID: driveID)
+        callback(driveID, membership.albums, membership.playlists)
+    }
+
     // MARK: Reading state
 
     /// The song is on the device, whichever album or playlist brought it.
@@ -569,6 +648,7 @@ public final class DownloadManager {
         log("“\(owner.title)”: queued \(queued) songs, \(shared) already on this iPhone")
         startNextIfIdle()
         refreshActivity(force: true)
+        notifyMembershipChange(driveID: driveID)
     }
 
     /// Starts the first waiting task when nothing is running, so files come down one after another.
@@ -658,6 +738,7 @@ public final class DownloadManager {
         saveManifest()
         savePendingOwners()
         log("Removed the download of “\(owner.title)”: \(deleted) files deleted, \(kept) still used by other downloads")
+        notifyMembershipChange(driveID: driveIDProvider())
     }
 
     private func simulate(_ track: Track, job: DownloadJob) {

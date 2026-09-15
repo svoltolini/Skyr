@@ -45,6 +45,13 @@ struct SkyrTVApp: App {
         let downloads = DownloadManager()
         downloads.driveIDProvider = { [library] in library.catalogue.driveID }
         downloads.activeProfileID = profiles.lastActiveID ?? profiles.owner?.id ?? "default"
+        // Persist download membership changes to iCloud via the profile state (TV doesn't keep files, but membership syncs).
+        downloads.onMembershipChanged = { [profiles] driveID, albumIDs, playlistIDs in
+            profiles.updateLibrary(driveID) { library in
+                library.downloadedAlbums = albumIDs
+                library.downloadedPlaylists = playlistIDs
+            }
+        }
         player.streamURLProvider = { [library, model] track in library.streamURL(for: track, quality: model.quality) }
         player.albumProvider = { [library] track in library.album(for: track) }
         player.allowsSimulation = { [library] in library.isDemo }

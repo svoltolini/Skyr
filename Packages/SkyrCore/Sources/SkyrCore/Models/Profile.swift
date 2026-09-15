@@ -158,6 +158,10 @@ public nonisolated struct LibraryState: Codable, Sendable, Equatable {
     /// Album ids, newest first.
     public var recentAlbums: [String] = []
     public var searches: [String] = []
+    /// Album ids marked for offline download. Files may need re-fetch from NAS; this is the membership list.
+    public var downloadedAlbums: [String] = []
+    /// Playlist ids marked for offline download. Files may need re-fetch from NAS; this is the membership list.
+    public var downloadedPlaylists: [String] = []
 
     public init() {}
 
@@ -168,6 +172,8 @@ public nonisolated struct LibraryState: Codable, Sendable, Equatable {
         played = try container.decodeIfPresent([String].self, forKey: .played) ?? []
         recentAlbums = try container.decodeIfPresent([String].self, forKey: .recentAlbums) ?? []
         searches = try container.decodeIfPresent([String].self, forKey: .searches) ?? []
+        downloadedAlbums = try container.decodeIfPresent([String].self, forKey: .downloadedAlbums) ?? []
+        downloadedPlaylists = try container.decodeIfPresent([String].self, forKey: .downloadedPlaylists) ?? []
     }
 }
 

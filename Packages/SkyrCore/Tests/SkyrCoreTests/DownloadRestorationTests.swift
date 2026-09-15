@@ -279,7 +279,7 @@ struct DownloadRestorationTests {
 
     @Test func overlappingPlaylistOwnersSurviveRestoration() async throws {
         let album = restorationAlbum()
-        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let playlist = Playlist(id: "favourites", name: "Favourites", summary: "", covers: [], tracks: album.tracks, kind: .local)
         let albumOwner = DownloadOwner(album: album, profileID: "listener")
         let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
         let contents = Data(repeating: 0x5A, count: 8192)
@@ -296,7 +296,7 @@ struct DownloadRestorationTests {
 
     @Test func removingAlbumOwnerAfterRestorationKeepsFileForPlaylistOwner() async throws {
         let album = restorationAlbum()
-        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let playlist = Playlist(id: "favourites", name: "Favourites", summary: "", covers: [], tracks: album.tracks, kind: .local)
         let albumOwner = DownloadOwner(album: album, profileID: "listener")
         let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
         let contents = Data(repeating: 0x5A, count: 8192)

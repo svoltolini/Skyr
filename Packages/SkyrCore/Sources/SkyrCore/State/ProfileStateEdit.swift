@@ -9,6 +9,8 @@ nonisolated enum ProfileStateEdit: Codable, Sendable {
         var played: [String]?
         var recentAlbums: [String]?
         var searches: [String]?
+        var downloadedAlbums: [String]?
+        var downloadedPlaylists: [String]?
 
         init(from old: LibraryState, to new: LibraryState, recordingHistory: ProfileHistory?) {
             favourites = old.favourites == new.favourites ? nil : new.favourites
@@ -16,6 +18,8 @@ nonisolated enum ProfileStateEdit: Codable, Sendable {
             played = old.played == new.played && recordingHistory != .played ? nil : new.played
             recentAlbums = old.recentAlbums == new.recentAlbums && recordingHistory != .recentAlbums ? nil : new.recentAlbums
             searches = old.searches == new.searches && recordingHistory != .searches ? nil : new.searches
+            downloadedAlbums = old.downloadedAlbums == new.downloadedAlbums ? nil : new.downloadedAlbums
+            downloadedPlaylists = old.downloadedPlaylists == new.downloadedPlaylists ? nil : new.downloadedPlaylists
         }
 
         func apply(to library: inout LibraryState) {
@@ -24,6 +28,8 @@ nonisolated enum ProfileStateEdit: Codable, Sendable {
             if let played { library.played = played }
             if let recentAlbums { library.recentAlbums = recentAlbums }
             if let searches { library.searches = searches }
+            if let downloadedAlbums { library.downloadedAlbums = downloadedAlbums }
+            if let downloadedPlaylists { library.downloadedPlaylists = downloadedPlaylists }
         }
     }
 

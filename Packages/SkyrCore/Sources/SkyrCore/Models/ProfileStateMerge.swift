@@ -170,12 +170,18 @@ nonisolated struct ProfileLibrarySync: Codable, Sendable, Equatable {
     var played = ProfileHistorySync()
     var recentAlbums = ProfileHistorySync()
     var searches = ProfileHistorySync()
+    /// Album ids marked for offline download. Membership survives reinstall; files re-fetch from NAS.
+    var downloadedAlbums = ProfileSequence()
+    /// Playlist ids marked for offline download. Membership survives reinstall; files re-fetch from NAS.
+    var downloadedPlaylists = ProfileSequence()
 
     mutating func update(from old: LibraryState, to new: LibraryState, revision: ProfileRevision, recordingHistory: ProfileHistory? = nil) {
         if old.favourites != new.favourites { favourites.update(from: old.favourites, to: new.favourites, revision: revision) }
         if old.played != new.played || recordingHistory == .played { played.update(from: old.played, to: new.played, revision: revision, forceFirst: recordingHistory == .played) }
         if old.recentAlbums != new.recentAlbums || recordingHistory == .recentAlbums { recentAlbums.update(from: old.recentAlbums, to: new.recentAlbums, revision: revision, forceFirst: recordingHistory == .recentAlbums) }
         if old.searches != new.searches || recordingHistory == .searches { searches.update(from: old.searches, to: new.searches, revision: revision, forceFirst: recordingHistory == .searches) }
+        if old.downloadedAlbums != new.downloadedAlbums { downloadedAlbums.update(from: old.downloadedAlbums, to: new.downloadedAlbums, revision: revision) }
+        if old.downloadedPlaylists != new.downloadedPlaylists { downloadedPlaylists.update(from: old.downloadedPlaylists, to: new.downloadedPlaylists, revision: revision) }
         guard old.playlists != new.playlists else { return }
         playlistOrder.update(from: old.playlists.map(\.id), to: new.playlists.map(\.id), revision: revision)
         for playlist in new.playlists {
@@ -193,7 +199,9 @@ nonisolated struct ProfileLibrarySync: Codable, Sendable, Equatable {
         var result = Self(favourites: favourites.merged(with: other.favourites),
                           playlistOrder: playlistOrder.merged(with: other.playlistOrder), playlists: playlists,
                           played: played.merged(with: other.played), recentAlbums: recentAlbums.merged(with: other.recentAlbums),
-                          searches: searches.merged(with: other.searches))
+                          searches: searches.merged(with: other.searches),
+                          downloadedAlbums: downloadedAlbums.merged(with: other.downloadedAlbums),
+                          downloadedPlaylists: downloadedPlaylists.merged(with: other.downloadedPlaylists))
         for (id, incoming) in other.playlists {
             result.playlists[id] = result.playlists[id].map { $0.merged(with: incoming) } ?? incoming
         }
@@ -210,6 +218,8 @@ nonisolated struct ProfileLibrarySync: Codable, Sendable, Equatable {
             guard let playlist = playlists[id] else { return nil }
             return LocalPlaylist(id: id, name: playlist.name.value, trackIDs: playlist.tracks.values, created: playlist.created.value)
         }
+        result.downloadedAlbums = downloadedAlbums.values
+        result.downloadedPlaylists = downloadedPlaylists.values
         return result
     }
 }
@@ -351,6 +361,9 @@ extension ProfileState {
         if target.played.entries.isEmpty { target.played.importMissing(legacy.played, revision: baseline) }
         if target.recentAlbums.entries.isEmpty { target.recentAlbums.importMissing(legacy.recentAlbums, revision: baseline) }
         if target.searches.entries.isEmpty { target.searches.importMissing(legacy.searches, revision: baseline) }
+        // Download membership: files may need re-fetch, but the list survives.
+        target.downloadedAlbums.importMissing(legacy.downloadedAlbums, revision: baseline)
+        target.downloadedPlaylists.importMissing(legacy.downloadedPlaylists, revision: baseline)
         metadata.libraries[destination] = target
         let receipt = ProfileRevision(time: max(Date.now.timeIntervalSince1970, metadata.clock.time.nextUp), operation: UUID().uuidString)
         metadata.recoveredLibraries = metadata.recoveredLibraries ?? [:]
