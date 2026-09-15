@@ -155,7 +155,7 @@ targets:
         WKCompanionAppBundleIdentifier: com.samuelvoltolini.skyr
         UIBackgroundModes:
           - audio
-        NSLocalNetworkUsageDescription: Skyr downloads playlists from your music server on the local network.
+        NSLocalNetworkUsageDescription: Skyr downloads music from your music server on the local network.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
     settings:
