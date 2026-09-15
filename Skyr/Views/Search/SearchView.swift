@@ -2,7 +2,13 @@ import SkyrCore
 import SwiftUI
 
 /// Search tab: type to find artists, albums and songs; recent searches while the field is empty.
+///
+/// The field belongs to whoever hosts the tab: the tab bar on iPhone and iPad (see `MainTabView`),
+/// the page itself on the television.
 struct SearchView: View {
+    /// What the search field asks for, wherever the platform draws it.
+    static var prompt: Text { Text("Albums, artists, songs") }
+
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
@@ -10,7 +16,6 @@ struct SearchView: View {
     @Namespace private var artworkNamespace
     /// Recomputed for query changes or a published catalogue revision, preserving the search field and stack.
     @State private var results = SearchResults()
-    @FocusState private var isSearchFocused: Bool
 
     private var query: String { model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -36,14 +41,7 @@ struct SearchView: View {
             .hiddenScrollBackground()
             .skyrBackground(player.tint)
             .navigationTitle("Search")
-            .searchable(text: $model.searchQuery, prompt: "Albums, artists, songs")
-            .focusesSearch($isSearchFocused)
-            .onAppear {
-                #if os(macOS)
-                isSearchFocused = true
-                #endif
-            }
-            .onSubmit(of: .search) {
+            .pageSearchField(text: $model.searchQuery, prompt: Self.prompt) {
                 library.noteSearch(model.searchQuery)
             }
             .libraryDestinations()
