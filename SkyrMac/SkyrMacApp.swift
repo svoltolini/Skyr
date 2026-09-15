@@ -57,6 +57,13 @@ struct SkyrMacApp: App {
             UserDefaults.standard.set(true, forKey: "downloads.ownersScoped")
         }
         downloads.activeProfileID = profiles.lastActiveID ?? profiles.owner?.id ?? "default"
+        // Persist download membership changes to iCloud via the profile state.
+        downloads.onMembershipChanged = { [profiles] driveID, albumIDs, playlistIDs in
+            profiles.updateLibrary(driveID) { library in
+                library.downloadedAlbums = albumIDs
+                library.downloadedPlaylists = playlistIDs
+            }
+        }
         // A song on this Mac plays from disk, whether or not the server is reachable.
         player.streamURLProvider = { [library, model, downloads] track in
             downloads.localURL(for: track) ?? library.streamURL(for: track, quality: model.quality)
@@ -72,9 +79,13 @@ struct SkyrMacApp: App {
         _player = State(initialValue: player)
         _downloads = State(initialValue: downloads)
         // A profile opening loads its data everywhere; switching away stops the music first.
-        profiles.onActivate = { [library, model, player, downloads] profile in
+        profiles.onActivate = { [library, model, player, downloads, profiles] profile in
             downloads.activeProfileID = profile.id
             library.loadProfileState()
+            // Restore download membership from iCloud sync state (files will re-fetch from NAS if needed).
+            let driveID = library.catalogue.driveID
+            let state = profiles.libraryState(for: driveID)
+            downloads.restoreDownloadMembership(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID)
             model.applyProfileSettings()
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
@@ -84,8 +95,12 @@ struct SkyrMacApp: App {
             downloads.activeProfileID = "locked"
             library.loadProfileState()
         }
-        profiles.onRemoteState = { [library, model, player, profiles] in
+        profiles.onRemoteState = { [library, model, player, profiles, downloads] in
             library.loadProfileState()
+            // Restore download membership that may have synced from another device.
+            let driveID = library.catalogue.driveID
+            let state = profiles.libraryState(for: driveID)
+            downloads.restoreDownloadMembership(albums: state.downloadedAlbums, playlists: state.downloadedPlaylists, driveID: driveID)
             model.applyProfileSettings()
             let settings = profiles.state.settings
             player.applySettings(repeatMode: PlayerModel.RepeatMode(rawValue: settings.repeatMode) ?? .off, shuffle: settings.shuffle)
