@@ -27,14 +27,37 @@ struct MacAlbumDetailView: View {
     @Environment(ProfileStore.self) private var profiles
     @State private var entries: [TrackListEntry] = []
     @State private var songSummary = ""
+    @State private var isRenaming = false
+    /// The album's id once a rename gave it a new one, and a new id whose album is still being derived.
+    @State private var renamedID: String?
+    @State private var pendingID: String?
+
+    private var currentID: String { renamedID ?? album.id }
 
     var body: some View {
         Group {
-            if let current = library.album(id: album.id) {
+            if let current = library.album(id: currentID) {
                 albumContent(current)
+            } else if pendingID != nil {
+                ProgressView("Updating album…")
+                    .navigationTitle(album.title)
             } else {
                 ContentUnavailableView("Album Unavailable", systemImage: "square.stack", description: Text("This album is no longer in the current library."))
                     .navigationTitle("Album Unavailable")
+            }
+        }
+        .onChange(of: library.contentRevision) { _, _ in
+            guard let pending = pendingID, library.album(id: pending) != nil else { return }
+            renamedID = pending
+            pendingID = nil
+        }
+        .sheet(isPresented: $isRenaming) {
+            if let current = library.album(id: currentID) {
+                AlbumRenameSheet(album: current) { albumID in
+                    guard albumID != currentID else { return }
+                    if library.album(id: albumID) != nil { renamedID = albumID } else { pendingID = albumID }
+                }
+                .frame(minWidth: 420, minHeight: 300)
             }
         }
     }
@@ -74,6 +97,18 @@ struct MacAlbumDetailView: View {
             MacTrackTable(entries: entries, title: album.title)
         }
         .navigationTitle(album.title)
+        .toolbar {
+            if !library.isDemo {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Rename Album…", systemImage: "pencil") { isRenaming = true }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("More")
+                }
+            }
+        }
         .onChange(of: album.tracks, initial: true) { _, tracks in
             entries = TrackListEntry.make(from: tracks)
             let duration = tracks.reduce(0) { $0 + $1.duration }

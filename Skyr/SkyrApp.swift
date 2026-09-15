@@ -147,6 +147,8 @@ struct SkyrApp: App {
                 library.downloadedPlaylists = playlistIDs
             }
         }
+        // An album renamed in its files keeps its downloads under its new identity.
+        library.onAlbumRenamed = { [downloads] oldID, newID in downloads.reassignAlbum(from: oldID, to: newID) }
         // Membership restored from iCloud meets the files already in the downloads folder: songs still
         // here are reused rather than fetched again, and anything no download uses is surfaced. Runs
         // whenever either side changes: a profile opening, its document arriving, or the catalogue loading.
@@ -305,13 +307,16 @@ struct SkyrApp: App {
                         }
                     }
                 }
-                // A long scan would stop the moment the phone locked; the screen stays on until it is done.
+                // A long scan or tag write would stop the moment the phone locked; the screen stays on until it is done.
                 .onChange(of: model.isScanning, initial: true) { _, scanning in
-                    UIApplication.shared.isIdleTimerDisabled = scanning && model.keepsScreenOnWhileScanning
+                    UIApplication.shared.isIdleTimerDisabled = (scanning || library.metadataWriter.isWriting) && model.keepsScreenOnWhileScanning
                     if !scanning { endScanAliveTask() }
                 }
+                .onChange(of: library.metadataWriter.isWriting) { _, writing in
+                    UIApplication.shared.isIdleTimerDisabled = (writing || model.isScanning) && model.keepsScreenOnWhileScanning
+                }
                 .onChange(of: model.keepsScreenOnWhileScanning) { _, keeps in
-                    UIApplication.shared.isIdleTimerDisabled = keeps && model.isScanning
+                    UIApplication.shared.isIdleTimerDisabled = keeps && (model.isScanning || library.metadataWriter.isWriting)
                 }
                 .onChange(of: library.playlists) { watchBridge.sync() }
                 .onChange(of: model.stage) { watchBridge.sync() }

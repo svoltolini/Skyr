@@ -37,16 +37,42 @@ struct AlbumView: View {
     @State private var isFlipped = false
     @State private var isConfirmingRemoval = false
     @State private var removalRequest: AlbumRemovalRequest?
+    @State private var isRenaming = false
+    /// The album's id once a rename gave it a new one; the page follows the album rather than the old id.
+    @State private var renamedID: String?
+    /// A new id whose album is still being derived after a rename.
+    @State private var pendingID: String?
+
+    private var currentID: String { renamedID ?? album.id }
 
     var body: some View {
         Group {
-            if let current = library.album(id: album.id) {
+            if let current = library.album(id: currentID) {
                 albumContent(current)
+            } else if pendingID != nil {
+                ProgressView("Updating album…")
+                    .inlineTitle()
+                    .windowTitle(album.title)
             } else {
                 ContentUnavailableView("Album Unavailable", systemImage: "square.stack", description: Text("This album is no longer in the current library."))
                     .inlineTitle()
                     .windowTitle("Album Unavailable")
             }
+        }
+        .onChange(of: library.contentRevision) { _, _ in
+            guard let pending = pendingID, library.album(id: pending) != nil else { return }
+            renamedID = pending
+            pendingID = nil
+        }
+    }
+
+    /// The rename wrote a new title: follow the album to its new id as soon as the library shows it.
+    private func follow(albumID: String) {
+        guard albumID != currentID else { return }
+        if library.album(id: albumID) != nil {
+            renamedID = albumID
+        } else {
+            pendingID = albumID
         }
     }
 
@@ -128,6 +154,23 @@ struct AlbumView: View {
         .skyrBackground(album.primaryColor)
         .inlineTitle()
         .windowTitle(album.title, subtitle: album.artist)
+        #if !os(tvOS)
+        .toolbar {
+            if !library.isDemo {
+                ToolbarItem(placement: .trailingBar) {
+                    Menu {
+                        Button("Rename Album…", systemImage: "pencil") { isRenaming = true }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("More")
+                }
+            }
+        }
+        .sheet(isPresented: $isRenaming) {
+            AlbumRenameSheet(album: album) { albumID in follow(albumID: albumID) }
+        }
+        #endif
     }
 
     private func discHeader(_ disc: Disc) -> some View {
@@ -197,6 +240,140 @@ struct AlbumView: View {
     }
 
 
+}
+
+/// Renames an album for good by writing the new title into the album tag of each of its songs on
+/// the NAS. Everything else in the files, and the album's other details, stay exactly as they were.
+struct AlbumRenameSheet: View {
+    let album: Album
+    /// Receives the album's id once the write is done: a new one when the title changed.
+    let onRenamed: (String) -> Void
+    @Environment(LibraryStore.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var isWriting = false
+    @State private var writtenTitle = ""
+    @State private var report: MetadataWriteReport?
+    @FocusState private var isEditingTitle: Bool
+
+    init(album: Album, onRenamed: @escaping (String) -> Void) {
+        self.album = album
+        self.onRenamed = onRenamed
+        _title = State(initialValue: album.title)
+    }
+
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canSave: Bool { library.canWriteTags && !trimmedTitle.isEmpty && trimmedTitle != album.title && !isWriting }
+    private var songCount: Int { library.album(id: album.id)?.tracks.count ?? album.tracks.count }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let report {
+                    resultSections(report)
+                } else if isWriting {
+                    Section {
+                        TagWriteProgressView(writer: library.metadataWriter, title: "Writing “\(writtenTitle)”")
+                    } footer: {
+                        Text("Each song is downloaded, its album tag rewritten and the file put back on your NAS. Songs already written stay written if you stop.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    Section {
+                        TextField("Title", text: $title)
+                            #if os(macOS)
+                            .textFieldStyle(.roundedBorder)
+                            #endif
+                            .focused($isEditingTitle)
+                            .submitLabel(.done)
+                            .onSubmit { if canSave { save() } }
+                        #if os(macOS)
+                        Text(footer)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        #endif
+                    } header: {
+                        Text("Title")
+                    } footer: {
+                        #if !os(macOS)
+                        Text(footer)
+                            .fixedSize(horizontal: false, vertical: true)
+                        #endif
+                    }
+                }
+            }
+            .navigationTitle("Rename Album")
+            .inlineTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if isWriting {
+                        Button("Stop") { library.metadataWriter.cancel() }
+                    } else if report == nil {
+                        Button("Cancel") { dismiss() }
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if report != nil {
+                        Button("Done") { dismiss() }
+                    } else if !isWriting {
+                        Button("Rename") { save() }
+                            .disabled(!canSave)
+                    }
+                }
+            }
+        }
+        .sheetDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(isWriting)
+        .onAppear { isEditingTitle = true }
+    }
+
+    @ViewBuilder private func resultSections(_ report: MetadataWriteReport) -> some View {
+        Section {
+            Label(TagWriteSummary.line(for: report, noun: "title"), systemImage: report.written.isEmpty ? "exclamationmark.triangle" : "checkmark.circle")
+            ForEach(report.reasons, id: \.self) { reason in
+                Text(reason)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text(report.failures.isEmpty ? "Stopped" : "Some files were left unchanged")
+        } footer: {
+            if !report.written.isEmpty {
+                Text("Songs whose files keep the old title show as a separate album until they can be written too.")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var footer: String {
+        let songs = "\(songCount) \(songCount == 1 ? "song" : "songs")"
+        guard library.canWriteTags else {
+            return "Connect to your server to rename this album. The new title is written into its \(songs) on the NAS, so it holds everywhere and survives a rescan."
+        }
+        return "The album tag of \(songs) is rewritten on your NAS as the new title. Artist, year, genre, song titles and artwork stay as they are."
+    }
+
+    private func save() {
+        guard canSave else { return }
+        let newTitle = trimmedTitle
+        isEditingTitle = false
+        writtenTitle = newTitle
+        isWriting = true
+        Task { @MainActor in
+            let outcome = await library.renameAlbum(album, to: newTitle)
+            isWriting = false
+            onRenamed(outcome.albumID)
+            if outcome.report.isComplete {
+                dismiss()
+            } else {
+                report = outcome.report
+            }
+        }
+    }
 }
 
 /// The back of the cover: the album's colours with its year, genre and quality.

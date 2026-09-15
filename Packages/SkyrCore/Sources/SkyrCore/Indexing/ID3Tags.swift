@@ -95,7 +95,7 @@ public nonisolated enum ID3Tags {
         }
     }
 
-    private static func textFrame(_ payload: [UInt8]) -> String? {
+    static func textFrame(_ payload: [UInt8]) -> String? {
         guard let first = payload.first else { return nil }
         let text = decode(Array(payload.dropFirst()), encoding: first)
         // v2.4 lists several values separated by NUL; the first is the one that matters.
@@ -117,7 +117,7 @@ public nonisolated enum ID3Tags {
     }
 
     /// "(17)" and "17" are indexes into the ID3v1 list; anything else is already a name.
-    private static func genreName(_ raw: String) -> String {
+    static func genreName(_ raw: String) -> String {
         let digits = raw.trimmingCharacters(in: CharacterSet(charactersIn: "()"))
         if let index = Int(digits), index >= 0, index < MediaProbe.id3Genres.count { return MediaProbe.id3Genres[index] }
         return raw
@@ -141,7 +141,7 @@ public nonisolated enum ID3Tags {
         return Data(payload[position...])
     }
 
-    private static func unsynchronised(_ bytes: [UInt8]) -> [UInt8] {
+    static func unsynchronised(_ bytes: [UInt8]) -> [UInt8] {
         var result: [UInt8] = []
         result.reserveCapacity(bytes.count)
         var index = 0
@@ -169,6 +169,11 @@ public nonisolated enum ID3Tags {
 
     private static let bitratesMPEG1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
     private static let bitratesMPEG2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]
+
+    /// Whether an MPEG audio frame header follows `start`; the writers use it to make sure a .mp3 is one.
+    static func hasMPEGFrame(_ b: [UInt8], from start: Int) -> Bool {
+        firstFrame(b, from: start) != nil
+    }
 
     private static func firstFrame(_ b: [UInt8], from start: Int) -> Frame? {
         guard MediaBounds.contains(start, 4, end: b.count) else { return nil }

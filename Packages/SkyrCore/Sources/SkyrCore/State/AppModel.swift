@@ -64,6 +64,8 @@ public final class AppModel {
         isJoiningFamily = false
         pendingReconnectPassword = nil
         indexer.cancel()
+        // Tag writes belong to the connection they started on; the song being written finishes, the rest stop.
+        library.metadataWriter.cancel()
         return connectionGeneration
     }
 

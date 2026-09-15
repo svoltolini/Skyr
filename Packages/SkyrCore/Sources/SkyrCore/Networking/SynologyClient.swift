@@ -64,6 +64,33 @@ public nonisolated struct SynologyFileList: Decodable, Sendable {
     public let total: Int?
 }
 
+/// One answer of `getinfo`: a file's details, or a per-path error code when it is not there.
+public nonisolated struct SynologyFileInfo: Decodable, Sendable {
+    public let path: String
+    public let name: String?
+    public let isdir: Bool?
+    public let code: Int?
+    public let additional: SynologyFileEntry.Additional?
+
+    public var entry: RemoteEntry {
+        RemoteEntry(
+            path: path, name: name ?? (path.split(separator: "/").last.map(String.init) ?? path), isDirectory: isdir ?? false,
+            size: additional?.size, modified: additional?.time?.mtime.map { Date(timeIntervalSince1970: $0) }
+        )
+    }
+}
+
+public nonisolated struct SynologyFileInfoList: Decodable, Sendable {
+    public let files: [SynologyFileInfo]
+}
+
+/// What File Station reports after an upload.
+public nonisolated struct SynologyUploadResult: Decodable, Sendable {
+    /// True when an existing file was kept and the upload skipped.
+    public let blSkip: Bool?
+    public let file: String?
+}
+
 public nonisolated struct SynologyEmpty: Decodable, Sendable {}
 
 /// DSM's proof that the signed-in person just confirmed their password.
@@ -209,6 +236,14 @@ public nonisolated enum SynologyError: LocalizedError, Sendable {
             case ("SYNO.API.Auth", 403), ("SYNO.API.Auth", 404): "A two-factor code is required."
             case (_, 119): "The session has expired. Sign in again."
             case ("SYNO.FileStation.List", 408), ("SYNO.FileStation.List", 407): "This account can't open that folder."
+            case ("SYNO.FileStation.Upload", 1805), (_, 414): "A file with that name already exists on the server."
+            case (_, 407), (_, 411): "This account can only read the music folder, so its files can't be changed."
+            case (_, 408): "The file is no longer on the server."
+            case (_, 415), (_, 416): "The server has run out of space."
+            case (_, 418), (_, 419): "The server refused that file name."
+            case ("SYNO.FileStation.Rename", 1200): "The server couldn't rename the file."
+            case ("SYNO.FileStation.Upload", 1800), ("SYNO.FileStation.Upload", 1801), ("SYNO.FileStation.Upload", 1803):
+                "The upload didn't arrive completely at the server."
             case ("SYNO.API.Auth", 414): "DSM turned down the sign-in used for account management (error 414)."
             case ("SYNO.Core.User", 105): "DSM refused to manage users with this account (error 105)."
             case ("SYNO.Core.Share.Permission", 105): "DSM refused to change the folder's permissions with this account (error 105)."
@@ -239,6 +274,8 @@ public nonisolated enum SynologyClient {
         "SYNO.API.Auth", "SYNO.DSM.Info", "SYNO.FileStation.Info", "SYNO.FileStation.List",
         "SYNO.FileStation.Download", "SYNO.FileStation.Thumb", "SYNO.Core.User", "SYNO.Core.Share.Permission",
         "SYNO.API.Encryption", "SYNO.Core.User.PasswordConfirm",
+        // Writing tags back: a rewritten song is uploaded beside the original, then swapped in.
+        "SYNO.FileStation.Upload", "SYNO.FileStation.Rename", "SYNO.FileStation.Delete",
     ]
 
     private static let session: URLSession = {
@@ -569,6 +606,11 @@ public nonisolated enum SynologyClient {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw SynologyError.http(http.statusCode)
         }
+        return try decode(data, as: Payload.self, api: api)
+    }
+
+    /// Unwraps DSM's `{success, data, error}` envelope, turning a refusal into `SynologyError.api`.
+    public static func decode<Payload: Decodable & Sendable>(_ data: Data, as type: Payload.Type, api: String) throws -> Payload {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let envelope: SynologyEnvelope<Payload>

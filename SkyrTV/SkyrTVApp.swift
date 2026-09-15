@@ -52,6 +52,7 @@ struct SkyrTVApp: App {
                 library.downloadedPlaylists = playlistIDs
             }
         }
+        library.onAlbumRenamed = { [downloads] oldID, newID in downloads.reassignAlbum(from: oldID, to: newID) }
         player.streamURLProvider = { [library, model] track in library.streamURL(for: track, quality: model.quality) }
         player.albumProvider = { [library] track in library.album(for: track) }
         player.allowsSimulation = { [library] in library.isDemo }

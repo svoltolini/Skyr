@@ -138,8 +138,15 @@ public final class LibraryStore {
         }
     }
 
-    /// Genre tags shown under another name, e.g. "Religiös" → "Religious", so one style tagged in two languages is one genre.
+    /// Genre tags shown under another name on this device only, e.g. "Religiös" → "Religious". Since
+    /// renames are written into the files themselves, this is the fallback for songs whose files
+    /// could not be changed: a read-only account, an unsupported format, or a server that was away.
     public private(set) var genreAliases: [String: String] = [:]
+
+    /// Writes tag changes into the files on the server and reports progress to the screen that asked.
+    public let metadataWriter = MetadataWriter()
+    /// Called when writing a new title gave an album another identity: the old album id, then the new.
+    public var onAlbumRenamed: ((String, String) -> Void)?
 
     public private(set) var recentlyPlayedIDs: [String] = []
     public private(set) var recentSearches: [String] = []
@@ -316,6 +323,139 @@ public final class LibraryStore {
 
     private func saveGenreAliases() {
         UserDefaults.standard.set(genreAliases, forKey: Self.genreAliasesKey(for: catalogue.driveID))
+    }
+
+    // MARK: Writing tags
+
+    /// Whether edits can reach the files themselves: a signed-in server that accepts uploads.
+    public var canWriteTags: Bool { !isDemo && (drive as? any WritableRemoteDrive) != nil }
+
+    /// Every song shown under the genre `name`: those whose own tag reads it, plus tagless songs of
+    /// albums filed there. Songs not yet read are left alone, since their real tag is unknown.
+    public func tracks(shownUnderGenre name: String) -> [Track] {
+        var result: [Track] = []
+        var seen = Set<String>()
+        for album in catalogue.albums {
+            let albumGenre = genreAliases[album.genre] ?? album.genre
+            for track in album.tracks where track.isEnriched {
+                let tag = track.genreTag.nonEmpty
+                let shown = tag.map { genreAliases[$0] ?? $0 } ?? albumGenre
+                if shown == name, seen.insert(track.id).inserted { result.append(track) }
+            }
+        }
+        return result
+    }
+
+    /// Songs shown under `name` whose files carry a different genre tag than the name itself: what a
+    /// device-only rename left behind, and what writing the name into the files would change.
+    public func tracksCarryingAnotherTag(underGenre name: String) -> [Track] {
+        tracks(shownUnderGenre: name).filter { $0.genreTag.nonEmpty != name }
+    }
+
+    /// Writes `newName` into the genre tag of every song shown under `name`. Songs whose files could
+    /// not be changed are shown under the new name on this device instead, so the rename holds
+    /// everywhere on screen while Genre Names in Settings says which files still carry the old tag.
+    /// With `newName` equal to `name`, the name a device-only rename shows is written into the files.
+    public func writeGenre(_ name: String, to newName: String) async -> MetadataWriteReport {
+        let target = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty else { return MetadataWriteReport() }
+        let affected = tracks(shownUnderGenre: name)
+        // Files the catalogue already knows to carry the name are not fetched just to find that out.
+        let pending = affected.filter { $0.genreTag.nonEmpty != target }
+        let sourceID = catalogue.driveID
+        var report = await writeTags(TagEdits(genre: target), to: pending)
+        report.unchanged += affected.filter { $0.genreTag.nonEmpty == target }
+        guard catalogue.driveID == sourceID else { return report }
+        // Failed songs, and songs never tried when the job was stopped, keep showing the asked-for
+        // name through an alias of the tag their file still carries.
+        var untouched = Set(report.failures.map(\.trackID))
+        if report.wasCancelled {
+            let tried = Set(report.written.map(\.id)).union(report.unchanged.map(\.id)).union(untouched)
+            untouched.formUnion(affected.map(\.id).filter { !tried.contains($0) })
+        }
+        var fallbackTags: Set<String> = []
+        for album in catalogue.albums {
+            for track in album.tracks where untouched.contains(track.id) {
+                fallbackTags.insert(track.genreTag.nonEmpty ?? album.genre)
+            }
+        }
+        for tag in fallbackTags {
+            genreAliases[tag] = tag == target ? nil : target
+        }
+        pruneGenreAliases()
+        saveGenreAliases()
+        rebuildDerived()
+        diagnostics("Genre “\(name)” → “\(target)”: \(report.written.count) files written, \(report.unchanged.count) unchanged, \(report.failures.count) failed\(report.wasCancelled ? ", stopped early" : ""); \(fallbackTags.count) tags shown under the new name on this device")
+        return report
+    }
+
+    /// Drops aliases for tags no song carries any more, e.g. once every file has been rewritten.
+    private func pruneGenreAliases() {
+        let present = Set(catalogue.albums.map(\.genre)).union(catalogue.albums.flatMap(\.tracks).compactMap { $0.genreTag.nonEmpty })
+        genreAliases = genreAliases.filter { present.contains($0.key) }
+    }
+
+    /// The result of renaming an album: what was written, and where the album lives now.
+    public struct AlbumRenameOutcome: Sendable {
+        public let report: MetadataWriteReport
+        /// The album's id after the rename; the same id when no file changed.
+        public let albumID: String
+    }
+
+    /// Writes `title` into the album tag of every song of the album. Everything else in the files
+    /// stays as it was, including a disc marker the album tag may carry.
+    public func renameAlbum(_ album: Album, to title: String) async -> AlbumRenameOutcome {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let current = catalogue.albums.first(where: { $0.id == album.id }) else {
+            return AlbumRenameOutcome(report: MetadataWriteReport(), albumID: album.id)
+        }
+        let sourceID = catalogue.driveID
+        let report = await writeTags(TagEdits(album: trimmed), to: current.tracks)
+        guard catalogue.driveID == sourceID else { return AlbumRenameOutcome(report: report, albumID: album.id) }
+        let newID = report.written.first.flatMap { catalogue.album(containing: $0.id)?.id } ?? album.id
+        if newID != album.id {
+            onAlbumRenamed?(album.id, newID)
+            if let index = recentlyPlayedIDs.firstIndex(of: album.id) {
+                recentlyPlayedIDs[index] = newID
+                profiles?.updateLibrary(catalogue.driveID, recordingHistory: .recentAlbums) { $0.recentAlbums = recentlyPlayedIDs }
+            }
+        }
+        return AlbumRenameOutcome(report: report, albumID: newID)
+    }
+
+    /// Writes `edits` into the given songs' files on the server, then folds the written tags into the
+    /// catalogue and regroups albums by them. Songs that could not be written are listed in the report.
+    public func writeTags(_ edits: TagEdits, to tracks: [Track]) async -> MetadataWriteReport {
+        guard let drive = drive as? any WritableRemoteDrive, !isDemo else {
+            var report = MetadataWriteReport()
+            report.failures = tracks.map { MetadataWriteFailure(trackID: $0.id, title: $0.title, message: MetadataWriteError.notConnected.localizedDescription) }
+            return report
+        }
+        let sourceID = catalogue.driveID
+        let report = await metadataWriter.write(edits, to: tracks, drive: drive)
+        guard catalogue.driveID == sourceID, !report.written.isEmpty else { return report }
+        let before = catalogue
+        var patched = before
+        for track in report.written { patched.apply(track) }
+        // Regrouping walks the whole library; off the main thread like the indexer does it.
+        let coverDirectory = CoverStore.directory
+        var regrouped = await Task.detached(priority: .userInitiated) { [patched] in
+            CoverStore.$directoryOverride.withValue(coverDirectory) {
+                var catalogue = patched
+                catalogue.regroupByTags()
+                return catalogue
+            }
+        }.value
+        guard catalogue.driveID == sourceID else { return report }
+        if catalogue.indexedAt != before.indexedAt {
+            // A scan published while regrouping ran; fold the written tags into that newer catalogue instead.
+            regrouped = catalogue
+            for track in report.written { regrouped.apply(track) }
+            regrouped.regroupByTags()
+        }
+        replace(with: regrouped, drive: self.drive)
+        saveCatalogue()
+        return report
     }
 
     /// Demo mode starts with the design's play history.

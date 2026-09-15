@@ -437,8 +437,13 @@ public final class DownloadManager {
 
     private func record(for track: Track) -> DownloadRecord? {
         guard !records.isEmpty else { return nil }
-        guard let record = records[key(for: track)] else { return nil }
-        if record.fileName.isEmpty { return simulatedKeys.contains(key(for: track)) ? record : nil }
+        return record(for: track, driveID: driveIDProvider())
+    }
+
+    private func record(for track: Track, driveID: String) -> DownloadRecord? {
+        let key = Self.cacheKey(trackID: track.id, driveID: driveID)
+        guard let record = records[key] else { return nil }
+        if record.fileName.isEmpty { return simulatedKeys.contains(key) ? record : nil }
         return FileManager.default.fileExists(atPath: cacheDirectory.appending(path: record.fileName).path) ? record : nil
     }
 
@@ -660,6 +665,44 @@ public final class DownloadManager {
         if changed { saveManifest() }
     }
 
+    /// An album renamed through its tags gets a new id; the songs kept for the old one stay kept for the new one.
+    public func reassignAlbum(from oldID: String, to newID: String) {
+        guard oldID != newID else { return }
+        let oldSuffix = DownloadOwner.albumPrefix + oldID
+        let newSuffix = DownloadOwner.albumPrefix + newID
+        func renamed(_ owner: String) -> String {
+            guard let separator = owner.firstIndex(of: "|"), owner[owner.index(after: separator)...] == oldSuffix else { return owner }
+            return String(owner[...separator]) + newSuffix
+        }
+        var changed = false
+        for (trackID, var record) in records {
+            let owners = Set(record.owners.map(renamed))
+            guard owners != record.owners else { continue }
+            record.owners = owners
+            records[trackID] = record
+            changed = true
+        }
+        // Membership restored from iCloud that is still waiting for its songs follows the album too,
+        // as does a cancelled or failed request still listed for it.
+        for (driveID, owners) in restoredOwners {
+            let moved = Set(owners.map(renamed))
+            if moved != owners { restoredOwners[driveID] = moved }
+        }
+        for (id, request) in requests where renamed(request.ownerID) != request.ownerID {
+            requests[id] = nil
+            let owner = renamed(request.ownerID)
+            requests[requestKey(ownerID: owner, driveID: request.driveID)] = OwnerRequest(
+                ownerID: owner, driveID: request.driveID, title: request.title, subtitle: request.subtitle,
+                keys: request.keys, total: request.total, errors: request.errors, cancelled: request.cancelled
+            )
+            changed = true
+        }
+        guard changed else { return }
+        saveManifest()
+        savePendingOwners()
+        notifyMembershipChange(driveID: driveIDProvider())
+    }
+
     /// Ids of every album and playlist that asked for a download and still has songs here or on the way,
     /// plus those whose membership iCloud restored and whose songs are still to be fetched.
     public var listedOwnerIDs: Set<String> {
@@ -692,26 +735,37 @@ public final class DownloadManager {
     /// Songs of the album or playlist that it has on the device.
     public func downloadedCount(for owner: DownloadOwner) -> Int {
         guard !records.isEmpty else { return 0 }
-        return owner.tracks.filter { record(for: $0)?.owners.contains(owner.id) == true }.count
+        return downloadedCount(for: owner, driveID: driveIDProvider())
     }
 
+    private func downloadedCount(for owner: DownloadOwner, driveID: String) -> Int {
+        guard !records.isEmpty else { return 0 }
+        return owner.tracks.filter { record(for: $0, driveID: driveID)?.owners.contains(owner.id) == true }.count
+    }
+
+    /// The source is read once per call: the Downloads screen asks this for every listed collection,
+    /// and a playlist can hold thousands of songs.
     public func state(for owner: DownloadOwner) -> DownloadState {
         let tracks = owner.tracks
         guard !tracks.isEmpty else { return .none }
-        let done = downloadedCount(for: owner)
+        let driveID = driveIDProvider()
+        let done = downloadedCount(for: owner, driveID: driveID)
         if done == tracks.count { return .downloaded }
         let pending = pendingByOwner[owner.id] ?? []
-        if !pending.isEmpty, tracks.contains(where: { pending.contains(key(for: $0)) }) {
-            let inFlight = tracks.filter { pending.contains(key(for: $0)) }.reduce(0.0) { $0 + (progressByKey[key(for: $1)] ?? 0) }
-            return .downloading(fraction: (Double(done) + inFlight) / Double(tracks.count), done: done, total: tracks.count)
+        if !pending.isEmpty {
+            let keys = tracks.map { Self.cacheKey(trackID: $0.id, driveID: driveID) }.filter { pending.contains($0) }
+            if !keys.isEmpty {
+                let inFlight = keys.reduce(0.0) { $0 + (progressByKey[$1] ?? 0) }
+                return .downloading(fraction: (Double(done) + inFlight) / Double(tracks.count), done: done, total: tracks.count)
+            }
         }
-        let request = requests[requestKey(ownerID: owner.id, driveID: driveIDProvider())]
+        let request = requests[requestKey(ownerID: owner.id, driveID: driveID)]
         if request?.cancelled == true { return .cancelled(done: done, total: tracks.count) }
         let error = request?.errors.sorted(by: { $0.key < $1.key }).first?.value
         if done > 0 { return .partial(done: done, total: tracks.count, message: error) }
         if let error { return .failed(message: error) }
         // Membership came back from iCloud but the songs did not: kept listed, with a retry offered.
-        if isRestored(owner, driveID: driveIDProvider()) { return .partial(done: 0, total: tracks.count, message: nil) }
+        if isRestored(owner, driveID: driveID) { return .partial(done: 0, total: tracks.count, message: nil) }
         return .none
     }
 
@@ -891,7 +945,6 @@ public final class DownloadManager {
     public func cancel(_ owner: DownloadOwner) {
         let driveID = driveIDProvider()
         let requestID = requestKey(ownerID: owner.id, driveID: driveID)
-        if requests[requestID] != nil { requests[requestID]?.cancelled = true }
         if isRestoringTasks || migratesLegacySessionOwners || !initialPendingOwners.isEmpty {
             cancelledInitialOwners[owner.id, default: []].insert(driveID)
         }
@@ -900,6 +953,17 @@ public final class DownloadManager {
         let scoped = pending.filter { key in
             let source = jobs[key]?.driveID ?? initialJobs[key]?.driveID
             return source == driveID || (source == nil && ownerKeys.contains(key))
+        }
+        if requests[requestID] != nil {
+            requests[requestID]?.cancelled = true
+        } else if !scoped.isEmpty {
+            // Intent saved by a build from before the request records has songs waiting but no
+            // request to mark. The cancellation still has to read as one, so the album stays listed
+            // with a retry exactly like a download cancelled after it was requested here.
+            let saved = Set(records.filter { $0.value.driveID == driveID && $0.value.owners.contains(owner.id) }.keys)
+            let keys = saved.union(scoped)
+            requests[requestID] = OwnerRequest(ownerID: owner.id, driveID: driveID, title: owner.title, subtitle: owner.subtitle,
+                                               keys: keys, total: max(keys.count, owner.tracks.count), cancelled: true)
         }
         pendingByOwner[owner.id]?.subtract(scoped)
         if pendingByOwner[owner.id]?.isEmpty == true { pendingByOwner[owner.id] = nil }

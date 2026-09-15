@@ -62,6 +62,43 @@ private func singleTrackAlbum() -> Album {
     #expect(manager.state(for: owner) == .none)
 }
 
+@Test @MainActor func renamedAlbumKeepsItsDownloadsUnderTheNewIdentity() throws {
+    let directory = try downloadTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let album = singleTrackAlbum()
+    let track = album.tracks[0]
+    var renamed = album
+    renamed.title = album.title + " (Remastered)"
+    let renamedID = Album.makeID(title: renamed.title, artist: renamed.artist)
+    let before = DownloadOwner(album: album, profileID: "sam")
+    let other = DownloadOwner(album: album, profileID: "kid")
+    let playlist = "profile:sam|playlist:mix"
+    let record = DownloadRecord(trackID: track.id, driveID: "nas-a", fileName: "song.flac", bytes: 4, owners: [before.id, other.id, playlist])
+    try Data("FLAC".utf8).write(to: directory.appending(path: record.fileName))
+    try JSONEncoder().encode([record]).write(to: directory.appending(path: "downloads.json"))
+    let manager = DownloadManager(directory: directory, configuration: .ephemeral)
+    manager.driveIDProvider = { "nas-a" }
+    manager.activeProfileID = "sam"
+    var memberships: [[String]] = []
+    manager.onMembershipChanged = { _, albums, _ in memberships.append(albums) }
+    manager.reassignAlbum(from: album.id, to: renamedID)
+    let owner = DownloadOwner(album: Album(
+        id: renamedID, title: renamed.title, artist: renamed.artist, year: renamed.year, genre: renamed.genre, label: nil,
+        tracks: renamed.tracks, colorA: renamed.colorA, colorB: renamed.colorB, addedRank: 0, folderPath: nil, coverPath: nil,
+        folderTitle: renamed.title, folderArtist: renamed.artist, folderYear: nil
+    ), profileID: "sam")
+    #expect(manager.state(for: owner) == .downloaded)
+    #expect(manager.state(for: before) == .none)
+    #expect(manager.records.values.first?.owners == [owner.id, DownloadOwner.scope("kid") + DownloadOwner.albumPrefix + renamedID, playlist])
+    #expect(memberships == [[renamedID]])
+    let saved = try JSONDecoder().decode([DownloadRecord].self, from: Data(contentsOf: directory.appending(path: "downloads.json")))
+    #expect(saved.first?.owners.contains(owner.id) == true)
+    // The same rename again, or one to the same id, changes nothing.
+    manager.reassignAlbum(from: album.id, to: renamedID)
+    manager.reassignAlbum(from: renamedID, to: renamedID)
+    #expect(memberships.count == 1)
+}
+
 @Test @MainActor func explicitSampleDownloadKeepsOnlyCurrentOwnersAndDoesNotPersistFakeFiles() async throws {
     let directory = try downloadTestDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
