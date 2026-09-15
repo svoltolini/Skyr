@@ -222,4 +222,107 @@ struct DownloadRestorationTests {
         #expect(harness.manager.records[job.cacheKey]?.owners == [owner.id])
         #expect(try harness.savedPending().isEmpty)
     }
+
+    // MARK: - Shared ownership restoration (issue #17)
+
+    @Test func bothPersistedOwnersReceiveFileOnCompletion() async throws {
+        let album = restorationAlbum()
+        let first = DownloadOwner(album: album, profileID: "listener")
+        let second = DownloadOwner(album: album, profileID: "other-listener")
+        let contents = Data(repeating: 0x5A, count: 8192)
+        let job = restorationJob(ownerID: first.id, track: album.tracks[0], bytes: contents.count)
+        let harness = try DownloadRestorationHarness(pending: [first.id: [job.cacheKey], second.id: [job.cacheKey]])
+        defer { harness.close() }
+        harness.restoreWithoutActiveTasks()
+        try harness.deliverFile(for: job, contents: contents)
+        #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
+        #expect(harness.manager.records[job.cacheKey]?.owners == [first.id, second.id])
+        #expect(harness.manager.state(for: first) == .downloaded)
+        #expect(harness.manager.state(for: second) == .downloaded)
+    }
+
+    @Test func cancellingSecondOwnerDuringRestorationPreservesFirstOwner() async throws {
+        let album = restorationAlbum()
+        let first = DownloadOwner(album: album, profileID: "listener")
+        let second = DownloadOwner(album: album, profileID: "other-listener")
+        let contents = Data(repeating: 0x5A, count: 8192)
+        let job = restorationJob(ownerID: first.id, track: album.tracks[0], bytes: contents.count)
+        let harness = try DownloadRestorationHarness(pending: [first.id: [job.cacheKey], second.id: [job.cacheKey]])
+        defer { harness.close() }
+        harness.manager.cancel(second)
+        #expect(try harness.savedPending() == [first.id: [job.cacheKey]])
+        try harness.deliverFile(for: job, contents: contents)
+        harness.restoreWithoutActiveTasks()
+        #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
+        #expect(harness.manager.records[job.cacheKey]?.owners == [first.id])
+        #expect(harness.manager.state(for: first) == .downloaded)
+        #expect(harness.manager.state(for: second) == .cancelled(done: 0, total: 1))
+    }
+
+    @Test func cancellingBothOwnersBeforeRestorationDeletesIncomingFile() async throws {
+        let album = restorationAlbum()
+        let first = DownloadOwner(album: album, profileID: "listener")
+        let second = DownloadOwner(album: album, profileID: "other-listener")
+        let contents = Data(repeating: 0x5A, count: 8192)
+        let job = restorationJob(ownerID: first.id, track: album.tracks[0], bytes: contents.count)
+        let harness = try DownloadRestorationHarness(pending: [first.id: [job.cacheKey], second.id: [job.cacheKey]])
+        defer { harness.close() }
+        harness.manager.cancel(first)
+        harness.manager.cancel(second)
+        #expect(try harness.savedPending().isEmpty)
+        try harness.deliverFile(for: job, contents: contents)
+        harness.restoreWithoutActiveTasks()
+        try await callbacksHaveRun()
+        #expect(harness.manager.records.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: harness.directory.appending(path: job.fileName).path))
+    }
+
+    @Test func overlappingPlaylistOwnersSurviveRestoration() async throws {
+        let album = restorationAlbum()
+        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let albumOwner = DownloadOwner(album: album, profileID: "listener")
+        let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
+        let contents = Data(repeating: 0x5A, count: 8192)
+        let job = restorationJob(ownerID: albumOwner.id, track: album.tracks[0], bytes: contents.count)
+        let harness = try DownloadRestorationHarness(pending: [albumOwner.id: [job.cacheKey], playlistOwner.id: [job.cacheKey]])
+        defer { harness.close() }
+        harness.restoreWithoutActiveTasks()
+        try harness.deliverFile(for: job, contents: contents)
+        #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
+        #expect(harness.manager.records[job.cacheKey]?.owners == [albumOwner.id, playlistOwner.id])
+        #expect(harness.manager.state(for: albumOwner) == .downloaded)
+        #expect(harness.manager.state(for: playlistOwner) == .downloaded)
+    }
+
+    @Test func removingAlbumOwnerAfterRestorationKeepsFileForPlaylistOwner() async throws {
+        let album = restorationAlbum()
+        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let albumOwner = DownloadOwner(album: album, profileID: "listener")
+        let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
+        let contents = Data(repeating: 0x5A, count: 8192)
+        let job = restorationJob(ownerID: albumOwner.id, track: album.tracks[0], bytes: contents.count)
+        let harness = try DownloadRestorationHarness(pending: [albumOwner.id: [job.cacheKey], playlistOwner.id: [job.cacheKey]])
+        defer { harness.close() }
+        harness.restoreWithoutActiveTasks()
+        try harness.deliverFile(for: job, contents: contents)
+        #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
+        harness.manager.remove(albumOwner)
+        #expect(harness.manager.records[job.cacheKey]?.owners == [playlistOwner.id])
+        #expect(harness.manager.state(for: playlistOwner) == .downloaded)
+        #expect(FileManager.default.fileExists(atPath: harness.directory.appending(path: job.fileName).path))
+    }
+
+    @Test func restorationWithJobOwnerNotMatchingAnyPersistedOwnerUsesPersistedOwners() async throws {
+        let album = restorationAlbum()
+        let persistedOwner = DownloadOwner(album: album, profileID: "persisted-listener")
+        let contents = Data(repeating: 0x5A, count: 8192)
+        let job = restorationJob(ownerID: "profile:different|album:different", track: album.tracks[0], bytes: contents.count)
+        let harness = try DownloadRestorationHarness(pending: [persistedOwner.id: [job.cacheKey]])
+        defer { harness.close() }
+        harness.restoreWithoutActiveTasks()
+        try harness.deliverFile(for: job, contents: contents)
+        #expect(try await eventually { harness.manager.records[job.cacheKey] != nil })
+        #expect(harness.manager.records[job.cacheKey]?.owners == [persistedOwner.id])
+        #expect(harness.manager.state(for: persistedOwner) == .downloaded)
+    }
 }

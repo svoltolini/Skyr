@@ -529,4 +529,173 @@ struct DownloadAttemptTests {
         #expect(!state.statusLine.contains("Downloaded"))
         #expect(state.statusLine.contains("failed") || state.statusLine.contains("Retry"))
     }
+
+    // MARK: - Shared ownership edge cases (issue #17)
+
+    @Test func cancellingSecondOwnerKeepsTheTransferForTheOriginalOwner() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let first = DownloadOwner(album: album, profileID: "listener")
+        let second = DownloadOwner(album: album, profileID: "second")
+        harness.queue(first)
+        harness.queue(second)
+        let job = try harness.startedJob(0)
+        harness.manager.cancel(second)
+        try harness.deliver(job)
+        try await drain()
+        #expect(harness.manager.records[job.cacheKey]?.owners == [first.id])
+        #expect(harness.manager.state(for: first) == .downloaded)
+        #expect(harness.manager.state(for: second) == .cancelled(done: 0, total: 1))
+        #expect(harness.manager.progressSnapshot(ownerID: first.id, driveID: "nas-a")?.outcome == .downloaded)
+        #expect(harness.manager.progressSnapshot(ownerID: second.id, driveID: "nas-a")?.outcome == .cancelled)
+    }
+
+    @Test func cancellingBothOwnersDeletesTheFileOnCompletion() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let first = DownloadOwner(album: album, profileID: "listener")
+        let second = DownloadOwner(album: album, profileID: "second")
+        harness.queue(first)
+        harness.queue(second)
+        let job = try harness.startedJob(0)
+        harness.manager.cancel(first)
+        harness.manager.cancel(second)
+        try harness.deliver(job)
+        try await drain()
+        #expect(harness.manager.records.isEmpty)
+        #expect(harness.manager.state(for: first) == .cancelled(done: 0, total: 1))
+        #expect(harness.manager.state(for: second) == .cancelled(done: 0, total: 1))
+        #expect(!FileManager.default.fileExists(atPath: harness.directory.appending(path: job.fileName).path))
+        #expect(!FileManager.default.fileExists(atPath: harness.directory.appending(path: job.incomingFileName).path))
+    }
+
+    @Test func overlappingAlbumAndPlaylistOwnersShareTheDownload() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let albumOwner = DownloadOwner(album: album, profileID: "listener")
+        let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
+        harness.queue(albumOwner)
+        harness.queue(playlistOwner)
+        #expect(harness.started.count == 1)
+        let job = try harness.startedJob(0)
+        try harness.deliver(job)
+        try await drain()
+        #expect(harness.manager.records[job.cacheKey]?.owners == [albumOwner.id, playlistOwner.id])
+        #expect(harness.manager.state(for: albumOwner) == .downloaded)
+        #expect(harness.manager.state(for: playlistOwner) == .downloaded)
+    }
+
+    @Test func removingOneOverlappingOwnerKeepsFileForTheOther() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let albumOwner = DownloadOwner(album: album, profileID: "listener")
+        let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
+        harness.queue(albumOwner)
+        harness.queue(playlistOwner)
+        let job = try harness.startedJob(0)
+        try harness.deliver(job)
+        try await drain()
+        #expect(harness.manager.records[job.cacheKey]?.owners == [albumOwner.id, playlistOwner.id])
+        harness.manager.remove(albumOwner)
+        #expect(harness.manager.records[job.cacheKey]?.owners == [playlistOwner.id])
+        #expect(harness.manager.state(for: albumOwner) == .none)
+        #expect(harness.manager.state(for: playlistOwner) == .downloaded)
+        #expect(FileManager.default.fileExists(atPath: harness.directory.appending(path: job.fileName).path))
+    }
+
+    @Test func removingBothOverlappingOwnersDeletesTheFile() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let playlist = Playlist(id: "favourites", name: "Favourites", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let albumOwner = DownloadOwner(album: album, profileID: "listener")
+        let playlistOwner = DownloadOwner(playlist: playlist, profileID: "listener")
+        harness.queue(albumOwner)
+        harness.queue(playlistOwner)
+        let job = try harness.startedJob(0)
+        try harness.deliver(job)
+        try await drain()
+        let filePath = harness.directory.appending(path: job.fileName).path
+        #expect(FileManager.default.fileExists(atPath: filePath))
+        harness.manager.remove(albumOwner)
+        #expect(FileManager.default.fileExists(atPath: filePath))
+        harness.manager.remove(playlistOwner)
+        #expect(!FileManager.default.fileExists(atPath: filePath))
+        #expect(harness.manager.records.isEmpty)
+    }
+
+    @Test func sharedOwnershipSurvivesRelaunchWithCancelledOriginalOwner() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let first = DownloadOwner(album: album, profileID: "listener")
+        let second = DownloadOwner(album: album, profileID: "second")
+        harness.queue(first)
+        harness.queue(second)
+        let job = try harness.startedJob(0)
+        harness.manager.cancel(first)
+        harness.stop()
+        harness.open()
+        try await harness.restore([job])
+        try harness.deliver(job)
+        try await drain()
+        #expect(harness.manager.records[job.cacheKey]?.owners == [second.id])
+        #expect(harness.manager.state(for: first) == .cancelled(done: 0, total: 1))
+        #expect(harness.manager.state(for: second) == .downloaded)
+    }
+
+    @Test func lateCompletionAfterBothOwnersCancelledDeletesFile() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let first = DownloadOwner(album: album, profileID: "listener")
+        let second = DownloadOwner(album: album, profileID: "second")
+        harness.queue(first)
+        harness.queue(second)
+        let job = try harness.startedJob(0)
+        harness.manager.cancel(first)
+        harness.manager.cancel(second)
+        harness.stop()
+        harness.open()
+        try await harness.restore([job])
+        try harness.deliver(job)
+        try await drain()
+        #expect(harness.manager.records.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: harness.directory.appending(path: job.fileName).path))
+    }
+
+    @Test func multipleProfilesSamePlaylistMaintainSeparateOwnership() async throws {
+        let harness = try TransferHarness()
+        defer { harness.close() }
+        try await harness.restore()
+        let album = transferAlbum()
+        let playlist = Playlist(id: "shared-playlist", name: "Shared", tracks: album.tracks, isSmart: false, isDownloaded: false)
+        let profile1 = DownloadOwner(playlist: playlist, profileID: "listener")
+        let profile2 = DownloadOwner(playlist: playlist, profileID: "other")
+        harness.queue(profile1)
+        harness.queue(profile2)
+        #expect(harness.started.count == 1)
+        let job = try harness.startedJob(0)
+        try harness.deliver(job)
+        try await drain()
+        #expect(harness.manager.records[job.cacheKey]?.owners == [profile1.id, profile2.id])
+        harness.manager.remove(profile1)
+        #expect(harness.manager.records[job.cacheKey]?.owners == [profile2.id])
+        harness.manager.driveIDProvider = { "nas-a" }
+        harness.manager.activeProfileID = "other"
+        #expect(harness.manager.state(for: profile2) == .downloaded)
+    }
 }

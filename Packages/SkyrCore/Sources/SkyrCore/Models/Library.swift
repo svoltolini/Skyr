@@ -386,7 +386,8 @@ public nonisolated struct ServerConnection: Codable, Hashable, Sendable {
 
     public static func isHomeAddress(_ host: String) -> Bool {
         let name = host.lowercased()
-        if name.hasSuffix(".local") || name.hasSuffix(".ts.net") || name == "localhost" || !name.contains(".") { return true }
+        let isShortHostname = !name.contains(".") && !(name.hasPrefix("ts") && name.hasSuffix("net"))
+        if name.hasSuffix(".local") || name.hasSuffix(".ts.net") || name == "localhost" || isShortHostname { return true }
         let parts = name.split(separator: ".").compactMap { Int($0) }
         guard parts.count == 4 else { return false }
         return parts[0] == 10 || (parts[0] == 192 && parts[1] == 168) || (parts[0] == 172 && (16...31).contains(parts[1]))
