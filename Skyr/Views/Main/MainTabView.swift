@@ -5,8 +5,10 @@ import SwiftUI
 struct MainTabView: View {
     @Environment(AppModel.self) private var model
     @Environment(PlayerModel.self) private var player
+    @Environment(ProfileStore.self) private var profiles
     @Environment(\.colorScheme) private var colorScheme
     @State private var isShowingNowPlaying = false
+    @State private var lastHandledNowPlayingRequest = 0
 
     var body: some View {
         @Bindable var model = model
@@ -45,6 +47,41 @@ struct MainTabView: View {
         .sheet(isPresented: $isShowingNowPlaying) {
             NowPlayingView()
                 .nowPlayingSheetSize()
+        }
+        .onAppear { presentNowPlayingIfRequested() }
+        .onChange(of: model.nowPlayingPresentationRequest) { _, request in
+            presentNowPlayingIfRequested()
+            expireNowPlayingRequestIfNoTrack(request)
+        }
+        .onChange(of: player.hasTrack) { _, hasTrack in
+            if hasTrack { presentNowPlayingIfRequested() }
+        }
+        .onChange(of: profiles.isLocked) { _, locked in
+            if !locked { presentNowPlayingIfRequested() }
+        }
+    }
+
+    /// A request can arrive before the player has a track (cold start) or while the profile picker
+    /// is up; keep it until the play sheet can actually show that track.
+    private func presentNowPlayingIfRequested() {
+        guard model.nowPlayingPresentationRequest > lastHandledNowPlayingRequest,
+              player.hasTrack, !profiles.isLocked else { return }
+        lastHandledNowPlayingRequest = model.nowPlayingPresentationRequest
+        isShowingNowPlaying = true
+    }
+
+    /// Drop an unanswered request so a later in-app play does not suddenly raise the sheet.
+    private func expireNowPlayingRequestIfNoTrack(_ request: Int) {
+        guard !player.hasTrack else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard model.nowPlayingPresentationRequest == request,
+                  lastHandledNowPlayingRequest < request else { return }
+            if player.hasTrack {
+                presentNowPlayingIfRequested()
+            } else {
+                lastHandledNowPlayingRequest = request
+            }
         }
     }
 }

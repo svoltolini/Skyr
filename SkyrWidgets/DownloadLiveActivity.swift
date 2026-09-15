@@ -4,6 +4,7 @@ import SwiftUI
 import WidgetKit
 
 /// Album or playlist download progress on the lock screen and in the Dynamic Island.
+/// Tapping it opens Downloads; a now-playing island tap uses `skyr://nowplaying` instead.
 struct DownloadLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DownloadActivityAttributes.self) { context in
@@ -23,6 +24,7 @@ struct DownloadLiveActivity: Widget {
             .padding(16)
             .activityBackgroundTint(Color(red: 0.11, green: 0.106, blue: 0.102))
             .activitySystemActionForegroundColor(.white)
+            .widgetURL(WidgetLink.tab("downloads"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -62,6 +64,7 @@ struct DownloadLiveActivity: Widget {
                 DownloadRing(state: context.state, size: 18, lineWidth: 2.5)
             }
             .keylineTint(.white)
+            .widgetURL(WidgetLink.tab("downloads"))
         }
     }
 

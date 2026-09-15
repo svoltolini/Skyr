@@ -1,3 +1,4 @@
+import SkyrShared
 import SwiftUI
 
 /// Connection flow, browsing state and settings for the whole app.
@@ -579,6 +580,24 @@ public final class AppModel {
         case "downloads": selectedTab = .downloads
         default: break
         }
+    }
+
+    /// Bumped when a widget, Live Activity or system Now Playing surface asks for the play sheet.
+    /// The sheet reads the current track from the player; this only requests presentation.
+    public private(set) var nowPlayingPresentationRequest = 0
+
+    /// Opens the play sheet for the track that is playing or paused.
+    public func showNowPlaying() {
+        nowPlayingPresentationRequest += 1
+    }
+
+    /// Dynamic Island / Control Center Now Playing launch the app without a URL. Present the play
+    /// sheet after a background or cold start when a track is current and no other widget link ran.
+    public func showNowPlayingIfReturningWithTrack(fromBackground: Bool, handledWidgetURL: Bool, hasTrack: Bool) {
+        guard WidgetLink.shouldPresentNowPlayingOnForeground(
+            fromBackground: fromBackground, handledWidgetURL: handledWidgetURL, hasTrack: hasTrack
+        ) else { return }
+        showNowPlaying()
     }
 
     /// Waits for the server sign-in that starts at launch, so a song can stream, or gives up after the limit.

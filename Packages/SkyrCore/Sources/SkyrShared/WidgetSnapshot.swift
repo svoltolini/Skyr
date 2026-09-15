@@ -108,6 +108,14 @@ public nonisolated struct WidgetSnapshot: Codable, Sendable {
     /// The album the widgets lead with, and why.
     public enum Lead: Sendable {
         case playing, paused, recentlyPlayed, recentlyAdded
+
+        /// The cover is the current queue, playing or paused — open the play sheet, not the album page.
+        public var isCurrentPlayback: Bool {
+            switch self {
+            case .playing, .paused: true
+            case .recentlyPlayed, .recentlyAdded: false
+            }
+        }
     }
 
     public var featured: (album: Album, lead: Lead)? {
@@ -379,29 +387,40 @@ public nonisolated enum WidgetLink {
         case playlist(String)
         /// A tab by name: "library", "playlists" or "downloads".
         case tab(String)
+        /// The play sheet for whatever is in the player now.
+        case nowPlaying
     }
 
     public static func album(id: String) -> URL { make(host: "album", id: id) }
     public static func playlist(id: String) -> URL { make(host: "playlist", id: id) }
     public static func tab(_ name: String) -> URL { make(host: "tab", id: name) }
+    /// Live Activity, Dynamic Island, Cover widget and Control Center Now Playing share this link.
+    public static var nowPlaying: URL { make(host: "nowplaying") }
 
-    private static func make(host: String, id: String) -> URL {
+    private static func make(host: String, id: String? = nil) -> URL {
         var components = URLComponents()
         components.scheme = scheme
         components.host = host
-        components.queryItems = [URLQueryItem(name: "id", value: id)]
+        if let id { components.queryItems = [URLQueryItem(name: "id", value: id)] }
         return components.url ?? URL(string: "\(scheme)://\(host)")!
     }
 
     public static func destination(from url: URL) -> Destination? {
-        guard url.scheme == scheme,
-              let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value
-        else { return nil }
+        guard url.scheme == scheme else { return nil }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        let id = items?.first(where: { $0.name == "id" })?.value
         switch url.host {
-        case "album": return .album(id)
-        case "playlist": return .playlist(id)
-        case "tab": return .tab(id)
+        case "nowplaying": return .nowPlaying
+        case "album": return id.map(Destination.album)
+        case "playlist": return id.map(Destination.playlist)
+        case "tab": return id.map(Destination.tab)
         default: return nil
         }
+    }
+
+    /// System Now Playing (Dynamic Island, Control Center, Lock Screen) opens the app with no URL.
+    /// After a background launch, show the play sheet when a track is current and no other widget link won.
+    public static func shouldPresentNowPlayingOnForeground(fromBackground: Bool, handledWidgetURL: Bool, hasTrack: Bool) -> Bool {
+        fromBackground && !handledWidgetURL && hasTrack
     }
 }

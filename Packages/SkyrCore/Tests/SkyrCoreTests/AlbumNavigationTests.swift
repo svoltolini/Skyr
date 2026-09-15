@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import SkyrCore
 
-@MainActor private final class AlbumNavigationFixture {
+@MainActor final class AlbumNavigationFixture {
     let suite = "SkyrAlbumNavigation.\(UUID())"
     let directory = FileManager.default.temporaryDirectory.appending(path: "SkyrAlbumNavigation-\(UUID())")
     let defaults: UserDefaults

@@ -63,7 +63,7 @@ private struct SmallLayout: View {
         .containerBackground(for: .widget) {
             CoverBackdrop(album: album)
         }
-        .widgetURL(WidgetLink.album(id: album.id))
+        .widgetURL(lead.isCurrentPlayback ? WidgetLink.nowPlaying : WidgetLink.album(id: album.id))
     }
 }
 
@@ -76,7 +76,7 @@ private struct MediumLayout: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 14) {
-            LeadCover(album: album, isPlaying: lead == .playing)
+            LeadCover(album: album, isPlaying: lead == .playing, opensNowPlaying: lead.isCurrentPlayback)
                 .frame(maxHeight: .infinity)
             VStack(alignment: .leading, spacing: 3) {
                 LeadEyebrow(lead: lead)
@@ -98,6 +98,7 @@ private struct MediumLayout: View {
         .containerBackground(for: .widget) {
             PaletteBackdrop(colorA: album.colorA, colorB: album.colorB)
         }
+        .widgetURL(lead.isCurrentPlayback ? WidgetLink.nowPlaying : WidgetLink.album(id: album.id))
     }
 }
 
@@ -118,7 +119,7 @@ private struct LargeLayout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 14) {
-                LeadCover(album: album, isPlaying: lead == .playing)
+                LeadCover(album: album, isPlaying: lead == .playing, opensNowPlaying: lead.isCurrentPlayback)
                     .frame(width: 112, height: 112)
                 VStack(alignment: .leading, spacing: 3) {
                     LeadEyebrow(lead: lead)
@@ -153,5 +154,6 @@ private struct LargeLayout: View {
         .containerBackground(for: .widget) {
             PaletteBackdrop(colorA: album.colorA, colorB: album.colorB)
         }
+        .widgetURL(lead.isCurrentPlayback ? WidgetLink.nowPlaying : WidgetLink.album(id: album.id))
     }
 }

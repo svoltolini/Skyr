@@ -230,6 +230,10 @@ struct SkyrApp: App {
     }
 
     @State private var scanAliveTask: UIBackgroundTaskIdentifier = .invalid
+    /// Cold start and a return from the background both count until a widget URL has had a chance to arrive.
+    @State private var openedFromBackground = true
+    @State private var handledWidgetURL = false
+    @State private var nowPlayingActivationTask: Task<Void, Never>?
 
     /// The half minute iOS grants after the app leaves the screen, spent finishing the current batch.
     private func keepScanAlive() {
@@ -243,6 +247,41 @@ struct SkyrApp: App {
         scanAliveTask = .invalid
     }
 
+    /// Home Screen widgets, the Cover widget, a Live Activity and Control Center Now Playing all
+    /// arrive here when they carry a `skyr://` link.
+    private func openWidgetURL(_ url: URL) {
+        guard let destination = WidgetLink.destination(from: url) else { return }
+        handledWidgetURL = true
+        switch destination {
+        case .album(let id):
+            if let album = library.album(id: id) { model.showAlbum(album) }
+        case .playlist(let id):
+            if let playlist = library.playlist(id: id) { model.showPlaylist(playlist) }
+        case .tab(let name):
+            model.showTab(named: name)
+        case .nowPlaying:
+            model.showNowPlaying()
+        }
+    }
+
+    /// The system Dynamic Island and Control Center Now Playing open the app with no URL. Wait
+    /// briefly so a widget link can win, then ask for the play sheet when a track is current.
+    private func presentNowPlayingIfOpenedFromBackground() {
+        guard openedFromBackground else { return }
+        openedFromBackground = false
+        nowPlayingActivationTask?.cancel()
+        nowPlayingActivationTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            model.showNowPlayingIfReturningWithTrack(
+                fromBackground: true,
+                handledWidgetURL: handledWidgetURL,
+                hasTrack: player.hasTrack
+            )
+            handledWidgetURL = false
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -251,17 +290,10 @@ struct SkyrApp: App {
                 .profileSaveErrorAlert()
                 .scrollIndicators(.hidden)
                 .onOpenURL { url in
-                    // Something tapped on a Home Screen widget.
-                    switch WidgetLink.destination(from: url) {
-                    case .album(let id):
-                        if let album = library.album(id: id) { model.showAlbum(album) }
-                    case .playlist(let id):
-                        if let playlist = library.playlist(id: id) { model.showPlaylist(playlist) }
-                    case .tab(let name):
-                        model.showTab(named: name)
-                    case nil:
-                        break
-                    }
+                    openWidgetURL(url)
+                }
+                .onAppear {
+                    presentNowPlayingIfOpenedFromBackground()
                 }
                 .environment(model)
                 .environment(library)
@@ -275,11 +307,17 @@ struct SkyrApp: App {
                     if phase == .active || phase == .background { watchBridge.sync() }
                     if phase == .active { Task { await cloud.refresh(reason: "foreground") } }
                     if phase == .background {
+                        openedFromBackground = true
+                        handledWidgetURL = false
+                        nowPlayingActivationTask?.cancel()
                         profiles.flushSave()
                         if model.isScanning {
                             keepScanAlive()
                             AppDelegate.scheduleScanContinuation()
                         }
+                    }
+                    if phase == .active {
+                        presentNowPlayingIfOpenedFromBackground()
                     }
                 }
                 // A long scan would stop the moment the phone locked; the screen stays on until it is done.

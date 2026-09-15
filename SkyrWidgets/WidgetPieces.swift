@@ -157,15 +157,17 @@ struct PlayButton: View {
     }
 }
 
-/// A cover with the play button in its corner; the cover itself opens the album.
+/// A cover with the play button in its corner; the cover itself opens the album, or the play sheet
+/// when this cover is the song that is playing or paused.
 struct LeadCover: View {
     let album: WidgetSnapshot.Album
     let isPlaying: Bool
+    var opensNowPlaying = false
     var cornerRadius: CGFloat = 14
     var buttonSize: CGFloat = 34
 
     var body: some View {
-        Link(destination: WidgetLink.album(id: album.id)) {
+        Link(destination: opensNowPlaying ? WidgetLink.nowPlaying : WidgetLink.album(id: album.id)) {
             CoverTile(album: album, pixels: WidgetStore.heroPixels, cornerRadius: cornerRadius)
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
         }
