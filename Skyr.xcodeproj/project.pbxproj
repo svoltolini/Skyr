@@ -43,6 +43,7 @@
 		32ABDCC9D4307AF6BD9E050B /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76999B3E83B1E35FE548B258 /* AlbumView.swift */; };
 		32F9DA7ED5FF5D23D7A606C2 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508BD333628DA5F796703A05 /* Components.swift */; };
 		348B902A3731E164CEABD1A8 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
+		8BA0F3C575EB915BEE0C3599 /* ScanStatusButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53C8CFE3B1E7DD943D439E1 /* ScanStatusButton.swift */; };
 		35F5226C6042EB5BB29A74D3 /* ArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB27DEFB5D65D8C05F7A8A2 /* ArtworkView.swift */; };
 		37EC6BECD69BCDED64A69525 /* MacLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1733D389F81827BE438ADB7 /* MacLibraryView.swift */; };
 		381935247CB6E48FC3EF2611 /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76999B3E83B1E35FE548B258 /* AlbumView.swift */; };
@@ -92,6 +93,7 @@
 		6FD18E850C91F03A1381C69F /* IndexingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C09C48D0BA5C3B6472CA915 /* IndexingView.swift */; };
 		73251E8FCE80585FADDDB948 /* ArtistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */; };
 		73321F54A26921D51251883B /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
+		1A5480EE9AEB59E9BD55D3E2 /* ScanStatusButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53C8CFE3B1E7DD943D439E1 /* ScanStatusButton.swift */; };
 		7434850786AA8A9470C493BF /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4861070908870505AA4418B2 /* WatchStore.swift */; };
 		79AB09648F40C7538D23183B /* PlaylistsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42FA1EB27E94507C208E3F2A /* PlaylistsWidget.swift */; };
 		7D7B5E172FA1A1C87178957A /* DownloadStateReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D290F34A8C0AB6E79409EFD /* DownloadStateReader.swift */; };
@@ -173,6 +175,7 @@
 		F111D831F910411152A31CA3 /* ProfilePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6D2214D22A0EA49D985547 /* ProfilePickerView.swift */; };
 		F3E84DF55374EDD65655A6D8 /* PrivacyDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76E1F011D1F7E2147C62BD26 /* PrivacyDetailsView.swift */; };
 		F6A250D78C1379618809F2AF /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCED91E60862B34F01BD04 /* LibraryView.swift */; };
+		8D64C61ABD2F95E6B6B536EB /* ScanStatusButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53C8CFE3B1E7DD943D439E1 /* ScanStatusButton.swift */; };
 		F6E15AEAAF259B7E6D9C9137 /* LibraryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B30C47CF51F97801CBAAA5 /* LibraryHomeView.swift */; };
 		F72FA379588F9C53F6406B40 /* FolderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C2D58DC84E0E9E315B7573 /* FolderPickerView.swift */; };
 		F7D665A823FE69E54B16540F /* AddToPlaylistSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2FFC8005FE1679550CDF0C0 /* AddToPlaylistSheet.swift */; };
@@ -298,6 +301,7 @@
 		B246821D4F338E07E5DF4EBB /* PlaybackIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackIntents.swift; sourceTree = "<group>"; };
 		B2FFC8005FE1679550CDF0C0 /* AddToPlaylistSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddToPlaylistSheet.swift; sourceTree = "<group>"; };
 		B7FCED91E60862B34F01BD04 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		E53C8CFE3B1E7DD943D439E1 /* ScanStatusButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanStatusButton.swift; sourceTree = "<group>"; };
 		B95EF839D1679A898C48A390 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		BADC3FC81179141D26CCADE0 /* PINEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PINEntryView.swift; sourceTree = "<group>"; };
 		BF07D42BC0C63F2F2A73FBF8 /* ArtistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistView.swift; sourceTree = "<group>"; };
@@ -595,6 +599,7 @@
 				645D7A92E2D6C16B022F6818 /* GenresView.swift */,
 				50B30C47CF51F97801CBAAA5 /* LibraryHomeView.swift */,
 				B7FCED91E60862B34F01BD04 /* LibraryView.swift */,
+				E53C8CFE3B1E7DD943D439E1 /* ScanStatusButton.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -892,6 +897,7 @@
 				FB75E88CA7839052C19EDE95 /* JoinWithLinkSheet.swift in Sources */,
 				F6E15AEAAF259B7E6D9C9137 /* LibraryHomeView.swift in Sources */,
 				F6A250D78C1379618809F2AF /* LibraryView.swift in Sources */,
+				8D64C61ABD2F95E6B6B536EB /* ScanStatusButton.swift in Sources */,
 				3DAC5B49DD42867EB1E93C72 /* LoginSheet.swift in Sources */,
 				F8D31C9D59591C2079D006B5 /* NowPlayingView.swift in Sources */,
 				6F22CD743533E7DCAA316409 /* OnboardingView.swift in Sources */,
@@ -957,6 +963,7 @@
 				A341DB6534420EB91CC81961 /* JoinWithLinkSheet.swift in Sources */,
 				C4F48A882E2F0ECCE7DF612F /* LibraryHomeView.swift in Sources */,
 				348B902A3731E164CEABD1A8 /* LibraryView.swift in Sources */,
+				8BA0F3C575EB915BEE0C3599 /* ScanStatusButton.swift in Sources */,
 				69225495367BACC9A8566F96 /* LoginSheet.swift in Sources */,
 				B35F5596AAC760B98A97218F /* MacCollectionViews.swift in Sources */,
 				37EC6BECD69BCDED64A69525 /* MacLibraryView.swift in Sources */,
@@ -1030,6 +1037,7 @@
 				D75F9C60213A00BEB79BC38E /* JoinWithLinkSheet.swift in Sources */,
 				E0CCB5F5E6F7BD50EC76CF2F /* LibraryHomeView.swift in Sources */,
 				73321F54A26921D51251883B /* LibraryView.swift in Sources */,
+				1A5480EE9AEB59E9BD55D3E2 /* ScanStatusButton.swift in Sources */,
 				81963E1B55CF02988239421C /* LoginSheet.swift in Sources */,
 				577CE8B71092831570408C70 /* MainTabView.swift in Sources */,
 				1FEB38BAD1784CD2322FF724 /* MiniPlayerView.swift in Sources */,
