@@ -452,10 +452,29 @@ private func documentBeforeDownloadMembership(_ data: Data) throws -> Data {
     #expect(!fixture.store.activate(other))
     #expect(fixture.store.persistenceFailure?.title == "Profile couldn't be opened")
     #expect(fixture.store.canOpenWithoutSavedData)
+    #expect(fixture.store.canOpenWithoutSavedData(other))
+    #expect(!fixture.store.canOpenWithoutSavedData(owner))
     #expect(fixture.store.activeID == owner.id)
     #expect(fixture.store.openWithoutSavedData())
     #expect(fixture.store.activeID == other.id)
     #expect(fixture.store.persistenceFailure == nil)
+    try await fixture.close()
+}
+
+@Test @MainActor func profileWithPINReportsUnreadableDocumentOnlyOnceAdmitted() async throws {
+    let fixture = try PersistenceFixture()
+    let locked = try #require(fixture.store.create(name: "Locked", avatar: .random(), pin: "1234"))
+    try Data("{ not a document".utf8).write(to: fixture.directory.appending(path: "\(locked.id).json"), options: .atomic)
+    // Without the PIN, or with a wrong one, the keypad is still the answer.
+    #expect(!fixture.store.activate(locked))
+    #expect(!fixture.store.activate(locked, pin: "0000"))
+    #expect(fixture.store.persistenceFailure == nil)
+    #expect(!fixture.store.canOpenWithoutSavedData(locked))
+    #expect(!fixture.store.activate(locked, pin: "1234"))
+    #expect(fixture.store.persistenceFailure?.kind == .unreadable(profileID: locked.id))
+    #expect(fixture.store.canOpenWithoutSavedData(locked))
+    #expect(fixture.store.openWithoutSavedData())
+    #expect(fixture.store.activeID == locked.id)
     try await fixture.close()
 }
 

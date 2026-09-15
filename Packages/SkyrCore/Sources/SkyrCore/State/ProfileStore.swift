@@ -166,8 +166,15 @@ public final class ProfileStore {
     /// Whether the profile whose opening just failed may be opened without its unreadable data.
     /// The offer stands until another profile is tried, one opens, or the PIN changes.
     public var canOpenWithoutSavedData: Bool {
-        guard let pending = unreadableOpening, pending.authentication == authenticationGeneration else { return false }
-        return unreadableStateIDs.contains(pending.profile.id) && profiles.contains { $0.id == pending.profile.id }
+        unreadableOpening.map { canOpenWithoutSavedData($0.profile) } ?? false
+    }
+
+    /// Whether this profile's opening, with the person already admitted, has just failed on its
+    /// unreadable document. The keypad has nothing more to ask; the alert offers the way in.
+    public func canOpenWithoutSavedData(_ profile: Profile) -> Bool {
+        guard let pending = unreadableOpening, pending.profile.id == profile.id,
+              pending.authentication == authenticationGeneration else { return false }
+        return unreadableStateIDs.contains(profile.id) && profiles.contains { $0.id == profile.id }
     }
 
     /// Sets the unreadable files aside, starts the profile again from an empty document and opens
@@ -709,12 +716,10 @@ public final class ProfileStore {
             let name = profiles.first { $0.id == id }?.name ?? id
             let reason = Self.describe(error)
             log("The saved data of “\(name)” could not be read; its files were left as they are. \(reason)")
-            let fallback = sync?.isActive == true
-                ? "the unreadable files are kept, and the copy in iCloud comes back on the next sync."
-                : "the unreadable files are kept on this device, and the profile starts again with an empty library."
+            let wayOut = "the unreadable files stay on this device, and whatever this profile has in iCloud comes back on the next sync."
             let message = profile != nil
-                ? "Skyr couldn't read the favourites, playlists and settings saved for “\(name)” on this device, so nothing was changed. You can try again later, or open the profile without that data: \(fallback)"
-                : "Skyr couldn't read the favourites, playlists and settings saved for “\(name)” on this device. Nothing was changed. Open that profile to try again, or to start it without that data: \(fallback)"
+                ? "Skyr couldn't read the favourites, playlists and settings saved for “\(name)” on this device, so nothing was changed. You can try again later, or open the profile without that data: \(wayOut)"
+                : "Skyr couldn't read the favourites, playlists and settings saved for “\(name)” on this device. Nothing was changed. Open that profile to try again, or to start it over without that data: \(wayOut)"
             persistenceFailure = PersistenceFailure(
                 kind: .unreadable(profileID: id), title: profile != nil ? "Profile couldn't be opened" : "Saved data couldn't be read",
                 message: message + "\n\nDetails: \(reason)")

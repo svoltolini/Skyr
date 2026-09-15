@@ -270,7 +270,12 @@ struct UnlockSheet: View {
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 22)
                 PINEntryView { pin in
-                    guard profiles.activate(profile, pin: pin) else { return false }
+                    guard profiles.activate(profile, pin: pin) else {
+                        // The PIN was right; the saved document was not. The alert takes it from here.
+                        guard profiles.canOpenWithoutSavedData(profile) else { return false }
+                        dismiss()
+                        return true
+                    }
                     if enableBiometrics { profiles.setBiometrics(true, for: profile) }
                     dismiss()
                     return true
@@ -279,7 +284,7 @@ struct UnlockSheet: View {
                     if profiles.biometricsEnabled(for: profile) {
                         Button("Use \(biometry)", systemImage: biometry == "Face ID" ? "faceid" : "touchid") {
                             Task {
-                                if await profiles.unlockWithBiometrics(profile) {
+                                if await profiles.unlockWithBiometrics(profile) || profiles.canOpenWithoutSavedData(profile) {
                                     dismiss()
                                 }
                             }
