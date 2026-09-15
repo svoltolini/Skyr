@@ -248,6 +248,13 @@ struct MacAlbumCollectionView: View {
 struct MacDownloadsView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadManager.self) private var downloads
+    /// Listed downloads with songs neither saved nor on their way, offered as one bulk fetch.
+    @State private var missing: [DownloadOwner] = []
+
+    private struct MissingRequest: Equatable {
+        let revision: UInt64
+        let ownerIDs: [String]
+    }
 
     var body: some View {
         // Resolve only listed collections, rather than constructing owners for every library item.
@@ -261,8 +268,16 @@ struct MacDownloadsView: View {
         let playlists = listed.compactMap { id in
             id.hasPrefix(playlistPrefix) ? library.playlist(id: String(id.dropFirst(playlistPrefix.count))) : nil
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let owners = playlists.map { downloads.owner(for: $0) } + albums.map { downloads.owner(for: $0) }
+        let unused = downloads.unusedStorage
 
         List {
+            if !unused.isEmpty || !missing.isEmpty {
+                Section("Storage") {
+                    if !unused.isEmpty { MacUnusedStorageRow(unused: unused) }
+                    if !missing.isEmpty { MacMissingSongsRow(missing: missing) }
+                }
+            }
             if !playlists.isEmpty {
                 Section("Playlists") {
                     ForEach(playlists) { playlist in MacDownloadRow(item: .playlist(playlist)) }
@@ -276,11 +291,90 @@ struct MacDownloadsView: View {
         }
         .listStyle(.inset)
         .overlay {
-            if albums.isEmpty && playlists.isEmpty {
+            if albums.isEmpty && playlists.isEmpty && unused.isEmpty {
                 ContentUnavailableView("No Downloads", systemImage: "arrow.down.circle", description: Text("Download an album or playlist to keep it on this Mac and listen without the server."))
             }
         }
         .navigationTitle("Downloads")
+        // The folder is read again each time the screen opens, so the figure matches what is there now.
+        .task { downloads.refreshUnusedStorage() }
+        // Manifest-only arithmetic, kept out of the body and redone when download state moves.
+        .task(id: MissingRequest(revision: downloads.stateRevision, ownerIDs: owners.map(\.id))) {
+            missing = owners.filter { downloads.missingCount(for: $0) > 0 }
+        }
+    }
+}
+
+/// Space in the downloads folder no download here uses, with the one way to reclaim it.
+private struct MacUnusedStorageRow: View {
+    let unused: UnusedDownloadStorage
+    @Environment(DownloadManager.self) private var downloads
+    @State private var isConfirmingRemoval = false
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "externaldrive.badge.xmark")
+                .font(.title2)
+                .foregroundStyle(.orange)
+                .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(ByteText.format(unused.bytes)) not in use").font(.body.weight(.medium))
+                Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(3)
+            }
+            Spacer(minLength: 8)
+            Button("Remove…", systemImage: "trash", role: .destructive) { isConfirmingRemoval = true }
+                .buttonStyle(.bordered)
+        }
+        .padding(.vertical, 6)
+        .confirmationDialog("Remove \(ByteText.format(unused.bytes)) not in use?", isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
+            Button("Remove Files", role: .destructive) { downloads.removeUnused() }
+        } message: {
+            Text("These files aren’t part of any download on this Mac. Anything a family profile or another library still needs can be downloaded again.")
+        }
+    }
+
+    private var detail: String {
+        var text = "Left behind by earlier downloads; no album or playlist here uses these files."
+        if unused.otherLibraryBytes > 0 {
+            text += " \(ByteText.format(unused.otherLibraryBytes)) belong to a library this Mac isn’t signed in to."
+        }
+        return text
+    }
+}
+
+/// Downloads restored from iCloud whose songs are not all on this Mac, fetched together on request.
+private struct MacMissingSongsRow: View {
+    let missing: [DownloadOwner]
+    @Environment(LibraryStore.self) private var library
+    @Environment(ProfileStore.self) private var profiles
+    @Environment(DownloadManager.self) private var downloads
+
+    var body: some View {
+        let scope = MacLibraryActionScope(library: library, profiles: profiles)
+        HStack(spacing: 16) {
+            Image(systemName: "icloud.and.arrow.down")
+                .font(.title2)
+                .foregroundStyle(.blue)
+                .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(missing.count == 1 ? "1 download is missing songs" : "\(missing.count) downloads are missing songs")
+                    .font(.body.weight(.medium))
+                Text("Restored from iCloud. Songs already on this Mac are kept; only the rest come down.")
+                    .font(.footnote).foregroundStyle(.secondary).lineLimit(3)
+            }
+            Spacer(minLength: 8)
+            Button("Download", systemImage: "arrow.down.circle") {
+                guard scope.isCurrent(library: library, profiles: profiles), downloads.activeProfileID == profiles.activeID else { return }
+                for owner in missing {
+                    downloads.download(owner, driveID: library.catalogue.driveID, isSample: library.isDemo) {
+                        library.streamURL(for: $0, quality: .original)
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.vertical, 6)
+        .disabled(!scope.isCurrent(library: library, profiles: profiles))
     }
 }
 

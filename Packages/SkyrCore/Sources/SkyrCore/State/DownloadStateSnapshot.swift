@@ -10,6 +10,8 @@ nonisolated struct DownloadStateSnapshot: Sendable {
     let progress: [String: Double]
     let cancelled: Bool
     let errors: [String: String]
+    /// Membership restored from iCloud: listed with a retry even when no song is here yet.
+    var restored = false
     let directory: URL
 
     func read(fileExists: @Sendable (URL) -> Bool) throws -> DownloadState {
@@ -48,6 +50,7 @@ nonisolated struct DownloadStateSnapshot: Sendable {
         let error = errors.min(by: { $0.key < $1.key })?.value
         if done > 0 { return .partial(done: done, total: total, message: error) }
         if let error { return .failed(message: error) }
+        if restored { return .partial(done: 0, total: total, message: nil) }
         return .none
     }
 }
