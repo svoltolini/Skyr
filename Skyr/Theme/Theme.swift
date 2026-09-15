@@ -5,6 +5,7 @@ import SwiftUI
 struct TintedBackground: View {
     var tint: Color
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -18,7 +19,7 @@ struct TintedBackground: View {
             .blur(radius: 40)
         }
         .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.8), value: tint)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.8), value: tint)
     }
 }
 
