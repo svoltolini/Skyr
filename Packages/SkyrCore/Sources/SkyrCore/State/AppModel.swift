@@ -323,29 +323,32 @@ public final class AppModel {
     // MARK: Automatic refresh
 
     private var autoRefreshTask: Task<Void, Never>?
-    /// Set when the app leaves the screen, so the next activation is known to be a return from the
-    /// background rather than a dismissed Control Center or a finished Face ID prompt.
-    private var isReturningFromBackground = false
+    /// The screen is about to come up for the first time or back from the background: set at launch and
+    /// whenever the app leaves the screen, cleared once that arrival has been decided, by the activation
+    /// itself or by a widget or Live Activity link handled first. A dismissed Control Center or a
+    /// finished Face ID prompt only passes through inactive and is no arrival.
+    private var isArriving = true
 
     /// Re-indexes in the background when the app comes to the foreground and periodically while it runs.
     ///
     /// The phone also reports whether a song is playing. A tap on the system's Now Playing island, on the
     /// Lock Screen card or in Control Center opens the app exactly like a tap on its icon, with no link
-    /// or launch option to tell them apart, so music playing on the return from the background is the one
-    /// signal that the player is wanted, and it comes up over whatever was on screen. A widget or Live
-    /// Activity link handled during the same return decides where to land instead.
+    /// or launch option to tell them apart, so music playing as the screen arrives is the one signal that
+    /// the player is wanted, and it comes up over whatever was on screen. Music already playing at the
+    /// first activation means a widget's play button or the car started it with the app launched in the
+    /// background. A widget or Live Activity link handled during the same arrival decides where to land.
     public func scenePhaseChanged(_ phase: ScenePhase, isPlaying: Bool? = nil) {
         if phase == .background {
-            isReturningFromBackground = true
+            isArriving = true
             return
         }
         guard phase == .active else { return }
         refreshIfStale(olderThan: 30 * 60)
-        // The car's scene, the Mac and the television report no playback state and leave the return alone.
+        // The car's scene, the Mac and the television report no playback state and leave the arrival alone.
         guard let isPlaying else { return }
-        let returned = isReturningFromBackground
-        isReturningFromBackground = false
-        if returned, isPlaying { showNowPlaying() }
+        let arriving = isArriving
+        isArriving = false
+        if arriving, isPlaying { showNowPlaying() }
     }
 
     public func refreshIfStale(olderThan age: TimeInterval) {
@@ -617,15 +620,15 @@ public final class AppModel {
     /// locked, before the library is open or while the sign-in sheet is in front, and a sheet that is
     /// already up stays as it is.
     public func showNowPlaying() {
-        isReturningFromBackground = false
+        isArriving = false
         guard stage == .ready, profiles?.isLocked != true, pendingServer == nil else { return }
         isNowPlayingPresented = true
     }
 
-    /// Another destination is taking over: the sheet closes, and this return from the background is
-    /// spoken for, so the player must not come back up over the page the link asked for.
+    /// Another destination is taking over: the sheet closes, and this arrival on screen is spoken for,
+    /// so the player must not come back up over the page the link asked for.
     private func leaveNowPlaying() {
-        isReturningFromBackground = false
+        isArriving = false
         isNowPlayingPresented = false
     }
 

@@ -148,6 +148,9 @@ struct NowPlayingPresentationTests {
 
     @Test func returningWithoutMusicOrWithoutLeavingKeepsTheScreenAsItWas() throws {
         let f = try NowPlayingFixture(); defer { f.cleanUp() }
+        // A plain launch: nothing is playing when the screen first comes up.
+        f.model.scenePhaseChanged(.active, isPlaying: false)
+        #expect(!f.model.isNowPlayingPresented)
         // Control Center or a Face ID prompt: inactive, never in the background.
         f.model.scenePhaseChanged(.inactive, isPlaying: true)
         f.model.scenePhaseChanged(.active, isPlaying: true)
@@ -156,17 +159,27 @@ struct NowPlayingPresentationTests {
         f.model.scenePhaseChanged(.background, isPlaying: true)
         f.model.scenePhaseChanged(.active, isPlaying: false)
         #expect(!f.model.isNowPlayingPresented)
-        // A return is consumed: playing later does not present retroactively.
+        // An arrival is consumed: playing later does not present retroactively.
         f.model.scenePhaseChanged(.active, isPlaying: true)
         #expect(!f.model.isNowPlayingPresented)
-        // The first activation after launch is not a return.
-        let fresh = try NowPlayingFixture(); defer { fresh.cleanUp() }
-        fresh.model.scenePhaseChanged(.active, isPlaying: true)
-        #expect(!fresh.model.isNowPlayingPresented)
+    }
+
+    @Test func musicAlreadyPlayingWhenTheScreenFirstComesUpBringsThePlayerUp() throws {
+        // A widget's play button launched the app in the background; the island tap is its first activation.
+        let f = try NowPlayingFixture(); defer { f.cleanUp() }
+        f.model.scenePhaseChanged(.active, isPlaying: true)
+        #expect(f.model.isNowPlayingPresented)
+
+        // A widget cover tapped instead: the album page, decided before the screen is active.
+        let linked = try NowPlayingFixture(); defer { linked.cleanUp() }
+        linked.model.showAlbum(linked.library.albums[0])
+        linked.model.scenePhaseChanged(.active, isPlaying: true)
+        #expect(!linked.model.isNowPlayingPresented)
     }
 
     @Test func activationsWithoutPlaybackStateLeaveTheReturnToThePhone() throws {
         let f = try NowPlayingFixture(); defer { f.cleanUp() }
+        f.model.scenePhaseChanged(.active, isPlaying: false)
         f.model.scenePhaseChanged(.background)
         // The car's scene and the Mac and television report no playback state and never present.
         f.model.scenePhaseChanged(.active)
