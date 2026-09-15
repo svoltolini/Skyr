@@ -157,7 +157,8 @@ struct ScanDetailSheet: View {
         Text("Library")
             .navigationTitle("Library")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                // This file is compiled into SkyrMac and SkyrTV as well; `.topBarTrailing` does not exist on macOS.
+                ToolbarItem(placement: .trailingBar) {
                     ScanStatusButton()
                 }
             }
