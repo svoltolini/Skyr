@@ -207,3 +207,91 @@ import Testing
     let data = try #require(fixture.defaults.data(forKey: "connection"))
     #expect(try JSONDecoder().decode(ServerConnection.self, from: data).musicPath == "/new-music")
 }
+
+@Test @MainActor func twoFactorRequiredDuringRestoreStoresPasswordForOTPOnlyReauth() async throws {
+    let fixture = ConnectionFixture()
+    defer { fixture.cleanUp() }
+    let saved = ServerConnection(name: "NAS", baseURL: URL(string: "https://nas.example:5001")!, account: "listener", musicPath: "/music")
+    try fixture.save(saved)
+    var catalogue = SampleLibrary.catalogue
+    catalogue.driveID = saved.sourceID
+    catalogue.rootPath = "/music"
+    fixture.services.loadCatalogue = { catalogue }
+    let storedPassword = "remembered-password"
+    fixture.services.password = { _ in storedPassword }
+    fixture.services.login = { _, _, _, _ in throw SynologyError.twoFactorRequired }
+    let model = fixture.model(restore: true)
+    try await waitUntil { !model.isRestoring }
+    #expect(model.needsOTP)
+    #expect(model.pendingReconnectPassword == storedPassword, "The stored password should be available for OTP-only reauth")
+    #expect(model.signInError == "Enter the code from your authenticator app to reconnect.")
+}
+
+@Test @MainActor func twoFactorRequiredDuringReconnectStoresPasswordForOTPOnlyReauth() async throws {
+    let fixture = ConnectionFixture()
+    defer { fixture.cleanUp() }
+    let saved = ServerConnection(name: "NAS", baseURL: URL(string: "https://nas.example:5001")!, account: "listener", musicPath: "/music")
+    try fixture.save(saved)
+    var catalogue = SampleLibrary.catalogue
+    catalogue.driveID = saved.sourceID
+    catalogue.rootPath = "/music"
+    fixture.services.loadCatalogue = { catalogue }
+    let storedPassword = "remembered-password"
+    fixture.services.password = { _ in storedPassword }
+    var loginCalls = 0
+    fixture.services.login = { url, _, _, otp in
+        loginCalls += 1
+        if loginCalls == 1 { return DSMSession(baseURL: url, sid: "initial", apis: [:]) }
+        throw SynologyError.twoFactorRequired
+    }
+    let model = fixture.model(restore: true)
+    try await waitUntil { !model.isRestoring }
+    #expect(model.isConnected)
+    await model.reconnect()
+    #expect(model.needsOTP)
+    #expect(model.pendingReconnectPassword == storedPassword, "The stored password should be available for OTP-only reauth")
+}
+
+@Test @MainActor func successfulSignInClearsPendingReconnectPassword() async throws {
+    let fixture = ConnectionFixture()
+    defer { fixture.cleanUp() }
+    let saved = ServerConnection(name: "NAS", baseURL: URL(string: "https://nas.example:5001")!, account: "listener", musicPath: "/music")
+    try fixture.save(saved)
+    var catalogue = SampleLibrary.catalogue
+    catalogue.driveID = saved.sourceID
+    catalogue.rootPath = "/music"
+    fixture.services.loadCatalogue = { catalogue }
+    let storedPassword = "remembered-password"
+    fixture.services.password = { _ in storedPassword }
+    var loginCalls = 0
+    fixture.services.login = { url, _, _, otp in
+        loginCalls += 1
+        if otp == nil { throw SynologyError.twoFactorRequired }
+        return DSMSession(baseURL: url, sid: "reauthenticated", apis: [:])
+    }
+    let model = fixture.model(restore: true)
+    try await waitUntil { !model.isRestoring }
+    #expect(model.pendingReconnectPassword == storedPassword)
+    await model.signIn(account: saved.account, password: storedPassword, otpCode: "123456", remember: false)
+    #expect(model.isConnected)
+    #expect(model.pendingReconnectPassword == nil, "Pending password should be cleared after successful sign-in")
+}
+
+@Test @MainActor func cancelSignInClearsPendingReconnectPassword() async throws {
+    let fixture = ConnectionFixture()
+    defer { fixture.cleanUp() }
+    let saved = ServerConnection(name: "NAS", baseURL: URL(string: "https://nas.example:5001")!, account: "listener", musicPath: "/music")
+    try fixture.save(saved)
+    var catalogue = SampleLibrary.catalogue
+    catalogue.driveID = saved.sourceID
+    catalogue.rootPath = "/music"
+    fixture.services.loadCatalogue = { catalogue }
+    let storedPassword = "remembered-password"
+    fixture.services.password = { _ in storedPassword }
+    fixture.services.login = { _, _, _, _ in throw SynologyError.twoFactorRequired }
+    let model = fixture.model(restore: true)
+    try await waitUntil { !model.isRestoring }
+    #expect(model.pendingReconnectPassword == storedPassword)
+    model.cancelSignIn()
+    #expect(model.pendingReconnectPassword == nil, "Pending password should be cleared when sign-in is cancelled")
+}

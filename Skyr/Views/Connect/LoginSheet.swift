@@ -85,8 +85,15 @@ struct LoginSheet: View {
                     password = model.pendingFamilyPassword ?? ""
                 } else if let connection = model.connection, NASOrigin(url: connection.baseURL) == NASOrigin(url: server.baseURL) {
                     account = connection.account
+                    if let storedPassword = model.pendingReconnectPassword {
+                        password = storedPassword
+                    }
                 }
-                focus = account.isEmpty ? .account : .password
+                if model.needsOTP, !password.isEmpty {
+                    focus = .otp
+                } else {
+                    focus = account.isEmpty ? .account : .password
+                }
             }
             .onChange(of: server.id) {
                 account = model.pendingFamilyAccount ?? ""
@@ -119,13 +126,17 @@ struct NASTransportChoice: View {
     var body: some View {
         if NASOrigin(url: url)?.isHTTPS == false {
             VStack(alignment: .leading, spacing: 8) {
-                Label("HTTP is not encrypted", systemImage: "lock.open")
-                    .foregroundStyle(.orange)
-                Text("Your password and music can be read on this connection. Allow it only on a network you trust. Permission applies to this exact address on this device.")
+                Label("HTTP sends credentials in cleartext", systemImage: "exclamationmark.lock.open")
+                    .foregroundStyle(.red)
+                    .fontWeight(.medium)
+                Text("Your password and music can be read by anyone on this network. HTTPS is strongly recommended. For secure remote access, Tailscale provides an encrypted connection to your NAS without opening ports. Use HTTP only on a private network you fully trust.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Toggle("Allow HTTP for this address", isOn: Binding(
+                Button("Use HTTPS Instead", action: useHTTPS)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                Toggle("I understand the risk — allow HTTP for this address", isOn: Binding(
                     get: { httpAllowed },
                     set: { allowed in
                         if allowed { NASTransportSecurity.allowHTTP(url) }
@@ -133,11 +144,11 @@ struct NASTransportChoice: View {
                         httpAllowed = allowed
                     }
                 ))
-                Button("Use HTTPS", action: useHTTPS)
+                .font(.footnote)
             }
         } else {
-            Label("HTTPS selected", systemImage: "lock")
-                .foregroundStyle(.secondary)
+            Label("Encrypted connection (HTTPS)", systemImage: "lock.fill")
+                .foregroundStyle(.green)
                 .font(.footnote)
         }
     }

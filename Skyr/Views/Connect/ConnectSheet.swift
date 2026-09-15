@@ -26,7 +26,7 @@ struct ConnectSheet: View {
                 } header: {
                     Text("Server")
                 } footer: {
-                    Text("Enter a NAS name, IP address, or full HTTPS address. Skyr tries HTTPS on DSM port 5001 and port 443. A Tailscale IP or full MagicDNS name also works when this device can reach it. If your NAS only supports HTTP, enter its full http:// address and port; you will review that choice before signing in.")
+                    Text("Enter a NAS name, IP address, or full HTTPS address. Skyr uses HTTPS by default for security.\n\nFor remote access, enter your NAS's Tailscale IP (100.x.x.x) or full MagicDNS name (nas.tailnet.ts.net). Tailscale creates a secure connection without opening ports.\n\nHTTP sends credentials in cleartext — only use it on a trusted private network, and you will confirm this choice before signing in.")
                 }
                 Section {
                     Button {
