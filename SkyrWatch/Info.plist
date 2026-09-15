@@ -26,7 +26,7 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Skyr downloads playlists from your music server on the local network.</string>
+	<string>Skyr downloads music from your music server on the local network.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
