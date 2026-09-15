@@ -323,6 +323,8 @@ public final class LibraryStore {
     public func album(id: String) -> Album? { albumsByID[id] }
     public func album(for track: Track) -> Album? { albumsByID[track.albumID] }
     public func track(id: String) -> Track? { tracksByID[id] }
+    /// A snapshot of the album lookup dictionary, safe to capture for background row preparation.
+    public var albumLookup: [String: Album] { albumsByID }
     /// Catalogue order, prepared with the other derived content rather than flattened by each screen.
     public var tracks: [Track] { allTracks }
     public func artist(named name: String) -> Artist? { artists.first { $0.name == name } }
