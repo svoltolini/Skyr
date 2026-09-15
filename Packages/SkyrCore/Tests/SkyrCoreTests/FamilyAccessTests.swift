@@ -181,6 +181,31 @@ import Testing
     }
 }
 
+@Test @MainActor func pendingRevocationSuppressesFamilyCredentialsFromCloudKitPublication() async {
+    let f = FamilyFixture()
+    defer { f.cleanUp() }
+    await f.connect()
+    await f.configureFamily()
+    let originalInfo = f.model.familyInfo
+    #expect(originalInfo?.familyAccount == "family-reader")
+    #expect(originalInfo?.familyPassword == "family-fixture")
+    await f.cloud.refresh(reason: "fixture")
+    f.failShare = true
+    #expect(await f.model.stopFamilySharing(using: f.cloud) != nil)
+    #expect(f.model.familyRevocationPending)
+    let pendingInfo = f.model.familyInfo
+    #expect(pendingInfo?.familyAccount == nil)
+    #expect(pendingInfo?.familyPassword == nil)
+    #expect(pendingInfo?.serverName == originalInfo?.serverName)
+    f.failShare = false
+    f.shareUnknown = true
+    #expect(await f.model.stopFamilySharing(using: f.cloud) == nil)
+    #expect(!f.model.familyRevocationPending)
+    let completedInfo = f.model.familyInfo
+    #expect(completedInfo?.familyAccount != nil)
+    #expect(completedInfo?.familyPassword != "family-fixture")
+}
+
 @Test @MainActor func partialRevocationSurvivesRelaunchAndRetriesAfterShareAlreadyRemoved() async {
     let f = FamilyFixture()
     defer { f.cleanUp() }
