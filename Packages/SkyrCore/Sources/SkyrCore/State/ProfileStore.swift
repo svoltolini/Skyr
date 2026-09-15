@@ -10,6 +10,27 @@ import LocalAuthentication
 /// profile's data to the library, player and settings and writes changes back a moment later.
 @Observable
 public final class ProfileStore {
+    /// Something that went wrong with a profile's files, worded for the alert that reports it.
+    /// Reading and writing fail for different reasons and call for different next steps.
+    public nonisolated struct PersistenceFailure: Equatable, Sendable {
+        public nonisolated enum Kind: Equatable, Sendable {
+            /// The document could not be read. Its files are untouched and the profile's writes are held.
+            case unreadable(profileID: String)
+            /// A journal write failed, so the edit was not applied.
+            case rejectedEdit
+            /// A background checkpoint failed; the journal keeps the accepted edits for the next attempt.
+            case deferredSnapshot
+            /// A full replacement (a remote merge, recovery or a new document) could not be written.
+            case replacementFailed
+            /// The profile is gone but some of its files remain.
+            case incompleteRemoval
+        }
+
+        public let kind: Kind
+        public let title: String
+        public let message: String
+    }
+
     public private(set) var profiles: [Profile] = []
     /// The profile in use; nil while "Who's listening?" is up.
     public private(set) var activeID: String?
@@ -17,8 +38,12 @@ public final class ProfileStore {
     public private(set) var sessionID: UUID?
     /// The active profile's document.
     public private(set) var state = ProfileState()
-    /// Journal failures reject an edit; snapshot failures keep accepted edits in the journal.
-    public private(set) var persistenceError: String?
+    /// The most recent problem with a profile's files, until dismissed or superseded. Journal
+    /// failures reject an edit; snapshot failures keep accepted edits in the journal; an unreadable
+    /// document keeps the profile closed and its files untouched until the person decides.
+    public private(set) var persistenceFailure: PersistenceFailure?
+    /// The message of `persistenceFailure`.
+    public var persistenceError: String? { persistenceFailure?.message }
     /// The profile that was open last, highlighted in the picker.
     public private(set) var lastActiveID: String?
 
@@ -40,7 +65,12 @@ public final class ProfileStore {
     @ObservationIgnored private var persistenceTokens: [String: ProfilePersistenceToken] = [:]
     @ObservationIgnored private var failedSnapshotToken: ProfilePersistenceToken?
     private var authenticationGeneration = UUID()
+    /// Profiles whose document could not be read. Their writes are held so the original files
+    /// stay exactly as they are until the document reads again or the person sets it aside.
     private var unreadableStateIDs: Set<String> = []
+    /// The profile whose opening just failed on an unreadable document, with the authentication
+    /// that had already admitted it. It may be opened without that data while the alert is up.
+    private var unreadableOpening: (profile: Profile, authentication: UUID)?
     @ObservationIgnored private lazy var stateReplicaID: String = {
         var url = storageDirectory.appending(path: "sync-replica-id")
         if let id = try? String(contentsOf: url, encoding: .utf8), UUID(uuidString: id) != nil { return id }
@@ -113,11 +143,16 @@ public final class ProfileStore {
     }
 
     private func openAuthenticated(_ profile: Profile) -> Bool {
-        let saved = loadState(id: profile.id)
-        guard !unreadableStateIDs.contains(profile.id) else { return false }
+        let saved = loadState(id: profile.id, opening: profile)
+        guard !unreadableStateIDs.contains(profile.id) else {
+            // The person has just been admitted; the alert offers to open without the saved data.
+            unreadableOpening = (profile, authenticationGeneration)
+            return false
+        }
         if activeID != nil { lock() }
         state = saved
-        persistenceError = nil
+        persistenceFailure = nil
+        unreadableOpening = nil
         activeID = profile.id
         sessionID = UUID()
         authenticationGeneration = UUID()
@@ -128,10 +163,43 @@ public final class ProfileStore {
         return true
     }
 
+    /// Whether the profile whose opening just failed may be opened without its unreadable data.
+    /// The offer stands until another profile is tried, one opens, or the PIN changes.
+    public var canOpenWithoutSavedData: Bool {
+        guard let pending = unreadableOpening, pending.authentication == authenticationGeneration else { return false }
+        return unreadableStateIDs.contains(pending.profile.id) && profiles.contains { $0.id == pending.profile.id }
+    }
+
+    /// Sets the unreadable files aside, starts the profile again from an empty document and opens
+    /// it. Nothing is deleted, and iCloud brings back whatever copy the family has on the next sync.
+    @discardableResult
+    public func openWithoutSavedData() -> Bool {
+        guard canOpenWithoutSavedData, let profile = unreadableOpening?.profile,
+              let current = profiles.first(where: { $0.id == profile.id }) else { return false }
+        do {
+            let kept = try persistence.setAside(id: current.id)
+            log("Set aside the unreadable saved data of “\(current.name)”: \(kept.map(\.lastPathComponent).joined(separator: ", "))")
+        } catch {
+            persistenceFailure = PersistenceFailure(
+                kind: .replacementFailed, title: "Profile couldn't be reset",
+                message: "The unreadable files of “\(current.name)” could not be set aside on this device. \(Self.describe(error))")
+            log("The unreadable saved data of “\(current.name)” could not be set aside: \(Self.describe(error))")
+            return false
+        }
+        unreadableStateIDs.remove(current.id)
+        persistenceTokens[current.id] = nil
+        unreadableOpening = nil
+        persistenceFailure = nil
+        guard writeState(ProfileState(), id: current.id), openAuthenticated(current) else { return false }
+        sync?.documentSetAside(id: current.id)
+        return true
+    }
+
     /// Back to "Who's listening?": playback stops and the next person picks themselves.
     public func lock() {
         flushSave()
         authenticationGeneration = UUID()
+        unreadableOpening = nil
         activeID = nil
         sessionID = nil
         state = ProfileState()
@@ -216,9 +284,13 @@ public final class ProfileStore {
         profiles = remaining
         do { try persistence.retire(id: profile.id) }
         catch {
-            persistenceError = "The profile was removed, but some local files could not be deleted."
-            log(persistenceError!)
+            persistenceFailure = PersistenceFailure(
+                kind: .incompleteRemoval, title: "Some files couldn't be deleted",
+                message: "The profile was removed, but some of its files could not be deleted from this device.")
+            log("The profile “\(profile.name)” was removed, but some of its files could not be deleted: \(Self.describe(error))")
         }
+        unreadableStateIDs.remove(profile.id)
+        if unreadableOpening?.profile.id == profile.id { unreadableOpening = nil }
         persistenceTokens[profile.id] = nil
         try? FileManager.default.removeItem(at: storageDirectory.appending(path: "\(profile.id)-photo.jpg"))
         defaults.removeObject(forKey: Self.biometricsKey(profile.id))
@@ -528,12 +600,14 @@ public final class ProfileStore {
             let token = try persistence.append(edit, id: activeID)
             state = edit.applying(to: state)
             persistenceTokens[activeID] = token
-            persistenceError = nil
+            persistenceFailure = nil
             failedSnapshotToken = nil
             touch()
         } catch {
-            persistenceError = "This change could not be saved. Your previously saved library and settings are unchanged."
-            log(persistenceError!)
+            persistenceFailure = PersistenceFailure(
+                kind: .rejectedEdit, title: "Change couldn't be saved",
+                message: "This change could not be saved. Your previously saved library and settings are unchanged.")
+            log("A change to the active profile could not be journaled: \(Self.describe(error))")
             isApplyingRemote = true
             onRemoteState?()
             isApplyingRemote = false
@@ -559,20 +633,22 @@ public final class ProfileStore {
             Task { @MainActor in
                 guard let self, self.activeID == activeID, self.sessionID == opening,
                       self.persistenceTokens[activeID] == token else { return }
-                if case .failure = result {
+                if case .failure(let error) = result {
                     self.failedSnapshotToken = token
-                    self.persistenceError = "Your changes are saved for recovery. Skyr will retry updating this profile after the next change or when you close it."
-                    self.log(self.persistenceError!)
+                    self.persistenceFailure = PersistenceFailure(
+                        kind: .deferredSnapshot, title: "Profile couldn't be saved",
+                        message: "Your changes are saved for recovery. Skyr will retry updating this profile after the next change or when you close it.")
+                    self.log("The active profile's checkpoint could not be written; the journal keeps the changes: \(Self.describe(error))")
                 } else if self.failedSnapshotToken == token {
                     self.failedSnapshotToken = nil
-                    self.persistenceError = nil
+                    self.persistenceFailure = nil
                 }
             }
         }
         if !isApplyingRemote { sync?.stateChanged(state, id: activeID) }
     }
 
-    public func dismissPersistenceError() { persistenceError = nil; failedSnapshotToken = nil }
+    public func dismissPersistenceError() { persistenceFailure = nil; failedSnapshotToken = nil }
 
     /// Deterministic fixture cleanup and explicit completion checks; normal UI never waits here.
     func drainPersistence() async { await persistence.drain() }
@@ -617,16 +693,31 @@ public final class ProfileStore {
         }
     }
 
-    private func loadState(id: String) -> ProfileState {
+    /// Reads a profile's document. A document that cannot be read holds that profile's writes so
+    /// its files stay untouched; once it reads again the hold lifts by itself. The failure is
+    /// reported when someone tries to open the profile, and otherwise once per profile: iCloud
+    /// reads every document on each sync and must not keep raising the same alert.
+    private func loadState(id: String, opening profile: Profile? = nil) -> ProfileState {
         do {
             let saved = try persistence.load(id: id)
             unreadableStateIDs.remove(id)
             persistenceTokens[id] = saved.token
             return saved.state
         } catch {
-            unreadableStateIDs.insert(id)
-            persistenceError = "The profile's saved data could not be read. The original files have been preserved."
-            log("The profile's saved data could not be read. The original file has been preserved.")
+            let firstFailure = unreadableStateIDs.insert(id).inserted
+            guard firstFailure || profile != nil else { return ProfileState() }
+            let name = profiles.first { $0.id == id }?.name ?? id
+            let reason = Self.describe(error)
+            log("The saved data of “\(name)” could not be read; its files were left as they are. \(reason)")
+            let fallback = sync?.isActive == true
+                ? "the unreadable files are kept, and the copy in iCloud comes back on the next sync."
+                : "the unreadable files are kept on this device, and the profile starts again with an empty library."
+            let message = profile != nil
+                ? "Skyr couldn't read the favourites, playlists and settings saved for “\(name)” on this device, so nothing was changed. You can try again later, or open the profile without that data: \(fallback)"
+                : "Skyr couldn't read the favourites, playlists and settings saved for “\(name)” on this device. Nothing was changed. Open that profile to try again, or to start it without that data: \(fallback)"
+            persistenceFailure = PersistenceFailure(
+                kind: .unreadable(profileID: id), title: profile != nil ? "Profile couldn't be opened" : "Saved data couldn't be read",
+                message: message + "\n\nDetails: \(reason)")
             return ProfileState()
         }
     }
@@ -636,13 +727,35 @@ public final class ProfileStore {
         guard !unreadableStateIDs.contains(id) else { return false }
         do {
             persistenceTokens[id] = try persistence.replace(state, id: id)
-            persistenceError = nil
+            persistenceFailure = nil
             failedSnapshotToken = nil
             return true
         } catch {
-            log("The profile's library and settings could not be saved on this device.")
-            persistenceError = "The profile's library and settings could not be saved on this device."
+            log("The profile's library and settings could not be saved on this device: \(Self.describe(error))")
+            persistenceFailure = PersistenceFailure(
+                kind: .replacementFailed, title: "Profile couldn't be saved",
+                message: "The profile's library and settings could not be saved on this device.")
             return false
+        }
+    }
+
+    /// The cause of a file problem, short enough for a log line or the end of an alert.
+    private nonisolated static func describe(_ error: any Error) -> String {
+        func place(_ context: DecodingError.Context) -> String {
+            let path = context.codingPath.map(\.stringValue).suffix(3).joined(separator: ".")
+            return path.isEmpty ? "" : " at “\(path)”"
+        }
+        switch error {
+        case DecodingError.keyNotFound(let key, let context):
+            return "The saved data has no value for “\(key.stringValue)”\(place(context))."
+        case DecodingError.typeMismatch(_, let context):
+            return "The saved data has an unexpected value\(place(context))."
+        case DecodingError.valueNotFound(_, let context):
+            return "The saved data has an empty value\(place(context))."
+        case DecodingError.dataCorrupted(let context):
+            return "The saved data is damaged\(place(context)): \(context.debugDescription)"
+        default:
+            return error.localizedDescription
         }
     }
 

@@ -122,17 +122,27 @@ private struct DownloadErrorAlert: ViewModifier {
     }
 }
 
+/// Reports a problem with a profile's files. Reading and writing fail differently: a document that
+/// cannot be read keeps its profile closed, so that alert also offers the way past the picker.
 private struct ProfileSaveErrorAlert: ViewModifier {
     @Environment(ProfileStore.self) private var profiles
 
     func body(content: Content) -> some View {
-        content.alert("Profile couldn't be saved", isPresented: Binding(
-            get: { profiles.persistenceError != nil },
+        content.alert(profiles.persistenceFailure?.title ?? "Profile couldn't be saved", isPresented: Binding(
+            get: { profiles.persistenceFailure != nil },
             set: { if !$0 { profiles.dismissPersistenceError() } }
         )) {
-            Button("OK") { profiles.dismissPersistenceError() }
+            if profiles.canOpenWithoutSavedData {
+                Button("Open Without Saved Data", role: .destructive) {
+                    // After the alert has let go of its binding, so a failure here is reported.
+                    Task { profiles.openWithoutSavedData() }
+                }
+                Button("Not Now", role: .cancel) { profiles.dismissPersistenceError() }
+            } else {
+                Button("OK") { profiles.dismissPersistenceError() }
+            }
         } message: {
-            Text(profiles.persistenceError ?? "Check the available storage on this device and try again.")
+            Text(profiles.persistenceFailure?.message ?? "Check the available storage on this device and try again.")
         }
     }
 }

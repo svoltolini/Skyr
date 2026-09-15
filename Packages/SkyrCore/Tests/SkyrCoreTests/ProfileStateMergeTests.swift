@@ -178,6 +178,52 @@ private func seedState() -> ProfileState {
     #expect(legacy.settings == large.settings)
 }
 
+/// Sync metadata as the build before #74 wrote it: no download membership in any library.
+private func metadataBeforeDownloadMembership(_ state: ProfileState) throws -> Data {
+    let json = try ProfileStateSyncCodec.decompress(try ProfileStateSyncCodec.encode(try #require(state.sync)))
+    var metadata = try #require(JSONSerialization.jsonObject(with: json) as? [String: Any])
+    var libraries = try #require(metadata["libraries"] as? [String: Any])
+    for (id, library) in libraries {
+        var fields = try #require(library as? [String: Any])
+        #expect(fields["downloadedAlbums"] != nil && fields["downloadedPlaylists"] != nil)
+        fields["downloadedAlbums"] = nil
+        fields["downloadedPlaylists"] = nil
+        libraries[id] = fields
+    }
+    metadata["libraries"] = libraries
+    return try ProfileStateSyncCodec.compress(JSONSerialization.data(withJSONObject: metadata))
+}
+
+@Test func profileSyncMetadataDecodesDocumentsWrittenBeforeDownloadMembership() throws {
+    // #94: TestFlight 202609151800 could not read any document written by 202609151421, because
+    // the synthesized decoder treated the two new ProfileLibrarySync fields as required.
+    let state = edited(seedState(), time: 20, id: "later") { $0.libraries["drive"]?.favourites.append("c") }
+    let legacy = try metadataBeforeDownloadMembership(state)
+    let decoded = try ProfileStateSyncCodec.decode(legacy)
+    #expect(decoded.libraries["drive"]?.downloadedAlbums.entries.isEmpty == true)
+    #expect(decoded.libraries["drive"]?.downloadedPlaylists.entries.isEmpty == true)
+    let materialized = decoded.materialized(updatedAt: state.updatedAt)
+    #expect(materialized.libraries == state.libraries)
+    #expect(materialized.settings == state.settings)
+    // The same document as another device's iCloud copy.
+    var document = try #require(JSONSerialization.jsonObject(with: try ProfileCloudDocument.encode(state)) as? [String: Any])
+    document["syncData"] = legacy.base64EncodedString()
+    let restored = try ProfileCloudDocument.decode(try JSONSerialization.data(withJSONObject: document))
+    #expect(restored.libraries["drive"]?.favourites == ["a", "b", "c"])
+    #expect(restored.libraries["drive"]?.playlists.map(\.name) == ["Original"])
+    #expect(restored.merged(with: state).libraries == state.libraries)
+    // Whatever later releases add to a library, a playlist or the document decodes as its default.
+    struct Register: Codable { var value: String; var revision: ProfileRevision }
+    let clock = ProfileRevision(time: 1, operation: "old")
+    let playlist = try JSONEncoder().encode(["name": Register(value: "Old", revision: clock), "created": Register(value: "2020-01-01T00:00:00Z", revision: clock)])
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    #expect(try decoder.decode(ProfilePlaylistSync.self, from: playlist).tracks.entries.isEmpty)
+    #expect(try decoder.decode(ProfileLibrarySync.self, from: Data("{}".utf8)).favourites.entries.isEmpty)
+    let bare = try decoder.decode(ProfileStateSync.self, from: try JSONEncoder().encode(["clock": clock]))
+    #expect(bare.libraries.isEmpty && bare.settings.isEmpty && bare.recoveredLibraries == nil)
+}
+
 @Test func profileMetadataDecodedSizeUsesAnExplicitBound() {
     #expect(!ProfileStateSyncCodec.permitsDecodedSize(0))
     #expect(ProfileStateSyncCodec.permitsDecodedSize(1))
@@ -197,9 +243,12 @@ private func seedState() -> ProfileState {
     let persistence: CloudPersistence
     var sync: CloudSync!
     var pages: [CloudChangePage] = []
+    /// The change token of every page requested, nil for a pull from the very start.
+    var tokens: [Data?] = []
     var conflicts: [ProfileState] = []
     var uploaded: [ProfileState] = []
     var duringConflict: (() -> Void)?
+    var duringChanges: (() -> Void)?
 
     init() throws {
         defaults = try #require(UserDefaults(suiteName: suite))
@@ -213,7 +262,11 @@ private func seedState() -> ProfileState {
 
     func makeSync() -> CloudSync {
         CloudSync(services: CloudServices(identity: { "account" }, sharedZones: { [] }, createZone: { _ in }, subscribe: {},
-            changes: { _, token in self.pages.isEmpty ? .init(records: [], token: token) : self.pages.removeFirst() },
+            changes: { _, token in
+                self.tokens.append(token)
+                self.duringChanges?()
+                return self.pages.isEmpty ? .init(records: [], token: token) : self.pages.removeFirst()
+            },
             modify: { _, records, deleted in
                 var saved: [CKRecord.ID: Result<CKRecord, any Error>] = [:]
                 for record in records {
@@ -253,6 +306,15 @@ private func seedState() -> ProfileState {
         profiles = ProfileStore(directory: directory.appending(path: "profiles"), defaults: defaults)
         sync = makeSync()
         sync.profiles = profiles
+    }
+
+    /// Waits for a refresh that folded into an earlier one to reach its page request.
+    func awaitTokens(_ count: Int) async throws {
+        for _ in 0..<2_000 {
+            if tokens.count >= count { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        throw CocoaError(.fileReadUnknown)
     }
 
     func cleanUp() {
@@ -418,6 +480,78 @@ private func seedState() -> ProfileState {
     #expect(merged == left.merged(with: right.merged(with: cleared)))
     #expect(merged == cleared.merged(with: left).merged(with: right))
     #expect(merged.libraries["drive"]?.played == ["c"])
+}
+
+@Test @MainActor func profileOpenedWithoutSavedDataGetsTheFamilyCopyBackFromICloud() async throws {
+    let fixture = try ProfileMergeFixture()
+    defer { fixture.cleanUp() }
+    let owner = try #require(fixture.profiles.owner)
+    fixture.profiles.updateLibrary("drive") {
+        $0.favourites = ["synced"]
+        $0.playlists = [.init(id: "list", name: "Kept", trackIDs: ["synced"], created: Date(timeIntervalSince1970: 1))]
+    }
+    fixture.profiles.updateSettings { $0.appearance = "Dark" }
+    let synced = fixture.profiles.state
+    fixture.pages = [.init(records: [], token: Data("cursor".utf8))]
+    await fixture.sync.refresh(reason: "baseline")
+    #expect(fixture.uploaded.last?.syncDigest == synced.syncDigest)
+    fixture.profiles.lock()
+    await fixture.profiles.drainPersistence()
+    let file = fixture.directory.appending(path: "profiles/\(owner.id).json")
+    try Data("{ not a document".utf8).write(to: file, options: .atomic)
+    fixture.relaunch()
+    fixture.tokens = []
+    // Launch: the sync reads the document too, and the profile bound to this account fails to open.
+    await fixture.sync.refresh(reason: "relaunch")
+    #expect(fixture.tokens == [Data("cursor".utf8)])
+    #expect(fixture.profiles.isLocked)
+    #expect(fixture.profiles.persistenceFailure?.kind == .unreadable(profileID: owner.id))
+    #expect(fixture.profiles.canOpenWithoutSavedData)
+    // Opening without the data starts a pull from the very beginning, which brings the copy back.
+    fixture.profiles.sync = fixture.sync
+    fixture.tokens = []
+    fixture.uploaded = []
+    fixture.pages = [.init(records: [.success(try fixture.record(synced, id: owner.id))], token: Data("cursor-2".utf8))]
+    #expect(fixture.profiles.openWithoutSavedData())
+    #expect(fixture.profiles.activeID == owner.id)
+    #expect(fixture.profiles.libraryState(for: "drive").favourites.isEmpty)
+    await fixture.sync.refresh(reason: "restore")
+    #expect(fixture.tokens.count == 1 && fixture.tokens[0] == nil)
+    #expect(fixture.profiles.libraryState(for: "drive").favourites == ["synced"])
+    #expect(fixture.profiles.libraryState(for: "drive").playlists.map(\.name) == ["Kept"])
+    #expect(fixture.profiles.state.settings.appearance == "Dark")
+    #expect(fixture.profiles.state.syncDigest == synced.syncDigest)
+    #expect(fixture.uploaded.isEmpty)
+    #expect(fixture.profiles.persistenceFailure == nil)
+    // The restored document is durable, and the set-aside original is still there to inspect.
+    let restored = ProfileStore(directory: fixture.directory.appending(path: "profiles"), defaults: fixture.defaults)
+    #expect(restored.storedState(id: owner.id).libraries["drive"]?.favourites == ["synced"])
+    let kept = try FileManager.default.contentsOfDirectory(at: fixture.directory.appending(path: "profiles"), includingPropertiesForKeys: nil)
+        .filter { $0.lastPathComponent.hasPrefix("\(owner.id).unreadable-") && $0.pathExtension == "json" }
+    #expect(try Data(contentsOf: try #require(kept.first)) == Data("{ not a document".utf8))
+    // The refresh the set-aside asked for folds into the one above and continues from its cursor.
+    try await fixture.awaitTokens(2)
+    #expect(fixture.tokens == [nil, Data("cursor-2".utf8)])
+}
+
+@Test @MainActor func profileSyncPullsFromTheStartAgainWhenADocumentIsSetAsideMidPage() async throws {
+    let fixture = try ProfileMergeFixture()
+    defer { fixture.cleanUp() }
+    let id = try #require(fixture.profiles.activeID)
+    fixture.pages = [.init(records: [], token: Data("cursor".utf8))]
+    await fixture.sync.refresh(reason: "baseline")
+    fixture.tokens = []
+    fixture.pages = [.init(records: [], token: Data("stale".utf8)), .init(records: [], token: Data("fresh".utf8))]
+    fixture.duringChanges = { fixture.duringChanges = nil; fixture.sync.documentSetAside(id: id) }
+    await fixture.sync.refresh(reason: "reset mid-page")
+    #expect(fixture.tokens == [Data("cursor".utf8), nil])
+    try await fixture.awaitTokens(3)
+    #expect(fixture.tokens == [Data("cursor".utf8), nil, Data("fresh".utf8)])
+    // The cursor that survives a relaunch is the one from the pull that started over.
+    fixture.relaunch()
+    fixture.tokens = []
+    await fixture.sync.refresh(reason: "after relaunch")
+    #expect(fixture.tokens == [Data("fresh".utf8)])
 }
 
 @Test @MainActor func profileRecoveryKeepsTargetRemovalsAndReceiptAcrossRelaunch() throws {
