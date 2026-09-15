@@ -405,6 +405,8 @@ struct DownloadAttemptTests {
         try await drain()
         harness.fail(try harness.startedJob(1))
         try await drain()
+        harness.fail(try harness.startedJob(2))
+        try await drain()
         let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
         #expect(state.outcome == .partial)
         #expect(state.outcome != .downloaded)
@@ -500,17 +502,14 @@ struct DownloadAttemptTests {
         let owner = harness.manager.owner(for: transferAlbum())
         harness.queue(owner)
         let job = try harness.startedJob(0)
-        let temporary = harness.directory.appending(path: "callback-\(UUID().uuidString)")
-        try transferBytes.write(to: temporary)
-        harness.delegate.urlSession(harness.session, downloadTask: harness.task(job), didFinishDownloadingTo: temporary)
-        let task = harness.task(job)
-        let response = HTTPURLResponse(url: URL(string: "https://nas.example")!, statusCode: 404, httpVersion: nil, headerFields: nil)!
-        (task as URLSessionTask).setValue(response, forKey: "response")
+        let incoming = harness.directory.appending(path: job.incomingFileName)
+        try transferBytes.write(to: incoming)
         harness.delegate.onFinish?(job, Int64(transferBytes.count), 404, nil)
         try await drain()
         let state = try #require(harness.manager.progressSnapshot(ownerID: owner.id, driveID: "nas-a"))
         #expect(state.outcome == .failed)
         #expect(!state.statusLine.contains("Downloaded"))
+        #expect(harness.manager.lastError?.contains("HTTP 404") == true)
     }
 
     @Test func interruptedBackgroundDownloadShowsFailedNotDownloaded() async throws {
