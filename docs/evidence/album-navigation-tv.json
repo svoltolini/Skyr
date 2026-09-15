@@ -1,0 +1,32 @@
+{
+  "platform": "tvOS Simulator 26.5",
+  "fixtureBundle": "com.samuelvoltolini.skyr.tvnavigationfixture",
+  "sourceHashes": {
+    "Packages/SkyrCore/Sources/SkyrCore/State/AppModel.swift": "adefe1e4c82affb6f7bf0d44a34e031e9ace31b5cb404eec0946f3d412bac1b3",
+    "SkyrTV/TVRootView.swift": "f91e10dfa004d266423c336928b7c988029c9c5f1eedfbcf6de42a7d1b4f7f1e"
+  },
+  "checks": [
+    {
+      "origin": "Now Playing",
+      "track": "Slow Pulse Meridian",
+      "artist": "Halden Vey",
+      "action": "More > Go to Album",
+      "destination": "Nocturne Drift / Halden Vey",
+      "currentSongMarked": true,
+      "passed": true
+    },
+    {
+      "origin": "Album content focused",
+      "action": "Back",
+      "destination": "Library root",
+      "passed": true
+    }
+  ],
+  "configuration": "Release, isolated synthetic/sample catalogue, mock CloudKit, temporary app storage, no real audio stream or NAS",
+  "input": "Native UI automation of simulator remote keys",
+  "limits": [
+    "Simulator AX exposes window chrome only; destination and Back checked visually.",
+    "Delayed cancellation is covered by deterministic package tests, not an additional timed UI mutation.",
+    "Physical remote, spoken VoiceOver and signed NAS playback are separate acceptance gates."
+  ]
+}

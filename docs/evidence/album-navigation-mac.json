@@ -1,0 +1,78 @@
+{
+  "issue": 24,
+  "platform": "macOS",
+  "configuration": "Release, signing disabled at compile; ad hoc signed isolated fixture",
+  "checked_at_utc": "2026-09-15T00:10:33.487817+00:00",
+  "fixture": "/tmp/skyr-native-performance-next/SkyrNativeBadgeCheck.app",
+  "fixture_bundle_id": "com.samuelvoltolini.skyr.performance.native-badge-check",
+  "marketing_version": "1.0",
+  "build_number": "202609142150",
+  "binary_sha256": "e8152ad4206286ec68dcb3f9d7e79cf5a1c5c41e8c122a1fd60e78717491e534",
+  "source_root": "/tmp/skyr-navigation-performance/nativenstable",
+  "source_sha256": {
+    "SkyrMac/MacTrackTable.swift": "ae17f8fdc3c2e6ca258a1d0c7caaaf8d4c4f88870bce4dd6016c1fb34193856b",
+    "SkyrMac/MacLibraryView.swift": "1bd5224aa0f5f30d4316f6fc87556b816e1d553e48aeab9a5e4ea3e7ff76535a",
+    "SkyrMac/MacRootView.swift": "be11af164545293ada44f1f4c83acf7061df038a0f0642bbb17574277f5b6229",
+    "SkyrMac/MacNavigation.swift": "6f6754ed6b6502ec5144ed2e77d86e0a5044f24ba3907fb913d3596a110b11b4",
+    "SkyrMac/MacNowPlayingInspector.swift": "d48924eb70a3dafba3d1eb16b3341eacf75c7b6a87c90e4f01353924d45bf003",
+    "SkyrMac/MacCollectionViews.swift": "b3deb468578c79cc50b183a4152142769f66bb38e8072073492242caf922e7a3",
+    "Skyr/Views/Library/LibraryView.swift": "18b66dbd6b2aafdef12aaaffc62f4f4f409a4cf846e2ff04ca1fb654ed2bf420",
+    "Packages/SkyrCore/Sources/SkyrCore/State/AppModel.swift": "fe77cb03f3647f987f54f76543f94f3247db081cf523a155410ae741bf91493b"
+  },
+  "checks": [
+    {
+      "origin": "Library > Songs",
+      "data": "synthetic catalogue of 100 songs",
+      "selection": "row 21, Song 0, Artist 2, Album 2",
+      "action": "native song table Control-Return > Go to Album",
+      "observed_destination": "Album 2 / Artist 2, 10 songs",
+      "back": "Albums grid, 10 albums",
+      "result": "passed"
+    },
+    {
+      "origin": "Duplicate Check playlist",
+      "data": "synthetic 4-entry playlist containing duplicate Song 0",
+      "selection": "occurrence 4, Song 0, Artist 0, Album 0",
+      "action": "native song table Control-Return > Go to Album",
+      "observed_destination": "Album 0 / Artist 0, 10 songs",
+      "back": "Albums grid, 10 albums",
+      "result": "passed"
+    },
+    {
+      "origin": "Search",
+      "data": "synthetic catalogue of 100 songs",
+      "selection": "query Song 7, selected result Song 7 / Artist 7 / Album 7",
+      "action": "native song table Control-Return > Go to Album",
+      "observed_destination": "Album 7 / Artist 7, 10 songs",
+      "back": "Albums grid, 10 albums",
+      "result": "passed"
+    },
+    {
+      "origin": "Downloads",
+      "data": "built-in sample library with simulated Nocturne Drift downloads",
+      "selection": "Copper Wire / Halden Vey playing; Downloads section selected",
+      "action": "Now Playing inspector > Go to Album",
+      "observed_destination": "Nocturne Drift / Halden Vey, 9 songs",
+      "back": "Albums grid, 12 albums",
+      "result": "passed"
+    }
+  ],
+  "isolation": {
+    "data_directories": [
+      "/tmp/skyr-native-performance-next/manual-2",
+      "/tmp/skyr-native-performance-next/manual-3"
+    ],
+    "cloud": "no-account mock",
+    "audio": "local silent WAV; volume zero",
+    "nas": "none",
+    "downloads": "built-in simulation only; removed after badge validation",
+    "fixture_processes": "both runs quit with exit 0"
+  },
+  "boundaries": [
+    "Mac showAlbum deliberately switches to Albums; Back returns its album grid rather than the prior sidebar section",
+    "Normal navigation routes only; delayed iOS/tvOS request-generation guard is validated separately by root",
+    "Ordinary synthetic/sample content only; no actual user library or NAS account used",
+    "Spoken VoiceOver not tested",
+    "No source mutation or GitHub issue closure by this agent"
+  ]
+}

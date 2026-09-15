@@ -493,25 +493,59 @@ public final class AppModel {
 
     // MARK: Browsing
 
-    public var selectedTab: AppTab = .library
+    public var selectedTab: AppTab = .library {
+        didSet { if selectedTab != .library { cancelPendingAlbumNavigation() } }
+    }
     public var facet: LibraryFacet = .recentlyAdded
     /// Set to push an album onto the Library tab from outside it, for example from the player sheet.
     public var albumToOpen: Album?
     public private(set) var albumNavigationRequest = 0
+    private var albumNavigationCommand = UUID()
+
+    struct PendingAlbumNavigation {
+        let command: UUID
+        let albumID: String
+        let sourceID: String
+        let connection: UUID
+        let profileID: String?
+        let profileSession: UUID?
+    }
 
     /// Closes whatever is in front, switches to the Library tab and opens the album there.
     public func showAlbum(_ album: Album) {
-        albumNavigationRequest += 1
-        selectedTab = .library
+        guard let request = beginAlbumNavigation(album) else { return }
         #if os(macOS)
-        albumToOpen = album
+        finishAlbumNavigation(request)
         #else
         Task { [weak self] in
             // Let the sheet finish dismissing before the page pushes underneath it.
-            try? await Task.sleep(for: .milliseconds(350))
-            self?.albumToOpen = album
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            self?.finishAlbumNavigation(request)
         }
         #endif
+    }
+
+    /// Platform navigation owners cancel a pending push when the listener chooses another section.
+    public func cancelPendingAlbumNavigation() { albumNavigationCommand = UUID() }
+
+    func beginAlbumNavigation(_ album: Album) -> PendingAlbumNavigation? {
+        guard profiles?.isLocked != true, library.contentSourceID == library.catalogue.driveID,
+              library.album(id: album.id) != nil else { return nil }
+        albumNavigationCommand = UUID()
+        albumNavigationRequest += 1
+        selectedTab = .library
+        return PendingAlbumNavigation(command: albumNavigationCommand, albumID: album.id,
+                                      sourceID: library.catalogue.driveID, connection: connectionGeneration,
+                                      profileID: profiles?.activeID, profileSession: profiles?.sessionID)
+    }
+
+    func finishAlbumNavigation(_ request: PendingAlbumNavigation) {
+        guard request.command == albumNavigationCommand, selectedTab == .library,
+              connectionGeneration == request.connection, profiles?.isLocked != true,
+              profiles?.activeID == request.profileID, profiles?.sessionID == request.profileSession,
+              library.catalogue.driveID == request.sourceID, library.contentSourceID == request.sourceID,
+              let album = library.album(id: request.albumID) else { return }
+        albumToOpen = album
     }
 
     public var playlistToOpen: Playlist?

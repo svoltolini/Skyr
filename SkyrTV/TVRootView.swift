@@ -75,6 +75,9 @@ struct TVMainView: View {
         .onChange(of: model.albumNavigationRequest) { _, _ in
             tab = .library
         }
+        .onChange(of: tab) { _, tab in
+            if tab != .library { model.cancelPendingAlbumNavigation() }
+        }
         .task {
             // Development shortcuts, applied once the tabs exist: `--play` starts the first album,
             // `--tab playlists` and friends open a tab.
