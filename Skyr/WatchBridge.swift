@@ -5,6 +5,11 @@ import WatchConnectivity
 /// Keeps a paired Apple Watch supplied with the playlists it may download and the sign-in it needs
 /// to fetch them from the server itself. The catalogue travels as a file, the credentials as a
 /// queued user-info payload; both are delivered even while the watch app is closed.
+///
+/// When a profile is locked or switched, `revoke()` queues a revocation message that tells the
+/// Watch to clear its cached credentials, catalogue, and downloads. This message is delivered
+/// even when the Watch is disconnected — WatchConnectivity queues `transferUserInfo` payloads
+/// and delivers them when the Watch becomes reachable again.
 @MainActor
 final class WatchBridge: NSObject, WCSessionDelegate {
     /// Asked for the current state whenever a sync is due.
@@ -17,6 +22,22 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
+    }
+
+    /// Tells the Watch to discard any cached credentials and catalogue. Called when the active
+    /// profile is locked or switched, so another profile's data never leaks. The revocation is
+    /// queued via `transferUserInfo` so a disconnected Watch receives it on next sync.
+    func revoke() {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else {
+            DiagnosticsLog.shared.record("Watch revoke skipped: state \(session.activationState.rawValue), paired \(session.isPaired), app installed \(session.isWatchAppInstalled)")
+            return
+        }
+        lastCatalogueKey = nil
+        lastCredentials = nil
+        _ = session.transferUserInfo(["kind": "revoke", "timestamp": Date.now.timeIntervalSince1970])
+        DiagnosticsLog.shared.record("Watch revoke: queued credential and catalogue revocation")
     }
 
     /// Sends whatever changed since the last time; nothing when no watch is paired.

@@ -147,6 +147,21 @@ final class WatchDownloads: NSObject, URLSessionDownloadDelegate {
         saveManifests()
     }
 
+    /// Clears all downloads and manifests. Called when the phone revokes access due to profile
+    /// lock or switch — cached audio for another profile must not remain on the Watch.
+    func clearAll() {
+        session.getAllTasks { @Sendable tasks in
+            for task in tasks { task.cancel() }
+        }
+        expected.removeAll()
+        errors.removeAll()
+        manifests.removeAll()
+        currentCatalogue = nil
+        try? FileManager.default.removeItem(at: Self.root)
+        try? FileManager.default.removeItem(at: Self.manifestURL)
+        DiagnosticsLog.shared.record("Watch downloads: cleared all downloads and manifests")
+    }
+
     func reconnect(identifier: String, completion: @escaping () -> Void) {
         guard identifier == Self.sessionIdentifier else { completion(); return }
         backgroundCompletion = completion
