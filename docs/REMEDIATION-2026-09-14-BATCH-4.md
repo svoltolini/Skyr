@@ -1,8 +1,8 @@
-# Skyr 1.0 — responsiveness and artwork privacy
+# Gumbo 1.0 — responsiveness and artwork privacy
 
-This is the historical batch 4 record. Its optional Apple artwork behavior is superseded by the source-only release change tracked in [#34](https://github.com/svoltolini/Skyr/issues/34); see the current privacy policy and release evidence.
+This is the historical batch 4 record. Its optional Apple artwork behavior is superseded by the source-only release change tracked in [#34](https://github.com/svoltolini/gumbo/issues/34); see the current privacy policy and release evidence.
 
-Batch 4 addresses [#33](https://github.com/svoltolini/Skyr/issues/33) and the in-app work in [#14](https://github.com/svoltolini/Skyr/issues/14). Marketing version remains **1.0**; every target uses build **202609142150**.
+Batch 4 addresses [#33](https://github.com/svoltolini/gumbo/issues/33) and the in-app work in [#14](https://github.com/svoltolini/gumbo/issues/14). Marketing version remains **1.0**; every target uses build **202609142150**.
 
 ## Changes
 
@@ -31,7 +31,7 @@ Native Mac measurements used temporary Release builds from baseline `0595808f7f0
 
 These are synchronous call durations, not complete frame-rendering times. A candidate flush schedules a background checkpoint after edits are journaled; its short duration is not the snapshot's completion time. Persistence preparation matches the final implementation after removing temporary timing probes and the final error-message wording. The fixture mocks CloudKit and predates the final guard against an old account's page continuing after an asynchronous decode failure, as well as the last wording and UI-only fixes. Those changes do not alter the timed routine profile calls.
 
-Instruments recorded Hitches and Time Profiler data, but no SwiftUI view-body detail. The candidate traces still contain long stalls, reaching **516.666 ms at 5,000 tracks and 1,333.332 ms at 15,000 tracks**, during the native playback/navigation run. Whole-trace hitch counts are not a controlled before/after comparison: durations, activity and flush counts differ, and the traces include startup and window/compositor work. Routine profile persistence is improved and its durability checks pass; global UI smoothness is not established. [#35](https://github.com/svoltolini/Skyr/issues/35) tracks the remaining navigation stalls and separate profiling of cold profile activation and incoming remote merges.
+Instruments recorded Hitches and Time Profiler data, but no SwiftUI view-body detail. The candidate traces still contain long stalls, reaching **516.666 ms at 5,000 tracks and 1,333.332 ms at 15,000 tracks**, during the native playback/navigation run. Whole-trace hitch counts are not a controlled before/after comparison: durations, activity and flush counts differ, and the traces include startup and window/compositor work. Routine profile persistence is improved and its durability checks pass; global UI smoothness is not established. [#35](https://github.com/svoltolini/gumbo/issues/35) tracks the remaining navigation stalls and separate profiling of cold profile activation and incoming remote merges.
 
 On an iPhone 17 Pro simulator running iOS 26.5, the default-off choice and offline policy were checked at standard and Accessibility Extra Large text sizes. The disclosure and buttons remain readable, and the welcome screen is hidden from accessibility while onboarding is presented. On Apple TV 4K / tvOS 26.5, remote focus, full-screen privacy text, scrolling and Back were checked. Both signed simulator Release builds passed. Mac runtime, physical touch/VoiceOver, NAS and playback-device journeys remain in the acceptance matrix.
 
@@ -51,7 +51,7 @@ Apple accepted all three uploads. App Store Connect verified every build as **VA
 | Mac | `02764b35-932c-4c4c-9677-9be4e77e605c` |
 | Apple TV | `b664224f-0899-4f01-858e-0e22dfa6b8ea` |
 
-Source implementation: `75fdd1b1ac307dc70b6da6c0b5a54fe44ae89530`, [PR #36](https://github.com/svoltolini/Skyr/pull/36). Subsequent evidence-only documentation changes do not alter the binaries. External beta review and public App Store submission were not performed. Availability for installation does not complete device/provider acceptance.
+Source implementation: `75fdd1b1ac307dc70b6da6c0b5a54fe44ae89530`, [PR #36](https://github.com/svoltolini/gumbo/pull/36). Subsequent evidence-only documentation changes do not alter the binaries. External beta review and public App Store submission were not performed. Availability for installation does not complete device/provider acceptance.
 
 The tests use synthetic profiles, ordinary local audio and intercepted artwork requests. They do not send personal library terms to Apple or connect to a live NAS. Axiom HIG, SwiftUI performance and accessibility guidance informed the controls and profiling procedure, using the previously reviewed reference revision `71d342b65068d45787f5b6f45ce9deaf58f9629d`.
 
@@ -59,6 +59,6 @@ The tests use synthetic profiles, ordinary local audio and intercepted artwork r
 
 The owner confirmed no public website or support contact exists yet. App Store Connect's privacy-policy URL/text and public description/support fields are unset; this does not prevent the authorized internal TestFlight batch. Complete and publish the policy and app-level privacy answers before public submission. #14 remains open until those acceptance items are finished.
 
-[#34](https://github.com/svoltolini/Skyr/issues/34) tracks Apple's artwork usage terms. The archived Search API documentation constrains promotional artwork use and specifies adjacent store links/badges. Consent alone does not establish usage rights. Confirm the permitted use or omit external Apple artwork from the public release.
+[#34](https://github.com/svoltolini/gumbo/issues/34) tracks Apple's artwork usage terms. The archived Search API documentation constrains promotional artwork use and specifies adjacent store links/badges. Consent alone does not establish usage rights. Confirm the permitted use or omit external Apple artwork from the public release.
 
 The existing all-platform TestFlight acceptance matrix in #12 still covers real NAS/CloudKit, Watch transfers, CarPlay, accessibility and network interruption. Local tests and Mac fixture measurements do not complete those device/provider checks.
