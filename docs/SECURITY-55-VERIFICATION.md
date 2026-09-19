@@ -1,6 +1,6 @@
 # Security Issue #55 Verification — Family Revocation Credential Isolation
 
-**Issue:** [#55 - Failed family revocation leaves stale credentials accessible](https://github.com/svoltolini/Skyr/issues/55)
+**Issue:** [#55 - Failed family revocation leaves stale credentials accessible](https://github.com/svoltolini/gumbo/issues/55)
 
 **Severity:** P1 Release Blocker
 
