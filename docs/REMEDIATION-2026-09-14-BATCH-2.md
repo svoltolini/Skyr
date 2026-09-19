@@ -1,10 +1,10 @@
-# Skyr 1.0 — second remediation batch
+# Gumbo 1.0 — second remediation batch
 
 Date: 14 September 2026
 
 Base: `e7510e9519761ef4f7cc282c141592a6a5d6b6af`
 
-Branch: `codex/release-blockers`; [draft PR #32](https://github.com/svoltolini/Skyr/pull/32).
+Branch: `codex/release-blockers`; [draft PR #32](https://github.com/svoltolini/gumbo/pull/32).
 
 This continues the [first batch](REMEDIATION-2026-09-14.md). Related issues remain open for review, merging, and the outstanding device/provider acceptance. This is not public-release approval.
 
