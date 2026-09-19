@@ -1,4 +1,4 @@
-# Skyr P1 Board Status — 15 September 2026
+# Gumbo P1 Board Status — 15 September 2026
 
 This document records the verification of open P1 issues and security filing status following the earlier triage. It does not include TestFlight upload or marketing version changes.
 
@@ -121,7 +121,7 @@ Additional tests: `profileMergeDeletionSurvivesUnrelatedEditsAndStaleReplay`, `p
 
 ## Issue #35 — Mac large-library navigation stalls
 
-**Status:** UI/POLISH LANE — not Skyr core work
+**Status:** UI/POLISH LANE — not Gumbo core work
 
 This issue has labels `bug`, `priority:P1`, `area:ui-ux` and tracks Mac navigation stalls (516ms–1333ms at 5k/15k tracks). Batch 4 and batch 5 improved profile persistence responsiveness, but global UI smoothness work remains.
 
@@ -133,17 +133,17 @@ Per constraints, this is Polish/a11y optimization work and should not be taken i
 
 | Issue | Title | Status | Owner |
 |-------|-------|--------|-------|
-| #1 | Watch downloads fail for nested NAS paths | Fixed — awaiting Tester | Skyr |
-| #3 | Downloaded cache from another NAS | Fixed — awaiting Tester | Skyr |
-| #7 | CloudKit sync not scoped to Apple Account | Fixed — awaiting Tester | Skyr |
-| #8 | Profile deletion not retried offline | Fixed — awaiting Tester | Skyr |
-| #10 | CloudKit conflict loses independent edits | Fixed — awaiting Tester | Skyr |
-| #12 | TestFlight acceptance matrix | Needs device pass | Skyr |
-| #13 | App Store packaging validation | Needs metadata/URLs | Skyr |
-| #14 | Privacy copy and artwork disclosure | Policy URL needed | Skyr |
+| #1 | Watch downloads fail for nested NAS paths | Fixed — awaiting Tester | Gumbo |
+| #3 | Downloaded cache from another NAS | Fixed — awaiting Tester | Gumbo |
+| #7 | CloudKit sync not scoped to Apple Account | Fixed — awaiting Tester | Gumbo |
+| #8 | Profile deletion not retried offline | Fixed — awaiting Tester | Gumbo |
+| #10 | CloudKit conflict loses independent edits | Fixed — awaiting Tester | Gumbo |
+| #12 | TestFlight acceptance matrix | Needs device pass | Gumbo |
+| #13 | App Store packaging validation | Needs metadata/URLs | Gumbo |
+| #14 | Privacy copy and artwork disclosure | Policy URL needed | Gumbo |
 | #35 | Mac navigation stalls | UI/Polish lane | Polish |
 
-**Connect-owned (not Skyr):** #6 DSM 2FA reauthentication (partially merged, needs 2FA device testing)
+**Connect-owned (not Gumbo):** #6 DSM 2FA reauthentication (partially merged, needs 2FA device testing)
 
 ---
 
