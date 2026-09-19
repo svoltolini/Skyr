@@ -1,4 +1,4 @@
-# Skyr 1.0 release audit
+# Gumbo 1.0 release audit
 
 Date: 14 September 2026
 
@@ -6,13 +6,13 @@ Target public-release weekend: 19–20 September 2026
 
 Audit baseline: `73f85b74ab60a9707de2f744161b172d21ef5b4e`
 
-Repository: [svoltolini/Skyr](https://github.com/svoltolini/Skyr) (private)
+Repository: [svoltolini/Gumbo](https://github.com/svoltolini/gumbo) (private)
 
 Follow-up: the owner approved remediation and the six private security issue payloads. See the [first remediation batch](REMEDIATION-2026-09-14.md) for current implementation, verification, and the missing scan-artifact publication blocker. The findings and results below preserve the original audit checkpoint.
 
 ## Release assessment
 
-Skyr is not ready for an unrestricted public 1.0 release at this checkpoint. The source compiles in Release configuration, the signed iPhone and Apple TV simulator experiences are visually coherent, and the app architecture is suitable for the intended product. The audit found failures in Watch downloads, offline download truthfulness, NAS/cache identity, interrupted indexing, two-factor reconnection, CloudKit convergence, profile authorization, and distribution validation.
+Gumbo is not ready for an unrestricted public 1.0 release at this checkpoint. The source compiles in Release configuration, the signed iPhone and Apple TV simulator experiences are visually coherent, and the app architecture is suitable for the intended product. The audit found failures in Watch downloads, offline download truthfulness, NAS/cache identity, interrupted indexing, two-factor reconnection, CloudKit convergence, profile authorization, and distribution validation.
 
 The GitHub backlog contains 31 verified product, reliability, UX, accessibility, and release tasks. A separate sealed Codex Security scan contains six validated findings; their exact private GitHub issue payloads await owner review.
 
@@ -46,31 +46,31 @@ The first unsigned simulator launch failed because the audit artifact lacked Clo
 
 The following GitHub issues carry `priority:P1` and `release:blocker`:
 
-1. [Watch downloads fail for normal nested NAS paths](https://github.com/svoltolini/Skyr/issues/1)
-2. [Real offline downloads can be falsely marked as complete](https://github.com/svoltolini/Skyr/issues/2)
-3. [Downloaded audio cache can return a file from another NAS](https://github.com/svoltolini/Skyr/issues/3)
-4. [Partially failed refresh can replace the full library with a subset](https://github.com/svoltolini/Skyr/issues/4)
-5. [Cancelled scan can publish stale catalogue and connection state](https://github.com/svoltolini/Skyr/issues/5)
-6. [DSM two-factor accounts cannot reauthenticate after restore or reconnect](https://github.com/svoltolini/Skyr/issues/6)
-7. [CloudKit sync state is not reset or scoped when the Apple Account changes](https://github.com/svoltolini/Skyr/issues/7)
-8. [Offline or failed profile deletion is never retried in CloudKit](https://github.com/svoltolini/Skyr/issues/8)
-9. [CloudKit cursor advances past failed record changes](https://github.com/svoltolini/Skyr/issues/9)
-10. [Whole-document CloudKit conflict policy loses independent profile edits](https://github.com/svoltolini/Skyr/issues/10)
-11. [Cancelled or superseded sign-in can still mutate the active connection](https://github.com/svoltolini/Skyr/issues/11)
-12. [Run the signed TestFlight acceptance matrix on every shipping platform](https://github.com/svoltolini/Skyr/issues/12)
-13. [Complete App Store packaging and capability validation for every target](https://github.com/svoltolini/Skyr/issues/13)
-14. [Correct privacy copy and disclose external artwork lookup](https://github.com/svoltolini/Skyr/issues/14)
-15. [Enforce profile lock across widgets, snapshots, and Watch handoff](https://github.com/svoltolini/Skyr/issues/15)
+1. [Watch downloads fail for normal nested NAS paths](https://github.com/svoltolini/gumbo/issues/1)
+2. [Real offline downloads can be falsely marked as complete](https://github.com/svoltolini/gumbo/issues/2)
+3. [Downloaded audio cache can return a file from another NAS](https://github.com/svoltolini/gumbo/issues/3)
+4. [Partially failed refresh can replace the full library with a subset](https://github.com/svoltolini/gumbo/issues/4)
+5. [Cancelled scan can publish stale catalogue and connection state](https://github.com/svoltolini/gumbo/issues/5)
+6. [DSM two-factor accounts cannot reauthenticate after restore or reconnect](https://github.com/svoltolini/gumbo/issues/6)
+7. [CloudKit sync state is not reset or scoped when the Apple Account changes](https://github.com/svoltolini/gumbo/issues/7)
+8. [Offline or failed profile deletion is never retried in CloudKit](https://github.com/svoltolini/gumbo/issues/8)
+9. [CloudKit cursor advances past failed record changes](https://github.com/svoltolini/gumbo/issues/9)
+10. [Whole-document CloudKit conflict policy loses independent profile edits](https://github.com/svoltolini/gumbo/issues/10)
+11. [Cancelled or superseded sign-in can still mutate the active connection](https://github.com/svoltolini/gumbo/issues/11)
+12. [Run the signed TestFlight acceptance matrix on every shipping platform](https://github.com/svoltolini/gumbo/issues/12)
+13. [Complete App Store packaging and capability validation for every target](https://github.com/svoltolini/gumbo/issues/13)
+14. [Correct privacy copy and disclose external artwork lookup](https://github.com/svoltolini/gumbo/issues/14)
+15. [Enforce profile lock across widgets, snapshots, and Watch handoff](https://github.com/svoltolini/gumbo/issues/15)
 
 Five of the pending security issues also carry release-blocker priority in their exact preview: automatic HTTP credential transport, malformed metadata termination, failed family revocation, owner PIN removal, and cross-NAS family credential scoping. The oversized-cover allocation finding is P2.
 
 ## Important follow-up
 
-- Downloads and playback: [#16](https://github.com/svoltolini/Skyr/issues/16), [#17](https://github.com/svoltolini/Skyr/issues/17), [#18](https://github.com/svoltolini/Skyr/issues/18), [#19](https://github.com/svoltolini/Skyr/issues/19), [#20](https://github.com/svoltolini/Skyr/issues/20)
-- Catalogue and metadata: [#21](https://github.com/svoltolini/Skyr/issues/21), [#22](https://github.com/svoltolini/Skyr/issues/22), [#23](https://github.com/svoltolini/Skyr/issues/23), [#25](https://github.com/svoltolini/Skyr/issues/25)
-- Platform UI and accessibility: [#24](https://github.com/svoltolini/Skyr/issues/24), [#26](https://github.com/svoltolini/Skyr/issues/26), [#27](https://github.com/svoltolini/Skyr/issues/27), [#28](https://github.com/svoltolini/Skyr/issues/28), [#30](https://github.com/svoltolini/Skyr/issues/30)
-- NAS onboarding: [#29](https://github.com/svoltolini/Skyr/issues/29)
-- Build hygiene: [#31](https://github.com/svoltolini/Skyr/issues/31)
+- Downloads and playback: [#16](https://github.com/svoltolini/gumbo/issues/16), [#17](https://github.com/svoltolini/gumbo/issues/17), [#18](https://github.com/svoltolini/gumbo/issues/18), [#19](https://github.com/svoltolini/gumbo/issues/19), [#20](https://github.com/svoltolini/gumbo/issues/20)
+- Catalogue and metadata: [#21](https://github.com/svoltolini/gumbo/issues/21), [#22](https://github.com/svoltolini/gumbo/issues/22), [#23](https://github.com/svoltolini/gumbo/issues/23), [#25](https://github.com/svoltolini/gumbo/issues/25)
+- Platform UI and accessibility: [#24](https://github.com/svoltolini/gumbo/issues/24), [#26](https://github.com/svoltolini/gumbo/issues/26), [#27](https://github.com/svoltolini/gumbo/issues/27), [#28](https://github.com/svoltolini/gumbo/issues/28), [#30](https://github.com/svoltolini/gumbo/issues/30)
+- NAS onboarding: [#29](https://github.com/svoltolini/gumbo/issues/29)
+- Build hygiene: [#31](https://github.com/svoltolini/gumbo/issues/31)
 
 ## Tailscale recommendation
 
