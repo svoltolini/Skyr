@@ -1,6 +1,6 @@
-# Skyr 1.0 — native Mac, Settings and library reliability
+# Gumbo 1.0 — native Mac, Settings and library reliability
 
-This batch addresses [#37](https://github.com/svoltolini/Skyr/issues/37), [#38](https://github.com/svoltolini/Skyr/issues/38), [#20](https://github.com/svoltolini/Skyr/issues/20), [#23](https://github.com/svoltolini/Skyr/issues/23) and [#30](https://github.com/svoltolini/Skyr/issues/30), with further work on navigation, performance, accessibility and remote-access guidance. Marketing version remains **1.0**, and the source build remains **202609142150**. At the owner's request, intermediate batches are merged without TestFlight uploads; the final consolidated candidate will receive a new build number.
+This batch addresses [#37](https://github.com/svoltolini/gumbo/issues/37), [#38](https://github.com/svoltolini/gumbo/issues/38), [#20](https://github.com/svoltolini/gumbo/issues/20), [#23](https://github.com/svoltolini/gumbo/issues/23) and [#30](https://github.com/svoltolini/gumbo/issues/30), with further work on navigation, performance, accessibility and remote-access guidance. Marketing version remains **1.0**, and the source build remains **202609142150**. At the owner's request, intermediate batches are merged without TestFlight uploads; the final consolidated candidate will receive a new build number.
 
 ## Native desktop behavior
 
@@ -28,7 +28,7 @@ Download-status aggregation and filesystem checks now run outside the main actor
 
 ## Remote access
 
-Onboarding and Server Settings include a native, optional Remote Access Help page. It explains installation on the NAS and each connecting device, the full MagicDNS hostname, HTTPS certificate requirements, DSM credentials, family network access separate from iCloud invitations, and the unverified independent Watch route. Direct HTTPS remains an alternative. Explicit HTTP does not imply that Skyr has detected or verified a VPN. The wording was checked against the official [Synology](https://tailscale.com/docs/integrations/synology), [sharing](https://tailscale.com/docs/features/sharing) and [MagicDNS](https://tailscale.com/docs/features/magicdns) documentation. Real home/away, VPN-off and certificate-error journeys remain in #29/#12.
+Onboarding and Server Settings include a native, optional Remote Access Help page. It explains installation on the NAS and each connecting device, the full MagicDNS hostname, HTTPS certificate requirements, DSM credentials, family network access separate from iCloud invitations, and the unverified independent Watch route. Direct HTTPS remains an alternative. Explicit HTTP does not imply that Gumbo has detected or verified a VPN. The wording was checked against the official [Synology](https://tailscale.com/docs/integrations/synology), [sharing](https://tailscale.com/docs/features/sharing) and [MagicDNS](https://tailscale.com/docs/features/magicdns) documentation. Real home/away, VPN-off and certificate-error journeys remain in #29/#12.
 
 ## Validation and limits
 
