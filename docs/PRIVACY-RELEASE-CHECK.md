@@ -16,7 +16,7 @@ App Store Connect API: app `6811461121`, app info `67902bd2-bf96-476e-b090-3b914
 | Family connection | NAS address, names, account and music folder in family CloudKit record; selected Family Access password in `record.encryptedValues`; anyone with the share link can join | `CloudSync.record(for: FamilyInfo)` |
 | Watch and widgets | Watch playlist metadata, mosaic colour pairs, and the connection information needed for NAS downloads; no transferred cover image files. Widgets receive cover copies and metadata in an app-group snapshot. | `SkyrWatch/WatchStore.swift`, `WatchDownloads.swift`, `Models/WatchCatalogue.swift`, `WidgetFeed.swift`, `SkyrShared/WidgetSnapshot.swift` |
 | Diagnostics | Local diagnostic file, potentially included in device backups, copied on user action; Apple separately provides TestFlight feedback/crash reports according to Apple settings | `DiagnosticsLog.swift`, `DiagnosticsView.swift` |
-| Biometrics | Operating-system authentication result; no biometric template exposed to Skyr | `ProfileStore.swift` |
+| Biometrics | Operating-system authentication result; no biometric template exposed to Gumbo | `ProfileStore.swift` |
 
 The package manifests include SkyrCore and SkyrShared, with no third-party SDK dependency. The project targets include privacy manifests declaring required UserDefaults/file-timestamp reasons, no tracking, and no developer-collected data types. These manifests are not substitutes for the app-level App Store answers.
 
