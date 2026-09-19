@@ -1,8 +1,8 @@
-# Skyr 1.0 — third remediation batch
+# Gumbo 1.0 — third remediation batch
 
 Date: 14 September 2026. Base: `f284565b289ae3dd048726516eb112d913e2728a`.
 
-This continues [batch 2](REMEDIATION-2026-09-14-BATCH-2.md) in [PR #32](https://github.com/svoltolini/Skyr/pull/32). Marketing version stays **1.0**. The candidate build is **202609142035** on all five targets.
+This continues [batch 2](REMEDIATION-2026-09-14-BATCH-2.md) in [PR #32](https://github.com/svoltolini/gumbo/pull/32). Marketing version stays **1.0**. The candidate build is **202609142035** on all five targets.
 
 ## Changes
 
@@ -20,7 +20,7 @@ This continues [batch 2](REMEDIATION-2026-09-14-BATCH-2.md) in [PR #32](https://
 | --- | --- |
 | Final shared package | **165 Release tests passed**, seven suites. Current package files exactly match the tested isolated snapshot. Includes 14 family access cases, 25 playback cases, four recovery integration cases, scoped transport/queued-download checks, merge/convergence and previous regression coverage. No real NAS or CloudKit mutations. |
 | Independent final review | No remaining blocker in the reviewed playback, family access and cloud corrections. Cloud review additionally passed 216 three-way history merge orders and 120 playlist reorder permutations. |
-| Large profile | 15,000-song CloudKit payload approximately 630 KB, with matching round-trip digest. Initial processing improved from about 5.73 s to 0.62 s in the reviewer fixture. Ordinary history update plus encoding remains about 50 ms at 5k / 165 ms at 15k; tracked in [#33](https://github.com/svoltolini/Skyr/issues/33). These are command-line timings, not device frame traces. |
+| Large profile | 15,000-song CloudKit payload approximately 630 KB, with matching round-trip digest. Initial processing improved from about 5.73 s to 0.62 s in the reviewer fixture. Ordinary history update plus encoding remains about 50 ms at 5k / 165 ms at 15k; tracked in [#33](https://github.com/svoltolini/gumbo/issues/33). These are command-line timings, not device frame traces. |
 | Final iOS archive | Passed with embedded Watch and widgets; all version 1.0 / build 202609142035. No project-source or asset warnings. |
 | Final macOS archive | Passed; no project-source or asset warnings. |
 | Final tvOS archive | Passed; no project-source or asset warnings. Xcode emits its expected skipped App Intents extraction message because this target has no AppIntents dependency. |
@@ -35,7 +35,7 @@ App Store Connect was read through the existing team API key. No App Store Conne
 
 ## Git and release record
 
-[PR #32](https://github.com/svoltolini/Skyr/pull/32) merged as `f18ea5915345a3e7f46cb16a6eeb09cbeb644a64`; batch 3 implementation is `328eb011835fb11b14858afb8bbf404de3ca7cae`.
+[PR #32](https://github.com/svoltolini/gumbo/pull/32) merged as `f18ea5915345a3e7f46cb16a6eeb09cbeb644a64`; batch 3 implementation is `328eb011835fb11b14858afb8bbf404de3ca7cae`.
 
 Closed with verification evidence: **#2, #4, #5, #11, #18, #22, #31**. **25 issues remain open**, including new performance follow-up #33. Twenty implemented/partial issues received explicit remaining-acceptance notes; open state does not mean no work was merged.
 
