@@ -1,4 +1,4 @@
-# App Store Connect checklist for Skyr Music 1.0
+# App Store Connect checklist for Gumbo Music 1.0
 
 This checklist documents the remaining App Store Connect (ASC) configuration steps required before public release. These items must be completed in the ASC web interface—they cannot be configured in the repository.
 
@@ -26,7 +26,7 @@ The following items are verified in the repository and signed builds:
 
 | Item | Status | Notes |
 |------|--------|-------|
-| App name | ⬜ Verify | "Skyr Music" |
+| App name | ⬜ Verify | "Gumbo Music" |
 | Subtitle | ⬜ Set | e.g., "Play music from your Synology NAS" |
 | Primary category | ⬜ Set | Music |
 | Secondary category | ⬜ Optional | Entertainment or Utilities |
