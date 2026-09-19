@@ -1,8 +1,8 @@
 # App Store Packaging Validation Checklist
 
-Skyr 1.0 — App Store distribution readiness
+Gumbo 1.0 — App Store distribution readiness
 
-This checklist provides concrete validation steps for every App Store submission. It consolidates the acceptance criteria from [#13](https://github.com/svoltolini/Skyr/issues/13) and evidence from prior remediation batches.
+This checklist provides concrete validation steps for every App Store submission. It consolidates the acceptance criteria from [#13](https://github.com/svoltolini/gumbo/issues/13) and evidence from prior remediation batches.
 
 ## Quick Reference
 
@@ -283,7 +283,7 @@ These items require owner action in App Store Connect before public submission.
 
 | Field | Status | Notes |
 | --- | --- | --- |
-| App name | ⚠️ Required | "Skyr Music" or "Skyr" |
+| App name | ⚠️ Required | "Gumbo Music" or "Gumbo" |
 | Subtitle | ⚠️ Required | Short tagline |
 | Category | ⚠️ Required | Music |
 | Content rating | ⚠️ Required | Complete questionnaire |
@@ -327,7 +327,7 @@ App Store Connect requires app-level privacy declarations separate from privacy 
 
 ### 9.1 Data Types Declaration
 
-Based on source review, Skyr:
+Based on source review, Gumbo:
 - Does not collect data for tracking
 - Does not use third-party analytics SDKs
 - Stores profile data in user's private CloudKit zone
@@ -386,7 +386,7 @@ Prepare notes explaining:
 | TestFlight upload (tvOS) | ✅ VALID | 1.0 (202609142150) |
 | Internal TestFlight group | ✅ IN_BETA_TESTING | All platforms |
 
-Evidence: [REMEDIATION-2026-09-14-BATCH-4.md](REMEDIATION-2026-09-14-BATCH-4.md), [PR #36](https://github.com/svoltolini/Skyr/pull/36)
+Evidence: [REMEDIATION-2026-09-14-BATCH-4.md](REMEDIATION-2026-09-14-BATCH-4.md), [PR #36](https://github.com/svoltolini/gumbo/pull/36)
 
 ### Remaining for Public Release
 
@@ -449,5 +449,5 @@ For automated validation in CI:
 - [Apple: App privacy details](https://developer.apple.com/app-store/app-privacy-details/)
 - [Apple: Privacy manifest files](https://developer.apple.com/documentation/bundleresources/privacy_manifest_files)
 - [Apple: App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
-- [Issue #13: Packaging validation](https://github.com/svoltolini/Skyr/issues/13)
+- [Issue #13: Packaging validation](https://github.com/svoltolini/gumbo/issues/13)
 - [Batch 4 evidence](REMEDIATION-2026-09-14-BATCH-4.md)
