@@ -1,6 +1,6 @@
-# Skyr
+# Gumbo
 
-Skyr is a native Apple-platform music app for a personal Synology NAS library. It talks directly to DSM File Station, builds a local catalogue, streams or downloads audio, and synchronizes family profiles through CloudKit.
+Gumbo is a native Apple-platform music app for a personal Synology NAS library. It talks directly to DSM File Station, builds a local catalogue, streams or downloads audio, and synchronizes family profiles through CloudKit.
 
 The repository contains the iPhone/iPad app, native Mac app, Apple TV app, Apple Watch companion, widgets, Live Activities, CarPlay scene, and the shared Swift package.
 
@@ -17,7 +17,7 @@ The repository contains the iPhone/iPad app, native Mac app, Apple TV app, Apple
 | Widgets | `SkyrWidgets` | Home, downloads, playlists, rediscovery, and download Live Activity |
 | Project definition | `project.yml` | XcodeGen targets, capabilities, deployment targets, and versions |
 
-The only supported server provider in the current implementation is Synology DSM/File Station. Bonjour discovers HTTP and SMB-advertising devices, but Skyr is not an SMB client.
+The only supported server provider in the current implementation is Synology DSM/File Station. Bonjour discovers HTTP and SMB-advertising devices, but Gumbo is not an SMB client.
 
 ## Local checks
 
@@ -38,4 +38,4 @@ Passing a build or local simulator check is not sufficient release evidence. Pro
 
 ## Current audit
 
-The release-readiness review from 14 September 2026 is in [docs/RELEASE-AUDIT-2026-09-14.md](docs/RELEASE-AUDIT-2026-09-14.md). The tracked backlog is in [GitHub Issues](https://github.com/svoltolini/Skyr/issues).
+The release-readiness review from 14 September 2026 is in [docs/RELEASE-AUDIT-2026-09-14.md](docs/RELEASE-AUDIT-2026-09-14.md). The tracked backlog is in [GitHub Issues](https://github.com/svoltolini/gumbo/issues).
