@@ -1,6 +1,6 @@
-# Skyr 1.0 — TestFlight Acceptance Matrix
+# Gumbo 1.0 — TestFlight Acceptance Matrix
 
-This document defines the complete acceptance testing required before making Skyr 1.0 publicly available. It consolidates requirements from [#12](https://github.com/svoltolini/Skyr/issues/12) and the [release audit](RELEASE-AUDIT-2026-09-14.md).
+This document defines the complete acceptance testing required before making Gumbo 1.0 publicly available. It consolidates requirements from [#12](https://github.com/svoltolini/gumbo/issues/12) and the [release audit](RELEASE-AUDIT-2026-09-14.md).
 
 **Current TestFlight build**: 1.0 (202609151900)  
 **Audit baseline**: `73f85b74ab60a9707de2f744161b172d21ef5b4e`
@@ -55,7 +55,7 @@ All targets must share the same version numbers:
 
 | Target | MARKETING_VERSION | CURRENT_PROJECT_VERSION |
 | --- | --- | --- |
-| Skyr (iOS) | 1.0 | 202609151900 |
+| Gumbo (iOS) | 1.0 | 202609151900 |
 | SkyrWidgets | 1.0 | 202609151900 |
 | SkyrWatch | 1.0 | 202609151900 |
 | SkyrMac | 1.0 | 202609151900 |
@@ -260,7 +260,7 @@ All P1 device acceptance rows must pass before public release. Attach diagnostic
 
 ## References
 
-- [Issue #12: Run the signed TestFlight acceptance matrix](https://github.com/svoltolini/Skyr/issues/12)
+- [Issue #12: Run the signed TestFlight acceptance matrix](https://github.com/svoltolini/gumbo/issues/12)
 - [Release Audit](RELEASE-AUDIT-2026-09-14.md)
 - [Remediation Batch 4](REMEDIATION-2026-09-14-BATCH-4.md)
 - [Privacy Release Check](PRIVACY-RELEASE-CHECK.md)
