@@ -1,4 +1,4 @@
-# Skyr 1.0 — Device Acceptance Checklist
+# Gumbo 1.0 — Device Acceptance Checklist
 
 **For: Tester/Sam**  
 **Build**: 1.0 (202609142150)  
@@ -261,7 +261,7 @@ List issues to fix post-release or in next build:
 ## Diagnostics Attachment
 
 For any failed tests, attach:
-- Console logs (Settings → Privacy → Analytics → Skyr)
+- Console logs (Settings → Privacy → Analytics → Gumbo)
 - Screenshot of error state
 - Steps to reproduce
 - Device/OS/build details
