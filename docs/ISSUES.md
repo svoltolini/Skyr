@@ -1,4 +1,4 @@
-# Skyr issue log
+# Gumbo issue log
 
 Crashes, hangs and data problems seen on real devices, with their cause and fix. Newest first.
 Build numbers are `CURRENT_PROJECT_VERSION` stamps (date and time of the build).
@@ -27,11 +27,11 @@ Build numbers are `CURRENT_PROJECT_VERSION` stamps (date and time of the build).
   accept, in any country, with no Family Sharing involved. But the app never declared
   `CKSharingSupported` in its Info.plist, so iOS and macOS had no app to hand the link to and
   opened it in the browser, where a share for a third-party app has no page. The link also only
-  works once Skyr is installed, and only in the same CloudKit environment as the build that made
+  works once Gumbo is installed, and only in the same CloudKit environment as the build that made
   it (TestFlight and App Store builds use Production; Xcode builds use Development).
 - **Fix:** `CKSharingSupported: true` on the iOS and Mac targets; a "Have an invitation link?"
   entry on the Welcome screen, in the Mac setup assistant and in Settings › Family that accepts a
-  pasted link (`CloudSync.accept(url:)`); invitation copy that says to install Skyr first and that
+  pasted link (`CloudSync.accept(url:)`); invitation copy that says to install Gumbo first and that
   Family Sharing plays no part. The invited person needs a build with this fix installed before
   opening the link.
 
