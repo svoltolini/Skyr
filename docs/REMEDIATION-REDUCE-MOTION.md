@@ -18,4 +18,4 @@ The [runtime evidence](evidence/reduce-motion.json) records these scoped checks.
 
 ## Remaining acceptance
 
-[#26](https://github.com/svoltolini/Skyr/issues/26) remains open for signed-device OS preference delivery, iPad-specific acceptance and the full animation matrix. Simultaneous stage/profile-lock changes, every collection insertion/removal, held-overscroll preference toggling and system navigation/focus animations were source-reviewed rather than recorded frame by frame. These fixture results do not establish physical remote, VoiceOver, real NAS, CloudKit or Watch acceptance.
+[#26](https://github.com/svoltolini/gumbo/issues/26) remains open for signed-device OS preference delivery, iPad-specific acceptance and the full animation matrix. Simultaneous stage/profile-lock changes, every collection insertion/removal, held-overscroll preference toggling and system navigation/focus animations were source-reviewed rather than recorded frame by frame. These fixture results do not establish physical remote, VoiceOver, real NAS, CloudKit or Watch acceptance.
