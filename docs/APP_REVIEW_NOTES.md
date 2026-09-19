@@ -1,14 +1,14 @@
-# App Review notes for Skyr Music
+# App Review notes for Gumbo Music
 
-This document provides App Store Review with the information needed to evaluate Skyr Music.
+This document provides App Store Review with the information needed to evaluate Gumbo Music.
 
-## What Skyr does
+## What Gumbo does
 
-Skyr Music streams and downloads music from a personal Synology NAS (Network Attached Storage). It is not a music-streaming service with its own catalogue—users supply their own music files stored on their own NAS hardware.
+Gumbo Music streams and downloads music from a personal Synology NAS (Network Attached Storage). It is not a music-streaming service with its own catalogue—users supply their own music files stored on their own NAS hardware.
 
 ## Testing without a NAS
 
-Skyr includes a built-in **sample library** with 12 demonstration albums containing simulated track metadata. This allows full UI and navigation evaluation without real NAS hardware.
+Gumbo includes a built-in **sample library** with 12 demonstration albums containing simulated track metadata. This allows full UI and navigation evaluation without real NAS hardware.
 
 ### Enabling the sample library
 
@@ -91,7 +91,7 @@ The owner can provide temporary demo NAS credentials upon request. Contact infor
 
 ## Export compliance
 
-`ITSAppUsesNonExemptEncryption` is set to `false` for all targets. Skyr uses only:
+`ITSAppUsesNonExemptEncryption` is set to `false` for all targets. Gumbo uses only:
 - Apple-provided HTTPS/TLS for NAS and iCloud connections
 - Apple-provided CloudKit encryption
 - Apple Keychain for credential storage
